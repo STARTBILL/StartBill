@@ -861,7 +861,7 @@ export default function DeviceSimulator({
                 (item.id === 'invoices' && currentScreen === 'invoice_detail') ||
                 (item.id === 'expenses' && (currentScreen === 'expense_detail' || currentScreen === 'add_expense'));
 
-              const isLocked = !item.isPublic && !isAuthenticated;
+              const isLocked = false;
 
               return (
                 <button
@@ -1034,8 +1034,8 @@ export default function DeviceSimulator({
     'welcome_dashboard'
   ].includes(currentScreen);
 
-  // Show full SaaS navigation chrome ONLY when user is authenticated AND not in onboarding
-  const showSaaSChrome = isAuthenticated && !isOnboarding;
+  // Show full SaaS navigation chrome when not in onboarding
+  const showSaaSChrome = !isOnboarding;
 
   return (
     <div className="w-full min-h-screen lg:h-screen bg-slate-50 flex flex-col lg:flex-row relative text-slate-800 font-sans overflow-hidden">
@@ -1106,77 +1106,9 @@ export default function DeviceSimulator({
         )}
 
         {/* ======================================= */}
-        {/* ACCESS GUARD FOR PRIVATE SCREENS (DASHBOARD, INVOICES, CLIENTS, EXPENSES, TAX, REPORTS, SETTINGS) */}
-        {/* ======================================= */}
-        {!isAuthenticated && [
-          'dashboard', 
-          'invoices', 
-          'invoice_detail', 
-          'clients', 
-          'expenses', 
-          'expense_detail', 
-          'add_expense', 
-          'notifications', 
-          'tax_prep', 
-          'reports', 
-          'settings'
-        ].includes(currentScreen) && (
-          <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[600px]">
-            <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-6 animate-in fade-in zoom-in duration-300">
-              <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto shadow-sm">
-                <Lock className="w-8 h-8" />
-              </div>
-
-              <div className="space-y-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100/70 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Accès Restreint & Sécurisé
-                </span>
-                <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                  Connexion requise
-                </h3>
-                <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                  Vous devez être connecté à votre compte StartBill pour accéder au tableau de bord, à vos factures et à vos données de gestion.
-                </p>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left text-xs space-y-2">
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="font-medium">Protection des données :</span>
-                  <span className="font-bold text-slate-900">Cloud Firestore Chiffré</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="font-medium">Sécurité session :</span>
-                  <span className="font-bold text-emerald-600">SSL 256 bits</span>
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setScreen('login')}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-3 px-4 rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>Se connecter ou Créer un compte</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setScreen('dashboard')}
-                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl transition cursor-pointer"
-                >
-                  Aller au Tableau de bord
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ======================================= */}
         {/* SCREEN 1: TABLEAU DE BORD - CANADA */}
         {/* ======================================= */}
-        {isAuthenticated && currentScreen === 'dashboard' && (
+        {currentScreen === 'dashboard' && (
           <Dashboard
             dbLoading={dbLoading}
             dbError={dbError}
@@ -1211,7 +1143,7 @@ export default function DeviceSimulator({
         {/* ======================================= */}
         {/* SCREEN 2: FACTURES */}
         {/* ======================================= */}
-        {isAuthenticated && currentScreen === 'invoices' && (
+        {currentScreen === 'invoices' && (
           <InvoicesPage
             invoices={activeInvoicesList}
             clients={clients && clients.length > 0 ? clients : dbClients}
