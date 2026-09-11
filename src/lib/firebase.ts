@@ -10,6 +10,7 @@ import {
   writeBatch 
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Invoice, Expense, Client } from '../types';
 import { INITIAL_INVOICES, INITIAL_EXPENSES, INITIAL_CLIENTS } from '../data';
@@ -17,6 +18,7 @@ import { INITIAL_INVOICES, INITIAL_EXPENSES, INITIAL_CLIENTS } from '../data';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 export enum OperationType {
   CREATE = 'create',

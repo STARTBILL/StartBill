@@ -44,7 +44,7 @@ export default function ChooseRegionPage({
           {setScreen && (
             <button
               type="button"
-              onClick={() => setScreen('dashboard')}
+              onClick={() => setScreen('landing')}
               className="text-xs text-white/80 hover:text-white font-medium transition cursor-pointer"
             >
               Retour

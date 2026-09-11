@@ -26,8 +26,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isDbConnected, setIsDbConnected] = useState<boolean>(true);
 
-  // Active Screen ID in phone simulator (default to dashboard)
-  const [currentScreen, setCurrentScreen] = useState<ScreenId>('dashboard');
+  // Active Screen ID in phone simulator (starts on Landing / Accueil page)
+  const [currentScreen, setCurrentScreen] = useState<ScreenId>('landing');
 
   // Selected sub items for detail screens
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);

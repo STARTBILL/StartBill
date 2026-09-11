@@ -853,6 +853,7 @@ export default function DeviceSimulator({
               ...(isSuperAdminUser ? [
                 { id: 'admin' as ScreenId, label: 'Administration (Admin)', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
               ] : []),
+              { id: 'landing' as ScreenId, label: 'Accueil / Landing', icon: Globe, isPublic: true },
               { id: 'login' as ScreenId, label: isAuthenticated ? 'Mon Compte' : 'Connexion / Compte', icon: LogIn, isPublic: true },
             ].map((item) => {
               const Icon = item.icon;
