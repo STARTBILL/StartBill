@@ -1119,9 +1119,7 @@ export default function DeviceSimulator({
           'notifications', 
           'tax_prep', 
           'reports', 
-          'settings',
-          'company_setup',
-          'welcome_dashboard'
+          'settings'
         ].includes(currentScreen) && (
           <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 min-h-[600px]">
             <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl text-center space-y-6 animate-in fade-in zoom-in duration-300">
