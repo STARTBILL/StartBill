@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && 
+        request.auth.token.email != null && 
+        request.auth.token.email.lower() == 'contact.startbill@gmail.com';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // User collection: Users can access their own document; Super Admin has global access
+    match /users/{userId} {
+      allow read, write: if isSuperAdmin() || isOwner(userId);
+    }
+
+    // Subscriptions: Users access their own, Super Admin has global access
+    match /subscriptions/{subscriptionId} {
+      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+    }
+
+    // Invoices: Users access their own, Super Admin has global access
+    match /invoices/{invoiceId} {
+      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+    }
+
+    // Expenses: Users access their own, Super Admin has global access
+    match /expenses/{expenseId} {
+      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+    }
+
+    // Clients: Users access their own, Super Admin has global access
+    match /clients/{clientId} {
+      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+    }
+
+    // Payments: Users access their own payments, Super Admin manages all
+    match /payments/{paymentId} {
+      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+    }
+
+    // Learning Articles: Publicly readable; Only Super Admin can write/publish
+    match /learning_articles/{articleId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // Alerts & Broadcasts: Publicly readable; Only Super Admin can broadcast
+    match /alerts/{alertId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // Regional Configurations: Publicly readable; Only Super Admin can update
+    match /regionalSettings/{regionId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // Test collection
+    match /test/{testId} {
+      allow read, write: if isSuperAdmin();
+    }
+  }
+}

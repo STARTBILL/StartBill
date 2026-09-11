@@ -1,0 +1,198 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account profile and role",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "fullName": { "type": "string" },
+        "companyName": { "type": "string" },
+        "plan": { "type": "string" },
+        "region": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "User billing subscription plan details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "plan": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "interval": { "type": "string" },
+        "status": { "type": "string" },
+        "startDate": { "type": "string" },
+        "nextBillingDate": { "type": "string" }
+      },
+      "required": ["id", "userId", "plan", "status"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "An invoice generated for a client",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientName": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "tps": { "type": "number" },
+        "tvq": { "type": "number" },
+        "total": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "amountPaid": { "type": "number" },
+        "remainingBalance": { "type": "number" },
+        "paymentStatus": { "type": "string" }
+      },
+      "required": ["id", "clientName", "date", "status", "total"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "A client of the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "amountDue": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "A business expense incurred by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "provider": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "isEligible": { "type": "boolean" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "category", "total"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment transactions recorded in the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "method": { "type": "string" },
+        "status": { "type": "string" },
+        "date": { "type": "string" },
+        "transactionRef": { "type": "string" }
+      },
+      "required": ["id", "amount", "method", "status", "date"]
+    },
+    "LearningArticle": {
+      "title": "LearningArticle",
+      "description": "Knowledge base article for the learning center",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "category": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "author": { "type": "string" },
+        "readTime": { "type": "string" },
+        "published": { "type": "boolean" },
+        "targetRegion": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "category", "content"]
+    },
+    "Alert": {
+      "title": "Alert",
+      "description": "System or user notifications and alerts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "severity": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "isGlobal": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "severity"]
+    },
+    "RegionalSettings": {
+      "title": "RegionalSettings",
+      "description": "Configuration for supported operating regions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "currency": { "type": "string" },
+        "currencySymbol": { "type": "string" },
+        "defaultGst": { "type": "number" },
+        "defaultPst": { "type": "number" },
+        "defaultQst": { "type": "number" }
+      },
+      "required": ["id", "name", "currency"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Users collection"
+    },
+    "/subscriptions/{subscriptionId}": {
+      "schema": "Subscription",
+      "description": "Subscriptions collection"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Invoices collection"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Clients collection"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Expenses collection"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payments collection"
+    },
+    "/learning_articles/{articleId}": {
+      "schema": "LearningArticle",
+      "description": "Learning center articles"
+    },
+    "/alerts/{alertId}": {
+      "schema": "Alert",
+      "description": "Alerts collection"
+    },
+    "/regionalSettings/{regionId}": {
+      "schema": "RegionalSettings",
+      "description": "Regional settings configuration"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Startbill Canada",
+  "description": "Plateforme multi-régionale de facturation et comptabilité : Canada, Afrique et Haïti. Gestion des factures, clients, dépenses, analyses financières et taxes régionales.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
