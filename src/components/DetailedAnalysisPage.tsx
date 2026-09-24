@@ -447,22 +447,33 @@ export default function DetailedAnalysisPage({
       {setScreen && <FinancialNavTabs currentScreen="financial_health" setScreen={setScreen} />}
 
       {/* ======================================================== */}
-      {/* TOP HEADER: 2. Analyse détaillée (i) + Periode & Exporter */}
+      {/* TOP HEADER: Module 8 — Santé Financière */}
       {/* ======================================================== */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
         {/* Title and info icon */}
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            2. Analyse détaillée
-          </h1>
-          <button
-            type="button"
-            onClick={() => setShowInfoModal(true)}
-            className="text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition cursor-pointer"
-            title="Détails méthodologiques et calculs"
-          >
-            <Info className="w-4 h-4" />
-          </button>
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+              Module 8 — Santé Financière
+            </span>
+            <span className="text-[11px] font-semibold text-slate-400">Score & Diagnostic des Ratios</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Santé Financière & Ratios de Performance
+            </h1>
+            <button
+              type="button"
+              onClick={() => setShowInfoModal(true)}
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition cursor-pointer"
+              title="Détails méthodologiques et calculs"
+            >
+              <Info className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
+            Diagnostic global sur 5 axes stratégiques : Liquidité, Rentabilité, Croissance, Gestion et Risque.
+          </p>
         </div>
 
         {/* Period picker & Export button */}

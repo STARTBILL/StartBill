@@ -26,7 +26,8 @@ import {
   FileText,
   Scan,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 import { Expense, ScreenId } from '../types';
 import { Button } from './ui/Button';
@@ -408,6 +409,35 @@ export default function ExpensesPage({
   const totalAmountTtc = filteredExpenses.reduce((sum, e) => sum + e.total, 0);
   const totalAmountHt = filteredExpenses.reduce((sum, e) => sum + (e.amountHt || (e.total / 1.05)), 0);
   const totalTaxesRecoverable = filteredExpenses.reduce((sum, e) => sum + (e.tps || (e.total - e.amountHt)), 0);
+  const uniqueProvidersCount = new Set(expenses.map(e => e.provider.trim())).size;
+
+  // Export expenses to CSV
+  const handleExportCsv = () => {
+    const headers = ['N°', 'Fournisseur', 'Catégorie', 'Date', 'Mode de paiement', 'Montant HT', 'TPS (5%)', 'TVQ (9.975%)', 'Total TTC', 'Admissibilité', 'Notes'];
+    const rows = filteredExpenses.map((exp, idx) => [
+      `"${exp.id || idx + 1}"`,
+      `"${exp.provider}"`,
+      `"${exp.category}"`,
+      `"${exp.date}"`,
+      `"${exp.paymentMethod || 'Carte bancaire'}"`,
+      (exp.amountHt || (exp.total / 1.05)).toFixed(2),
+      (exp.tps || (exp.total * 0.05 / 1.05)).toFixed(2),
+      (exp.total - (exp.amountHt || (exp.total / 1.05)) - (exp.tps || 0)).toFixed(2),
+      exp.total.toFixed(2),
+      '"100% Déductible"',
+      `"${(exp.notes || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `StartBill_Depenses_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast('Journal des dépenses exporté en CSV avec succès !');
+  };
 
   if (dbLoading) {
     return (
@@ -457,24 +487,41 @@ export default function ExpensesPage({
       />
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-secondary-200 pb-3">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200/90 pb-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-black text-secondary-900 flex items-center gap-2 tracking-tight">
-            <Receipt className="w-6 h-6 text-primary-600" /> Dépenses
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+              Module 6 — Dépenses
+            </span>
+            <span className="text-[11px] font-semibold text-slate-400">Achats & Déductions fiscales</span>
+          </div>
+          <h1 className="text-xl md:text-2xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
+            <Receipt className="w-6 h-6 text-blue-600" /> Dépenses & Justificatifs
           </h1>
-          <p className="text-xs text-secondary-500 font-medium mt-0.5">
-            Suivi des dépenses d'entreprise, catégories, déductions fiscales TPS/TVQ et numérisation OCR.
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
+            Suivi des charges d'entreprise, déductions fiscales TPS/TVQ et numérisation intelligente par OCR.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Export CSV */}
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs py-2 px-3 rounded-xl border border-slate-200 transition shadow-2xs cursor-pointer"
+            title="Exporter le journal des dépenses en format CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Exporter (CSV)</span>
+          </button>
+
           {/* Camera OCR Scanner Quick Button */}
           <button
             onClick={() => cameraInputRef.current?.click()}
             className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs py-2 px-3 rounded-xl border border-blue-200 transition shadow-2xs cursor-pointer"
             title="Prendre en photo un reçu pour extraction automatique"
           >
-            <Camera className="w-4 h-4 text-blue-600 animate-pulse" />
+            <Camera className="w-4 h-4 text-blue-600" />
             <span>Numériser Reçu (OCR)</span>
           </button>
 
@@ -524,7 +571,7 @@ export default function ExpensesPage({
             variant="primary"
             size="md"
             onClick={openAddModal}
-            className="shadow-sm"
+            className="shadow-sm font-bold"
           >
             <Plus className="w-4 h-4" /> Saisir une dépense
           </Button>
@@ -571,39 +618,60 @@ export default function ExpensesPage({
         </div>
       )}
 
-      {/* Summary Banner / Metrics Box */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-white border-secondary-200/80 p-4">
+      {/* Summary Banner / Metrics Box - 4 Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <Card className="bg-white border-slate-200/90 p-4 rounded-2xl shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-secondary-400 uppercase tracking-wider">Total Dépenses (TTC)</span>
-            <TrendingDown className="w-4 h-4 text-error-500" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Dépenses (TTC)</span>
+            <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center">
+              <TrendingDown className="w-4 h-4 text-rose-600" />
+            </div>
           </div>
-          <div className="text-xl font-black text-secondary-900 mt-1">
+          <div className="text-xl font-black text-slate-900 mt-1">
             $ {totalAmountTtc.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} CAD
           </div>
-          <span className="text-[10px] text-secondary-400 font-medium block mt-1">Total TTC dépensé sur la période</span>
+          <span className="text-[10px] text-slate-400 font-medium block mt-1">
+            {filteredExpenses.length} dépense(s) enregistrée(s)
+          </span>
         </Card>
 
-        <Card className="bg-white border-secondary-200/80 p-4">
+        <Card className="bg-white border-slate-200/90 p-4 rounded-2xl shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-secondary-400 uppercase tracking-wider">Total Hors Taxes (HT)</span>
-            <PieChart className="w-4 h-4 text-primary-500" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Hors Taxes (HT)</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+              <PieChart className="w-4 h-4 text-blue-600" />
+            </div>
           </div>
-          <div className="text-xl font-black text-secondary-800 mt-1">
+          <div className="text-xl font-black text-slate-800 mt-1">
             $ {totalAmountHt.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}
           </div>
-          <span className="text-[10px] text-secondary-400 font-medium block mt-1">Dépenses nettes admissibles</span>
+          <span className="text-[10px] text-slate-400 font-medium block mt-1">Dépenses nettes déductibles</span>
         </Card>
 
-        <Card className="bg-white border-secondary-200/80 p-4">
+        <Card className="bg-white border-slate-200/90 p-4 rounded-2xl shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-secondary-400 uppercase tracking-wider">Taxes Récupérables</span>
-            <FileCheck className="w-4 h-4 text-emerald-600" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Taxes Récupérables</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center">
+              <FileCheck className="w-4 h-4 text-emerald-600" />
+            </div>
           </div>
           <div className="text-xl font-black text-emerald-600 mt-1">
             $ {totalTaxesRecoverable.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}
           </div>
-          <span className="text-[10px] text-emerald-700 font-semibold block mt-1">Crédit de taxe sur les intrants (CTI/RTI)</span>
+          <span className="text-[10px] text-emerald-700 font-semibold block mt-1">Crédits CTI (TPS) & RTI (TVQ)</span>
+        </Card>
+
+        <Card className="bg-white border-slate-200/90 p-4 rounded-2xl shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fournisseurs Actifs</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+              <Building className="w-4 h-4 text-indigo-600" />
+            </div>
+          </div>
+          <div className="text-xl font-black text-indigo-700 mt-1">
+            {uniqueProvidersCount}
+          </div>
+          <span className="text-[10px] text-slate-400 font-medium block mt-1">Commerçants & partenaires</span>
         </Card>
       </div>
 

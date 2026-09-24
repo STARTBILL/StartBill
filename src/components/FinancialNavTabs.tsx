@@ -9,12 +9,12 @@ interface FinancialNavTabsProps {
 
 export default function FinancialNavTabs({ currentScreen, setScreen }: FinancialNavTabsProps) {
   const tabs = [
+    { id: 'financial_health' as ScreenId, label: 'Santé & Ratios', icon: Activity },
     { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', icon: Sparkles },
-    { id: 'financial_health' as ScreenId, label: '2. Analyse détaillée', icon: Activity },
-    { id: 'financial_alerts' as ScreenId, label: '3. Alertes financières', icon: AlertTriangle, badge: '5' },
-    { id: 'financial_trends' as ScreenId, label: '4. Tendances', icon: TrendingUp },
-    { id: 'financial_forecasts' as ScreenId, label: '5. Prévisions', icon: Compass },
-    { id: 'financial_history' as ScreenId, label: '6. Historique', icon: History }
+    { id: 'financial_alerts' as ScreenId, label: 'Alertes financières', icon: AlertTriangle, badge: '5' },
+    { id: 'financial_trends' as ScreenId, label: 'Tendances', icon: TrendingUp },
+    { id: 'financial_forecasts' as ScreenId, label: 'Prévisions', icon: Compass },
+    { id: 'financial_history' as ScreenId, label: 'Historique', icon: History }
   ];
 
   return (

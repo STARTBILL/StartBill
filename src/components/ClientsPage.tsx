@@ -345,7 +345,7 @@ export default function ClientsPage({
               <Users className="w-6 h-6 text-blue-600" /> Clients
             </h1>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Gérez vos clients et suivez l'historique de vos transactions.
+              Gérez vos clients et suivez leurs activités.
             </p>
           </div>
 
@@ -510,6 +510,18 @@ export default function ClientsPage({
                 <table className="w-full text-left text-xs text-slate-600 border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <th className="py-3 px-3 text-center w-8">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                          onChange={(e) => {
+                            if (e.target.checked && paginatedClients.length > 0) {
+                              setSelectedClient(paginatedClients[0]);
+                              setIsDrawerOpen(true);
+                            }
+                          }}
+                        />
+                      </th>
                       <th className="py-3 px-4">Client</th>
                       <th className="py-3 px-4">Entreprise</th>
                       <th className="py-3 px-4">Courriel</th>
@@ -542,6 +554,19 @@ export default function ClientsPage({
                             isSelected ? 'bg-blue-50/60' : ''
                           }`}
                         >
+                          {/* 0. Checkbox */}
+                          <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={() => {
+                                setSelectedClient(client);
+                                setIsDrawerOpen(true);
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                            />
+                          </td>
+
                           {/* 1. Client Avatar + Name + Type */}
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2.5">
@@ -692,74 +717,10 @@ export default function ClientsPage({
               </div>
             </div>
 
-            {/* 4. BOTTOM SECTION: ACTIONS RAPIDES & 3-COLUMN CARDS GRID */}
+            {/* 4. BOTTOM SECTION: 3-COLUMN CARDS GRID (Historique, Documents, Notes) */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-              {/* Header "Actions rapides" */}
-              <div className="border-b border-slate-100 pb-3">
-                <h3 className="text-sm font-black text-slate-900">Actions rapides</h3>
-              </div>
-
-              {/* Actions row buttons */}
-              {/* CRITICAL: "Nouveau client" and "Créer facture" are EXCLUDED as explicitly crossed out in user request! */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                {/* 1. Créer devis */}
-                <button
-                  onClick={() => triggerToast(`Création d'un devis pour ${selectedClient?.name || 'le client'}...`)}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/30 transition group text-center"
-                >
-                  <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-slate-700">Créer devis</span>
-                </button>
-
-                {/* 2. Envoyer rappel */}
-                <button
-                  onClick={() => triggerToast(`Rappel de paiement envoyé à ${selectedClient?.email || selectedClient?.name || 'tous les clients avec solde'} !`)}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/30 transition group text-center"
-                >
-                  <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-slate-700">Envoyer rappel</span>
-                </button>
-
-                {/* 3. Exporter liste */}
-                <button
-                  onClick={handleExportCsv}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/30 transition group text-center"
-                >
-                  <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition">
-                    <Download className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-slate-700">Exporter liste</span>
-                </button>
-
-                {/* 4. Importer (CSV) */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/30 transition group text-center"
-                >
-                  <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition">
-                    <Upload className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-slate-700">Importer (CSV)</span>
-                </button>
-
-                {/* 5. Fusionner doublons */}
-                <button
-                  onClick={() => triggerToast('Analyse complétée : aucun doublon détecté dans votre base clients.')}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/30 transition group text-center"
-                >
-                  <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition">
-                    <GitMerge className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-slate-700">Fusionner doublons</span>
-                </button>
-              </div>
-
               {/* 3 Columns Card Grid: Historique des factures, Documents associés, Notes */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                 {/* Column 1: Historique des factures */}
                 <div className="border border-slate-200/80 rounded-xl p-3.5 bg-slate-50/40 flex flex-col justify-between">
                   <div>

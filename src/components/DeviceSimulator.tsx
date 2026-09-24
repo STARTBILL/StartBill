@@ -3,6 +3,7 @@ import {
   Home,
   FileText,
   CreditCard,
+  Wallet,
   BarChart3,
   MoreHorizontal,
   Search,
@@ -63,6 +64,8 @@ import ClientsPage from './ClientsPage';
 import InvoicesPage from './InvoicesPage';
 import ExpensesPage from './ExpensesPage';
 import ProductsPage from './ProductsPage';
+import PaymentsPage from './PaymentsPage';
+import ReportsPage from './ReportsPage';
 import NotificationsPage from './NotificationsPage';
 import LoginPage from './LoginPage';
 import ChooseRegionPage from './ChooseRegionPage';
@@ -669,6 +672,31 @@ export default function DeviceSimulator({
     });
   };
 
+  // Handler for recording a payment in Module 5 (Payments & Collections)
+  const handleRecordPayment = (invoiceId: string, amount: number, method: string, date: string, reference?: string) => {
+    const inv = activeInvoicesList.find(i => i.id === invoiceId);
+    if (!inv) return;
+
+    const currentPaid = inv.amountPaid || 0;
+    const newPaid = parseFloat((currentPaid + amount).toFixed(2));
+    const newRemaining = parseFloat(Math.max(0, (inv.total || 0) - newPaid).toFixed(2));
+    const newStatus: InvoiceStatus = newRemaining <= 0.01 ? 'Payée' : 'Partiellement payée';
+
+    const updatedInv: Invoice = {
+      ...inv,
+      amountPaid: newPaid,
+      remainingBalance: newRemaining,
+      status: newStatus,
+      paymentMethod: method,
+      paymentDate: date,
+      paymentStatus: newRemaining <= 0.01 ? 'paid' : 'partial'
+    };
+
+    onUpdateInvoice(updatedInv);
+    setDbInvoices(prev => prev.map(i => i.id === invoiceId ? updatedInv : i));
+    triggerToast(`Encaissement de ${amount.toFixed(2)} $ CAD enregistré avec succès sur la facture ${invoiceId} !`);
+  };
+
   // Handler for adding or editing an expense
   const handleCreateExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -831,36 +859,28 @@ export default function DeviceSimulator({
           </div>
 
           {/* Nav Links */}
-          <nav className="space-y-1">
+          <nav className="space-y-1.5">
             {[
-              { id: 'dashboard' as ScreenId, label: 'Dashboard', icon: Home, isPublic: false },
-              { id: 'invoices' as ScreenId, label: 'Factures', icon: FileText, isPublic: false },
-              { id: 'clients' as ScreenId, label: 'Clients', icon: UserPlus, isPublic: false },
-              { id: 'products' as ScreenId, label: 'Produits & Services', icon: Package, isPublic: false },
-              { id: 'expenses' as ScreenId, label: 'Dépenses', icon: CreditCard, isPublic: false },
-              { id: 'reports' as ScreenId, label: 'Rapports', icon: BarChart3, isPublic: false },
-              { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', icon: Sparkles, isPublic: false },
-              { id: 'pricing' as ScreenId, label: 'Tarifs & Plans', icon: Zap, isPublic: true },
-              { id: 'settings' as ScreenId, label: 'Paramètres', icon: Settings, isPublic: false },
-              { id: 'financial_health' as ScreenId, label: '2. Analyse détaillée', icon: TrendingUp, isPublic: false },
-              { id: 'financial_alerts' as ScreenId, label: '3. Alertes financières', icon: AlertTriangle, isPublic: false, badge: '5' },
-              { id: 'financial_trends' as ScreenId, label: '4. Tendances', icon: BarChart3, isPublic: false },
-              { id: 'financial_forecasts' as ScreenId, label: '5. Prévisions', icon: Compass, isPublic: false },
-              { id: 'financial_history' as ScreenId, label: '6. Historique', icon: Clock, isPublic: false },
-              { id: 'notifications' as ScreenId, label: 'Notifications', icon: Bell, isPublic: false, badge: unreadAlertsCount > 0 ? String(unreadAlertsCount) : undefined },
-              { id: 'tax_prep' as ScreenId, label: 'Impôts', icon: Percent, isPublic: false },
+              { id: 'dashboard' as ScreenId, label: 'Dashboard', sublabel: "Vue d'ensemble", icon: Home, isPublic: false },
+              { id: 'invoices' as ScreenId, label: 'Factures', sublabel: 'Créer, gérer, suivre', icon: FileText, isPublic: false },
+              { id: 'clients' as ScreenId, label: 'Clients', sublabel: 'Gestion des clients', icon: UserPlus, isPublic: false },
+              { id: 'products' as ScreenId, label: 'Produits & Services', sublabel: 'Articles et catalogues', icon: Package, isPublic: false },
+              { id: 'payments' as ScreenId, label: 'Paiements', sublabel: 'Encaissements', icon: Wallet, isPublic: false },
+              { id: 'expenses' as ScreenId, label: 'Dépenses', sublabel: 'Gestion des dépenses', icon: CreditCard, isPublic: false },
+              { id: 'reports' as ScreenId, label: 'Rapports & Analyses', sublabel: 'Rapports détaillés', icon: BarChart3, isPublic: false },
+              { id: 'financial_health' as ScreenId, label: 'Santé financière', sublabel: 'Score et analyse', icon: TrendingUp, isPublic: false },
+              { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', sublabel: 'Assistant intelligent', icon: Sparkles, isPublic: false },
+              { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false },
               // Admin dashboard is strictly restricted to Super Admin (contact.startbill@gmail.com)
               ...(isSuperAdminUser ? [
-                { id: 'admin' as ScreenId, label: 'Administration (Admin)', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
+                { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'Super Admin HQ', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
               ] : []),
-              { id: 'login' as ScreenId, label: isAuthenticated ? 'Mon Compte' : 'Connexion / Compte', icon: LogIn, isPublic: true },
             ].map((item) => {
               const Icon = item.icon;
               const isSelected = currentScreen === item.id || 
                 (item.id === 'invoices' && currentScreen === 'invoice_detail') ||
-                (item.id === 'expenses' && (currentScreen === 'expense_detail' || currentScreen === 'add_expense'));
-
-              const isLocked = false;
+                (item.id === 'expenses' && (currentScreen === 'expense_detail' || currentScreen === 'add_expense')) ||
+                (item.id === 'financial_health' && ['financial_alerts', 'financial_trends', 'financial_forecasts', 'financial_history'].includes(currentScreen));
 
               return (
                 <button
@@ -880,22 +900,34 @@ export default function DeviceSimulator({
                     setScreen(item.id);
                     if (onItemClick) onItemClick();
                   }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer text-left group ${
                     isSelected
-                      ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20'
-                      : 'text-secondary-600 hover:text-secondary-900 hover:bg-secondary-50'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-4 h-4 flex-shrink-0" />
-                    <span>{item.label}</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition ${
+                      isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50'
+                    }`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className={`text-xs font-bold leading-tight truncate ${
+                        isSelected ? 'text-white' : 'text-slate-900'
+                      }`}>
+                        {item.label}
+                      </span>
+                      <span className={`text-[10px] leading-tight truncate mt-0.5 ${
+                        isSelected ? 'text-blue-100 font-medium' : 'text-slate-400 group-hover:text-slate-500'
+                      }`}>
+                        {item.sublabel}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    {isLocked && (
-                      <Lock className="w-3 h-3 text-slate-400" />
-                    )}
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {item.badge && (
-                      <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
                         isSelected ? 'bg-white text-blue-600' : 'bg-blue-100 text-blue-700'
                       }`}>
                         {item.badge}
@@ -1118,6 +1150,7 @@ export default function DeviceSimulator({
                  currentScreen === 'clients' ? 'Clients & CRM' :
                  currentScreen === 'reports' ? 'Rapports & Statistiques' :
                  currentScreen === 'products' ? 'Produits & Services' :
+                 currentScreen === 'payments' ? 'Paiements & Encaissements' :
                  currentScreen === 'tax_prep' ? 'Déclarations & Taxes' :
                  currentScreen === 'financial_alerts' ? 'Alertes & Trésorerie' :
                  currentScreen === 'pricing' ? 'Forfaits & Abonnements' :
@@ -1502,56 +1535,12 @@ export default function DeviceSimulator({
                           </div>
                         )}
 
-                        {/* HIGHLIGHTED GRAND TOTAL CONTAINER ("MONTANT AVEC TAXE") */}
-                        <div className={`mt-3 border-2 rounded-xl p-4 text-center shadow-xs transition-colors ${
-                          selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid'
-                            ? 'bg-emerald-50/70 border-emerald-500' 
-                            : selectedInvoice.status === 'Partiellement payée' || selectedInvoice.status === 'partial'
-                              ? 'bg-amber-50/70 border-amber-500'
-                              : 'bg-blue-50/70 border-blue-600'
-                        }`}>
-                          <span className={`text-[9px] font-extrabold uppercase tracking-widest block mb-1 ${
-                            selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid'
-                              ? 'text-emerald-700' 
-                              : selectedInvoice.status === 'Partiellement payée' || selectedInvoice.status === 'partial'
-                                ? 'text-amber-700'
-                                : 'text-blue-700'
-                          }`}>
-                            {selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid' 
-                              ? 'Paiement effectué' 
-                              : selectedInvoice.status === 'Partiellement payée' || selectedInvoice.status === 'partial'
-                                ? 'Paiement partiel'
-                                : 'Solde à payer'}
+                        {/* Total TTC Standard Facture (les paiements et encaissements sont gérés dans le Module 5) */}
+                        <div className="mt-3 border-t-2 border-slate-200 pt-3 flex justify-between items-center bg-slate-50/80 px-3 py-2 rounded-xl border border-slate-100">
+                          <span className="text-xs font-black text-slate-800 uppercase tracking-wide">TOTAL TTC :</span>
+                          <span className="text-base font-black text-blue-700">
+                            {taxRes.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ {selectedInvoice.currency || 'CAD'}
                           </span>
-                          <div className={`text-sm font-black ${
-                            selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid'
-                              ? 'text-emerald-800' 
-                              : selectedInvoice.status === 'Partiellement payée' || selectedInvoice.status === 'partial'
-                                ? 'text-amber-800'
-                                : 'text-blue-800'
-                          }`}>
-                            {(selectedInvoice.status === 'Partiellement payée' || selectedInvoice.status === 'partial') ? (
-                              <div className="text-left text-[11px] space-y-1 font-bold">
-                                <div className="flex justify-between">
-                                  <span>Montant total :</span>
-                                  <span>{taxRes.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
-                                </div>
-                                <div className="flex justify-between text-emerald-700">
-                                  <span>Montant payé :</span>
-                                  <span>{(selectedInvoice.amountPaid || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
-                                </div>
-                                <div className="flex justify-between border-t border-amber-300 pt-1 text-red-700 font-extrabold text-[12px]">
-                                  <span>Reste à payer :</span>
-                                  <span>{(selectedInvoice.remainingBalance || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-base font-black">
-                                {selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid' ? 'Montant payé : ' : 'Montant à payer : '}
-                                {taxRes.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ {selectedInvoice.currency || 'CAD'}
-                              </div>
-                            )}
-                          </div>
                         </div>
                       </>
                     );
@@ -2420,6 +2409,19 @@ export default function DeviceSimulator({
             triggerToast={triggerToast}
             setScreen={setScreen}
             setSelectedInvoiceId={setSelectedInvoiceId}
+            setShowNewInvoiceModalWithClient={(clientName: string) => {
+              setFormStep(1);
+              setIsEditingInvoice(false);
+              setEditingInvoiceId(null);
+              setInvClientName(clientName);
+              setInvDate(new Date().toISOString().split('T')[0]);
+              setInvDueDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+              setInvProvince('Québec');
+              setInvCurrency('CAD');
+              setInvDescription('');
+              setInvItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
+              setShowNewInvoiceModal(true);
+            }}
           />
         )}
 
@@ -2433,15 +2435,23 @@ export default function DeviceSimulator({
             onUpdateProduct={handleUpdateProduct}
             onDeleteProduct={handleDeleteProduct}
             onSelectProductForInvoice={(prod) => {
+              setFormStep(1);
+              setIsEditingInvoice(false);
+              setEditingInvoiceId(null);
+              setInvDate(new Date().toISOString().split('T')[0]);
+              setInvDueDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+              setInvProvince('Québec');
+              setInvCurrency('CAD');
+              setInvDescription(`Facturation de ${prod.name}`);
               setInvItems([{
                 description: prod.name + (prod.description ? ` - ${prod.description}` : ''),
                 quantity: 1,
                 unitPrice: prod.unitPrice,
                 total: prod.unitPrice
               }]);
-              setIsEditingInvoice(false);
+              setShowNewInvoiceModal(true);
               setScreen('invoices');
-              triggerToast(`Produit "${prod.name}" sélectionné pour la facture.`);
+              triggerToast(`Produit "${prod.name}" inséré dans la nouvelle facture.`);
             }}
             triggerToast={triggerToast}
             setScreen={setScreen}
@@ -2449,238 +2459,34 @@ export default function DeviceSimulator({
         )}
 
         {/* ======================================= */}
-        {/* SCREEN 11: RAPPORTS */}
+        {/* SCREEN: PAIEMENTS & ENCAISSEMENTS (MODULE 5) */}
+        {/* ======================================= */}
+        {currentScreen === 'payments' && (
+          <PaymentsPage
+            invoices={activeInvoicesList}
+            clients={clients && clients.length > 0 ? clients : dbClients}
+            onRecordPayment={handleRecordPayment}
+            triggerToast={triggerToast}
+            setScreen={setScreen}
+            setSelectedInvoiceId={setSelectedInvoiceId}
+            currencySymbol={regionalSettings?.currencySymbol || '$'}
+            companyName={companyName}
+          />
+        )}
+
+        {/* ======================================= */}
+        {/* SCREEN: RAPPORTS & ANALYSES (MODULE 7) */}
         {/* ======================================= */}
         {currentScreen === 'reports' && (
-          <div className="flex-1 flex flex-col overflow-y-auto px-4 py-3 pb-20">
-            <h1 className="text-[18px] font-bold text-slate-900 mb-2">Rapports</h1>
-
-            {/* Report Sub Tabs */}
-            <div className="bg-slate-100 p-1 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-1 mb-4">
-              {(['Aperçu', 'Comparaison', 'Catégories', 'Analyse détaillée'] as const).map((tab) => {
-                const isActive = reportTab === tab;
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setReportTab(tab)}
-                    className={`text-xs font-semibold py-1.5 px-2 rounded-lg transition-all duration-200 text-center cursor-pointer truncate ${
-                      isActive
-                        ? 'bg-white text-blue-700 shadow-xs border border-slate-200/60 font-bold'
-                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                );
-              })}
-            </div>
-
-            {reportTab === 'Analyse détaillée' && (
-              <div className="-mx-4 -my-2 pb-6">
-                <DetailedAnalysisPage
-                  triggerToast={triggerToast}
-                  setScreen={setScreen}
-                />
-              </div>
-            )}
-
-            {reportTab !== 'Analyse détaillée' && (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="inline-flex items-center gap-1.5 bg-white border border-slate-200/80 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Mai 2026</span>
-                  </div>
-                </div>
-
-            {/* Bar Chart Graphic - Aperçu */}
-            {reportTab === 'Aperçu' && (
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                    Évolution (Revenus vs Dépenses)
-                  </h3>
-                  <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">5 derniers mois</span>
-                </div>
-                
-                {/* Chart container with proper heights */}
-                <div className="h-44 flex items-end justify-between gap-2 pb-3 border-b border-slate-100 pt-2 px-1 relative">
-                  {[
-                    { month: 'Jan', rev: 40, exp: 20, ben: 20, revVal: '$40k', expVal: '$20k', benVal: '$20k' },
-                    { month: 'Fév', rev: 55, exp: 25, ben: 30, revVal: '$55k', expVal: '$25k', benVal: '$30k' },
-                    { month: 'Mar', rev: 68, exp: 32, ben: 36, revVal: '$68k', expVal: '$32k', benVal: '$36k' },
-                    { month: 'Avr', rev: 72, exp: 38, ben: 34, revVal: '$72k', expVal: '$38k', benVal: '$34k' },
-                    { month: 'Mai', rev: 82, exp: 32, ben: 50, revVal: '$82k', expVal: '$32k', benVal: '$50k' },
-                  ].map((item, idx) => (
-                    <div key={idx} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group relative cursor-pointer">
-                      {/* Hover Tooltip */}
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute -top-11 z-20 pointer-events-none bg-slate-900 text-white text-[9px] font-medium py-1 px-2 rounded-lg shadow-md whitespace-nowrap flex items-center gap-2">
-                        <span className="text-emerald-400 font-bold">Rev: {item.revVal}</span>
-                        <span className="text-rose-400 font-bold">Dép: {item.expVal}</span>
-                        <span className="text-blue-400 font-bold">Bén: {item.benVal}</span>
-                      </div>
-
-                      {/* Bar group container */}
-                      <div className="w-full flex justify-center items-end gap-1 h-full max-h-[120px] bg-slate-50/50 rounded-t-lg p-0.5">
-                        {/* Revenue column */}
-                        <div 
-                          className="w-2.5 sm:w-3 bg-emerald-500 hover:bg-emerald-600 rounded-t-sm transition-all duration-300" 
-                          style={{ height: `${item.rev}%` }}
-                        ></div>
-                        {/* Expense column */}
-                        <div 
-                          className="w-2.5 sm:w-3 bg-rose-500 hover:bg-rose-600 rounded-t-sm transition-all duration-300" 
-                          style={{ height: `${item.exp}%` }}
-                        ></div>
-                        {/* Profit column */}
-                        <div 
-                          className="w-2.5 sm:w-3 bg-blue-500 hover:bg-blue-600 rounded-t-sm transition-all duration-300" 
-                          style={{ height: `${item.ben}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-[10px] text-slate-500 font-bold group-hover:text-blue-600 transition">{item.month}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Chart Legend */}
-                <div className="flex justify-center items-center gap-5 text-[10px] font-bold mt-3 text-slate-600">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 bg-emerald-500 rounded-xs shadow-2xs"></span>
-                    <span>Revenus</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 bg-rose-500 rounded-xs shadow-2xs"></span>
-                    <span>Dépenses</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 bg-blue-500 rounded-xs shadow-2xs"></span>
-                    <span>Bénéfice</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Tabular breakdown - Comparaison */}
-            {reportTab === 'Comparaison' && (
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs mb-4 space-y-3.5 text-xs">
-                <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Comparaison mensuelle (Mai vs Avril)</h3>
-                
-                <div className="space-y-2.5">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
-                    <span className="text-slate-600 font-medium">Revenus</span>
-                    <div className="text-right">
-                      <div className="font-bold text-slate-900">$ {revenuesEncaissees.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</div>
-                      <span className="text-[9px] text-emerald-600 font-bold">↗ 24.5% vs avr.</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
-                    <span className="text-slate-600 font-medium">Dépenses</span>
-                    <div className="text-right">
-                      <div className="font-bold text-slate-900">$ {depensesAdmissibles.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</div>
-                      <span className="text-[9px] text-rose-600 font-bold">↗ 26.1% vs avr.</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-600 font-medium">Bénéfice Net</span>
-                    <div className="text-right">
-                      <div className="font-bold text-slate-950">$ {beneficeNet.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</div>
-                      <span className="text-[9px] text-emerald-600 font-bold">↗ 23.4% vs avr.</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Categories breakdown - Catégories */}
-            {reportTab === 'Catégories' && (
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs mb-4 space-y-3.5">
-                <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Répartition des dépenses par catégorie</h3>
-                
-                <div className="space-y-3">
-                  {(() => {
-                    const breakdown: Record<string, number> = {};
-                    expenses.forEach(e => {
-                      breakdown[e.category] = (breakdown[e.category] || 0) + e.total;
-                    });
-                    const totalExp = Object.values(breakdown).reduce((s, v) => s + v, 0) || 1;
-                    
-                    return Object.entries(breakdown)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([cat, amount]) => {
-                        const pct = Math.round((amount / totalExp) * 100);
-                        return (
-                          <div key={cat} className="space-y-1.5">
-                            <div className="flex justify-between text-xs">
-                              <span className="font-semibold text-slate-800">{cat}</span>
-                              <span className="text-slate-500 font-medium">{amount.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ ({pct}%)</span>
-                            </div>
-                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                              <div className="bg-blue-600 h-full rounded-full transition-all duration-300" style={{ width: `${pct}%` }}></div>
-                            </div>
-                          </div>
-                        );
-                      });
-                  })()}
-                </div>
-              </div>
-            )}
-
-            {/* Key Metrics Grid */}
-            <div className="mb-4">
-              <h3 className="text-[11px] font-extrabold text-slate-400 mb-3 uppercase tracking-wider">Indicateurs clés</h3>
-              <div className="grid grid-cols-2 gap-2.5">
-                {/* 1. Revenus moyens */}
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Revenus moyens / mois</span>
-                    <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-                  <div className="text-sm font-black text-slate-900">$ 23 450.00</div>
-                </div>
-
-                {/* 2. Dépenses moyennes */}
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Dépenses moyennes / mois</span>
-                    <div className="w-6 h-6 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                      <CreditCard className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-                  <div className="text-sm font-black text-slate-900">$ 8 650.00</div>
-                </div>
-
-                {/* 3. Marge bénéficiaire moyenne - Highlighted with Accent */}
-                <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white border border-emerald-600/30 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider">Marge bénéficiaire</span>
-                    <div className="w-6 h-6 rounded-lg bg-white/20 text-white flex items-center justify-center">
-                      <Percent className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-                  <div className="text-lg font-black text-white tracking-tight">63.1 %</div>
-                  <span className="text-[9px] text-emerald-100/90 font-medium mt-0.5">Excellente viabilité</span>
-                </div>
-
-                {/* 4. Factures impayées */}
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Factures impayées</span>
-                    <div className="w-6 h-6 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                      <FileText className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-                  <div className="text-sm font-black text-slate-900">$ 2 450.00</div>
-                  <span className="text-[9px] text-amber-600 font-semibold mt-0.5">À relancer</span>
-                </div>
-              </div>
-            </div>
-              </>
-            )}
-          </div>
+          <ReportsPage
+            invoices={activeInvoicesList}
+            expenses={activeExpensesList}
+            clients={clients && clients.length > 0 ? clients : dbClients}
+            triggerToast={triggerToast}
+            setScreen={setScreen}
+            companyName={companyName}
+            currencySymbol={regionalSettings?.currencySymbol || '$'}
+          />
         )}
 
         {/* ======================================= */}
@@ -3446,23 +3252,21 @@ export default function DeviceSimulator({
                     />
                   </div>
 
-                  {isEditingInvoice && (
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Statut</label>
-                      <select
-                        value={invStatus}
-                        onChange={(e) => setInvStatus(e.target.value as InvoiceStatus)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
-                      >
-                        <option value="Brouillon">Brouillon</option>
-                        <option value="Envoyée">Envoyée</option>
-                        <option value="Partiellement payée">Partiellement payée</option>
-                        <option value="Payée">Payée</option>
-                        <option value="En retard">En retard</option>
-                        <option value="Annulée">Annulée</option>
-                      </select>
-                    </div>
-                  )}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Statut</label>
+                    <select
+                      value={invStatus}
+                      onChange={(e) => setInvStatus(e.target.value as InvoiceStatus)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                    >
+                      <option value="Envoyée">Envoyée</option>
+                      <option value="Brouillon">Brouillon</option>
+                      <option value="Partiellement payée">Partiellement payée</option>
+                      <option value="Payée">Payée</option>
+                      <option value="En retard">En retard</option>
+                      <option value="Annulée">Annulée</option>
+                    </select>
+                  </div>
                 </>
               ) : (
                 <>

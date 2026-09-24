@@ -247,7 +247,7 @@ export default function Dashboard({
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight text-secondary-900">
-            Tableau de bord – {regionalSettings?.country || (region === 'afrique' ? 'Afrique' : region === 'haiti' ? 'Haïti' : 'Canada')}
+            Dashboard (Vue d'ensemble) – {regionalSettings?.country || (region === 'afrique' ? 'Afrique' : region === 'haiti' ? 'Haïti' : 'Canada')}
           </h1>
           <p className="text-xs md:text-sm text-secondary-500 font-medium">
             Voici la vue d'ensemble de votre entreprise ({regionalSettings?.currency || 'CAD'} - {currencySymbol}).

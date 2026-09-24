@@ -114,6 +114,7 @@ export type ScreenId =
   | 'tax_prep'
   | 'clients'
   | 'products'
+  | 'payments'
   | 'reports'
   | 'settings'
   | 'notifications'
