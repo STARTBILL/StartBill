@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Info,
   Calendar,
@@ -9,15 +9,30 @@ import {
   FileSpreadsheet,
   Printer,
   X,
-  Sparkles
+  Sparkles,
+  Wallet,
+  Save,
+  Building2,
+  ShieldCheck,
+  Layers,
+  DollarSign
 } from 'lucide-react';
-import { ScreenId } from '../types';
+import { ScreenId, Business, AccountingMethod, BusinessRegion, BusinessCurrency } from '../types';
 import FinancialNavTabs from './FinancialNavTabs';
+import { 
+  getBusinessByOwner, 
+  saveBusiness, 
+  computeFinancialHealthMetrics, 
+  saveFinancialSnapshot 
+} from '../lib/businessFirestore';
 
 export interface DetailedAnalysisPageProps {
   triggerToast?: (msg: string) => void;
   setScreen?: (screen: ScreenId) => void;
   initialTab?: 'Liquidité' | 'Rentabilité' | 'Croissance' | 'Gestion' | 'Risque';
+  currentUser?: any;
+  currentRegion?: string;
+  currency?: string;
 }
 
 type TabKey = 'Liquidité' | 'Rentabilité' | 'Croissance' | 'Gestion' | 'Risque';
@@ -247,16 +262,141 @@ const TABS_DATA: Record<TabKey, TabData> = {
 export default function DetailedAnalysisPage({
   triggerToast = () => {},
   setScreen,
-  initialTab = 'Liquidité'
+  initialTab = 'Liquidité',
+  currentUser,
+  currentRegion = 'canada',
+  currency = 'CAD',
 }: DetailedAnalysisPageProps) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [selectedPeriod, setSelectedPeriod] = useState('Mai 2026');
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showBalanceModal, setShowBalanceModal] = useState(false);
+  const [savingBalance, setSavingBalance] = useState(false);
+  const [loadingBusiness, setLoadingBusiness] = useState(false);
+
+  // Business state from Firestore
+  const [business, setBusiness] = useState<Business | null>(null);
+
+  // Form states for Balance Sheet
+  const [formBizName, setFormBizName] = useState('Mon Entreprise');
+  const [formAccountingMethod, setFormAccountingMethod] = useState<AccountingMethod>('cash');
+  const [formAvailableCash, setFormAvailableCash] = useState<number>(24500);
+  const [formCurrentAssets, setFormCurrentAssets] = useState<number>(38200);
+  const [formCurrentLiabilities, setFormCurrentLiabilities] = useState<number>(12400);
+  const [formTotalDebt, setFormTotalDebt] = useState<number>(5000);
+
+  const effectiveOwnerUid = currentUser?.uid || 'user-default';
+
+  // Load from Firestore
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      setLoadingBusiness(true);
+      try {
+        const found = await getBusinessByOwner(effectiveOwnerUid);
+        if (isMounted && found) {
+          setBusiness(found);
+          setFormBizName(found.businessName || 'Mon Entreprise');
+          setFormAccountingMethod(found.accountingMethod || 'cash');
+          setFormAvailableCash(found.availableCash || 0);
+          setFormCurrentAssets(found.currentAssets || 0);
+          setFormCurrentLiabilities(found.currentLiabilities || 0);
+          setFormTotalDebt(found.totalOutstandingDebt || 0);
+        }
+      } catch (err) {
+        console.error('Failed to load business data:', err);
+      } finally {
+        if (isMounted) setLoadingBusiness(false);
+      }
+    }
+    loadData();
+    return () => { isMounted = false; };
+  }, [effectiveOwnerUid]);
+
+  const handleSaveBalanceSheet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingBalance(true);
+    try {
+      const saved = await saveBusiness({
+        id: business?.id,
+        ownerRef: effectiveOwnerUid,
+        businessName: formBizName,
+        countryCode: currentRegion === 'afrique' ? 'FR' : (currentRegion === 'haiti' ? 'HT' : 'CA'),
+        region: currentRegion as BusinessRegion,
+        currency: currency as BusinessCurrency,
+        accountingMethod: formAccountingMethod,
+        availableCash: Number(formAvailableCash) || 0,
+        currentAssets: Number(formCurrentAssets) || 0,
+        currentLiabilities: Number(formCurrentLiabilities) || 0,
+        totalOutstandingDebt: Number(formTotalDebt) || 0,
+      });
+
+      setBusiness(saved);
+
+      // Save a snapshot for the current period
+      const healthMetrics = computeFinancialHealthMetrics(saved, 3500);
+      await saveFinancialSnapshot(saved.id, {
+        businessId: saved.id,
+        period: selectedPeriod,
+        availableCash: saved.availableCash,
+        currentAssets: saved.currentAssets,
+        currentLiabilities: saved.currentLiabilities,
+        totalOutstandingDebt: saved.totalOutstandingDebt,
+        monthlyRevenue: 12500,
+        monthlyExpenses: 3500,
+        netProfit: 9000,
+        healthScore: healthMetrics.healthScore,
+      });
+
+      triggerToast('Soldes du bilan et indicateurs enregistrés dans Firestore avec succès !');
+      setShowBalanceModal(false);
+    } catch (err) {
+      console.error(err);
+      triggerToast("Erreur lors de l'enregistrement dans Firestore.");
+    } finally {
+      setSavingBalance(false);
+    }
+  };
 
   const tabs: TabKey[] = ['Liquidité', 'Rentabilité', 'Croissance', 'Gestion', 'Risque'];
-  const currentData = TABS_DATA[activeTab];
+  const baseData = TABS_DATA[activeTab];
+
+  // Dynamic override with Firestore data if activeTab is Liquidité
+  const computedMetrics = business ? computeFinancialHealthMetrics(business, 3500) : null;
+  const currentData: TabData = (activeTab === 'Liquidité' && computedMetrics) ? {
+    ...baseData,
+    score: computedMetrics.healthScore,
+    status: computedMetrics.statusLabel,
+    indicators: [
+      { 
+        label: 'Ratio de liquidité générale', 
+        value: computedMetrics.currentRatio.toLocaleString('fr-CA', { minimumFractionDigits: 2 }), 
+        badge: computedMetrics.currentRatio >= 1.5 ? 'Excellent' : (computedMetrics.currentRatio >= 1.0 ? 'Bon' : 'Moyen') 
+      },
+      { 
+        label: 'Ratio immédiat (Acid-Test)', 
+        value: computedMetrics.quickRatio.toLocaleString('fr-CA', { minimumFractionDigits: 2 }), 
+        badge: computedMetrics.quickRatio >= 1.0 ? 'Excellent' : 'Bon' 
+      },
+      { 
+        label: 'Fonds de roulement net', 
+        value: `${computedMetrics.workingCapital.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} ${currency}`, 
+        badge: computedMetrics.workingCapital > 0 ? 'Excellent' : 'Moyen' 
+      },
+      { 
+        label: 'Trésorerie disponible', 
+        value: `${(business?.availableCash || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} ${currency}`, 
+        badge: 'Excellent' 
+      },
+      { 
+        label: 'Piste de trésorerie (Runway)', 
+        value: `${computedMetrics.runwayMonths} mois`, 
+        badge: computedMetrics.runwayMonths >= 6 ? 'Excellent' : 'Bon' 
+      },
+    ]
+  } : baseData;
 
   // Pentagon radar chart calculations
   // 5 vertices at 72° increments, top is -90° (0°)
@@ -362,6 +502,17 @@ export default function DetailedAnalysisPage({
               </div>
             )}
           </div>
+
+          {/* Firestore Balance Sheet / Santé financière Button */}
+          <button
+            type="button"
+            onClick={() => setShowBalanceModal(true)}
+            className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-200/90 hover:border-blue-300 hover:bg-blue-100/70 rounded-xl px-3 py-2 text-xs font-bold text-blue-700 shadow-2xs transition cursor-pointer"
+          >
+            <Wallet className="w-3.5 h-3.5 text-blue-600" />
+            <span>Bilan & Trésorerie</span>
+            <span className="bg-blue-200/70 text-blue-900 text-[9px] px-1.5 py-0.5 rounded font-black tracking-wider">FIRESTORE</span>
+          </button>
 
           {/* Export button */}
           <button
@@ -841,6 +992,209 @@ export default function DetailedAnalysisPage({
             >
               Compris
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: Bilan & Santé financière (Sync Firestore) */}
+      {/* ======================================================== */}
+      {showBalanceModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                  <Wallet className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Bilan & Soldes de Trésorerie
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Synchronisé en temps réel avec la collection Firestore <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">businesses</code>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBalanceModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBalanceSheet} className="mt-4 space-y-4">
+              {/* Business Name */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nom de l'entreprise
+                </label>
+                <div className="relative">
+                  <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    required
+                    value={formBizName}
+                    onChange={(e) => setFormBizName(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: StartBill Solutions Inc."
+                  />
+                </div>
+              </div>
+
+              {/* Accounting Method */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Méthode comptable
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormAccountingMethod('cash')}
+                    className={`py-2 px-3 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
+                      formAccountingMethod === 'cash'
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-2xs'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Caisse (Cash)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormAccountingMethod('accrual')}
+                    className={`py-2 px-3 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
+                      formAccountingMethod === 'accrual'
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-2xs'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Engagement (Accrual)
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {formAccountingMethod === 'cash' 
+                    ? 'Revenus et dépenses enregistrés au moment où l\'argent est encaissé/décaissé.'
+                    : 'Revenus et charges enregistrés dès la facturation, indépendamment du paiement.'}
+                </p>
+              </div>
+
+              {/* Balance Sheet Numbers */}
+              <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 space-y-3">
+                <div className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Métriques d'Actifs & Passifs ({currency})</span>
+                </div>
+
+                {/* Available Cash */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Trésorerie disponible (Cash)
+                    </label>
+                    <span className="text-[10px] text-slate-500">Banque + Caisse</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={formAvailableCash}
+                    onChange={(e) => setFormAvailableCash(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+
+                {/* Current Assets */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Actifs à court terme (Current Assets)
+                    </label>
+                    <span className="text-[10px] text-slate-500">Cash + Créances clients</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={formCurrentAssets}
+                    onChange={(e) => setFormCurrentAssets(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+
+                {/* Current Liabilities */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Passifs à court terme (Current Liabilities)
+                    </label>
+                    <span className="text-[10px] text-slate-500">Dettes fournisseurs + Taxes dues</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={formCurrentLiabilities}
+                    onChange={(e) => setFormCurrentLiabilities(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+
+                {/* Total Outstanding Debt */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Dette totale (Outstanding Debt)
+                    </label>
+                    <span className="text-[10px] text-slate-500">Prêts + Marges de crédit</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={formTotalDebt}
+                    onChange={(e) => setFormTotalDebt(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Live Computed Previews */}
+              <div className="grid grid-cols-2 gap-2 text-[11px] bg-blue-50/50 p-2.5 rounded-xl border border-blue-100">
+                <div>
+                  <span className="text-slate-500">Fonds de roulement net :</span>
+                  <div className="font-bold text-slate-800">
+                    {(formCurrentAssets - formCurrentLiabilities).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} {currency}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500">Ratio de liquidité générale :</span>
+                  <div className="font-bold text-slate-800">
+                    {formCurrentLiabilities > 0 ? (formCurrentAssets / formCurrentLiabilities).toFixed(2) : 'N/A'} (cible &gt; 1.5)
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowBalanceModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBalance}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{savingBalance ? 'Enregistrement...' : 'Enregistrer dans Firestore'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

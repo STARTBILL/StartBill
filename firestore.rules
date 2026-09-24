@@ -8,71 +8,126 @@ service cloud.firestore {
     }
 
     // Helper functions
-    function isSignedIn() {
+    function isAuthenticated() {
       return request.auth != null;
     }
 
+    function isSignedIn() {
+      return isAuthenticated();
+    }
+
     function isSuperAdmin() {
-      return isSignedIn() && 
+      return isAuthenticated() && 
         request.auth.token.email != null && 
         request.auth.token.email.lower() == 'contact.startbill@gmail.com';
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function isAdmin() {
+      return isAuthenticated() && 
+        (
+          (request.auth.token.email != null && request.auth.token.email.lower() == 'contact.startbill@gmail.com') ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
     }
 
-    // User collection: Users can access their own document; Super Admin has global access
+    function isOwner(businessRef) {
+      return isAuthenticated() && 
+             businessRef != null &&
+             exists(/databases/$(database)/documents/businesses/$(businessRef)) &&
+             get(/databases/$(database)/documents/businesses/$(businessRef)).data.ownerRef == request.auth.uid;
+    }
+
+    function isUserSelf(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User collection: Users can access their own document; Admins have global access
     match /users/{userId} {
-      allow read, write: if isSuperAdmin() || isOwner(userId);
+      allow read, write: if isAdmin() || isUserSelf(userId);
     }
 
-    // Subscriptions: Users access their own, Super Admin has global access
+    // Businesses collection: Owners manage their own business profiles and balance sheet metrics
+    match /businesses/{businessId} {
+      allow read: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.ownerRef == request.auth.uid));
+      allow create: if isAdmin() || (isAuthenticated() && request.resource.data.ownerRef == request.auth.uid);
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.ownerRef == request.auth.uid);
+
+      // Financial snapshots subcollection (for monthly historical health trends)
+      match /financialSnapshots/{snapshotId} {
+        allow read, write: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerRef == request.auth.uid);
+      }
+    }
+
+    // Subscriptions: Users access their own, Admins have global access
     match /subscriptions/{subscriptionId} {
-      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid));
     }
 
-    // Invoices: Users access their own, Super Admin has global access
+    // Invoices: Users access their own, Admins have global access
     match /invoices/{invoiceId} {
-      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
     }
 
-    // Expenses: Users access their own, Super Admin has global access
+    // Expenses: Users access their own, Admins have global access
     match /expenses/{expenseId} {
-      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
     }
 
-    // Clients: Users access their own, Super Admin has global access
+    // Clients: Users access their own, Admins have global access
     match /clients/{clientId} {
-      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
     }
 
-    // Payments: Users access their own payments, Super Admin manages all
+    // Payments: Users access their own payments, Admins manage all
     match /payments/{paymentId} {
-      allow read, write: if isSuperAdmin() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
+      allow read: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
+      allow create: if isAdmin() || (isAuthenticated() && (request.resource.data.userId == request.auth.uid || request.resource.data.ownerRef == request.auth.uid || (request.resource.data.businessRef != null && isOwner(request.resource.data.businessRef))));
+      allow update, delete: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
     }
 
-    // Learning Articles: Publicly readable; Only Super Admin can write/publish
+    // financial_obligations
+    match /financial_obligations/{obligationId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.businessRef) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(request.resource.data.businessRef);
+      allow update, delete: if isAuthenticated() && (isOwner(resource.data.businessRef) || isAdmin());
+    }
+
+    // financial_health_snapshots
+    match /financial_health_snapshots/{snapshotId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.businessRef) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(request.resource.data.businessRef);
+      allow update, delete: if isAuthenticated() && (isOwner(resource.data.businessRef) || isAdmin());
+    }
+
+    // financial_alerts
+    match /financial_alerts/{alertId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.businessRef) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(request.resource.data.businessRef);
+      allow update, delete: if isAuthenticated() && (isOwner(resource.data.businessRef) || isAdmin());
+    }
+
+    // Learning Articles: Publicly readable; Only Admins can write/publish
     match /learning_articles/{articleId} {
       allow read: if true;
-      allow write: if isSuperAdmin();
+      allow write: if isAdmin();
     }
 
-    // Alerts & Broadcasts: Publicly readable; Only Super Admin can broadcast
+    // Alerts & Broadcasts: Publicly readable; Only Admins can broadcast
     match /alerts/{alertId} {
       allow read: if true;
-      allow write: if isSuperAdmin();
+      allow write: if isAdmin();
     }
 
-    // Regional Configurations: Publicly readable; Only Super Admin can update
+    // Regional Configurations: Publicly readable; Only Admins can update
     match /regionalSettings/{regionId} {
       allow read: if true;
-      allow write: if isSuperAdmin();
+      allow write: if isAdmin();
     }
 
     // Test collection
     match /test/{testId} {
-      allow read, write: if isSuperAdmin();
+      allow read, write: if isAdmin();
     }
   }
 }

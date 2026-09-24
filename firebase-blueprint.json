@@ -62,23 +62,42 @@
     },
     "Client": {
       "title": "Client",
-      "description": "A client of the user",
+      "description": "A client of the user or business",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "businessRef": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "province": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "lastInvoiceDate": { "type": ["string", "null"] },
+        "totalBilled": { "type": "number" },
+        "totalPaid": { "type": "number" },
         "amountDue": { "type": "number" },
-        "userId": { "type": "string" }
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string" }
       },
-      "required": ["id", "name"]
+      "required": ["name", "status"]
     },
     "Expense": {
       "title": "Expense",
-      "description": "A business expense incurred by the user",
+      "description": "A business expense incurred by the business or user",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "businessRef": { "type": "string" },
+        "categoryRef": { "type": "string" },
+        "supplierRef": { "type": "string" },
+        "amount": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["CAD", "FCFA", "HTG", "USD"] },
+        "expenseDate": { "type": "string" },
+        "paymentStatus": { "type": "string", "enum": ["paid", "pending", "unpaid"] },
+        "eligibleAmount": { "type": "number" },
+        "createdAt": { "type": "string" },
         "category": { "type": "string" },
         "provider": { "type": "string" },
         "date": { "type": "string" },
@@ -86,25 +105,49 @@
         "isEligible": { "type": "boolean" },
         "userId": { "type": "string" }
       },
-      "required": ["id", "category", "total"]
+      "required": ["amount", "currency", "expenseDate", "paymentStatus", "eligibleAmount"]
     },
-    "Payment": {
-      "title": "Payment",
-      "description": "Payment transactions recorded in the platform",
+    "FinancialObligation": {
+      "title": "FinancialObligation",
+      "description": "Debts, bank loans, credit cards, tax and supplier liabilities for balance sheet tracking",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "invoiceId": { "type": "string" },
+        "businessRef": { "type": "string" },
+        "type": { "type": "string", "enum": ["loan", "credit_card", "tax_payable", "supplier_payable", "other"] },
+        "description": { "type": "string" },
+        "currentBalance": { "type": "number" },
+        "monthlyPayment": { "type": "number" },
+        "dueDate": { "type": "string" },
+        "isShortTerm": { "type": "boolean" },
+        "currency": { "type": "string", "enum": ["CAD", "FCFA", "HTG", "USD"] },
+        "status": { "type": "string", "enum": ["active", "paid", "overdue"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["businessRef", "type", "description", "currentBalance", "dueDate", "isShortTerm", "currency", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment transactions recorded in the platform (full & partial)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessRef": { "type": "string" },
+        "invoiceRef": { "type": "string" },
+        "clientRef": { "type": "string" },
         "userId": { "type": "string" },
         "userEmail": { "type": "string" },
         "amount": { "type": "number" },
-        "currency": { "type": "string" },
-        "method": { "type": "string" },
+        "currency": { "type": "string", "enum": ["CAD", "FCFA", "HTG", "USD"] },
+        "paymentMethod": { "type": "string", "enum": ["manual", "moncash", "orange_money", "wave", "mtn_money"] },
+        "paymentDate": { "type": "string" },
+        "isPartial": { "type": "boolean" },
+        "createdAt": { "type": "string" },
         "status": { "type": "string" },
-        "date": { "type": "string" },
         "transactionRef": { "type": "string" }
       },
-      "required": ["id", "amount", "method", "status", "date"]
+      "required": ["amount", "currency", "paymentMethod", "paymentDate", "isPartial"]
     },
     "LearningArticle": {
       "title": "LearningArticle",
@@ -141,6 +184,46 @@
       },
       "required": ["id", "title", "message", "severity"]
     },
+    "FinancialHealthSnapshot": {
+      "title": "FinancialHealthSnapshot",
+      "description": "Calculated financial health snapshots over time for trend analysis",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessRef": { "type": "string" },
+        "calculatedAt": { "type": "string" },
+        "period": { "type": "string" },
+        "availableCash": { "type": "number" },
+        "currentAssets": { "type": "number" },
+        "currentLiabilities": { "type": "number" },
+        "totalOutstandingDebt": { "type": "number" },
+        "monthlyRevenue": { "type": "number" },
+        "monthlyExpenses": { "type": "number" },
+        "netProfit": { "type": "number" },
+        "healthScore": { "type": "number" },
+        "workingCapital": { "type": "number" },
+        "currentRatio": { "type": "number" },
+        "quickRatio": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["businessRef", "calculatedAt", "healthScore"]
+    },
+    "FinancialAlert": {
+      "title": "FinancialAlert",
+      "description": "Financial alerts and notifications for liquidity, debts, and tax deadlines",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessRef": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "severity": { "type": "string", "enum": ["info", "warning", "critical", "urgent"] },
+        "isRead": { "type": "boolean" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["businessRef", "severity", "createdAt", "message"]
+    },
     "RegionalSettings": {
       "title": "RegionalSettings",
       "description": "Configuration for supported operating regions",
@@ -155,9 +238,34 @@
         "defaultQst": { "type": "number" }
       },
       "required": ["id", "name", "currency"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "Business profile and core balance sheet metrics for financial health",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerRef": { "type": "string" },
+        "businessName": { "type": "string" },
+        "countryCode": { "type": "string", "enum": ["CA", "FR", "HT"] },
+        "region": { "type": "string", "enum": ["canada", "afrique", "haiti"] },
+        "currency": { "type": "string", "enum": ["CAD", "FCFA", "HTG", "USD"] },
+        "accountingMethod": { "type": "string", "enum": ["cash", "accrual"] },
+        "availableCash": { "type": "number" },
+        "currentAssets": { "type": "number" },
+        "currentLiabilities": { "type": "number" },
+        "totalOutstandingDebt": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["ownerRef", "businessName", "countryCode", "region", "currency"]
     }
   },
   "firestore": {
+    "/businesses/{businessId}": {
+      "schema": "Business",
+      "description": "Businesses collection with balance sheet metrics"
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "Users collection"
@@ -181,6 +289,18 @@
     "/payments/{paymentId}": {
       "schema": "Payment",
       "description": "Payments collection"
+    },
+    "/financial_obligations/{obligationId}": {
+      "schema": "FinancialObligation",
+      "description": "Financial obligations and debts collection"
+    },
+    "/financial_health_snapshots/{snapshotId}": {
+      "schema": "FinancialHealthSnapshot",
+      "description": "Financial health snapshots collection"
+    },
+    "/financial_alerts/{alertId}": {
+      "schema": "FinancialAlert",
+      "description": "Financial alerts and notifications collection"
     },
     "/learning_articles/{articleId}": {
       "schema": "LearningArticle",

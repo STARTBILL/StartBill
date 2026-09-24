@@ -39,6 +39,19 @@ export interface Expense {
   receiptUrl?: string;
   isEligible?: boolean;
   taxDeductiblePercentage?: number;
+
+  // Nouveaux champs Firestore Santé financière / Dépenses
+  businessRef?: string;
+  categoryRef?: string;
+  supplierRef?: string;
+  amount?: number;
+  taxAmount?: number;
+  currency?: string;
+  expenseDate?: string;
+  paymentStatus?: 'paid' | 'pending' | 'unpaid' | string;
+  eligibleAmount?: number; // Montant admissible fiscalement
+  createdAt?: string;
+  userId?: string;
 }
 
 export interface Client {
@@ -50,13 +63,21 @@ export interface Client {
   province?: string;
   phone?: string;
   company?: string;
-  status?: 'Actif' | 'Inactif' | 'Active' | 'Inactive' | 'Paiement en attente' | 'En retard';
+  status?: 'active' | 'inactive' | 'Actif' | 'Inactif' | 'Active' | 'Inactive' | 'Paiement en attente' | 'En retard' | string;
   notes?: string;
   type?: 'Entreprise' | 'Particulier';
   clientSince?: string;
   lastPaymentDate?: string;
   totalInvoiced?: number;
   paymentsReceived?: number;
+
+  // Nouveaux champs Firestore Suivi Client / Santé financière
+  businessRef?: string;
+  lastInvoiceDate?: string | null;
+  totalBilled?: number;
+  totalPaid?: number;
+  createdAt?: string;
+  userId?: string;
 }
 
 export interface ProductItem {
@@ -137,3 +158,153 @@ export interface NotificationItem {
   actionLabel?: string;
   targetId?: string;
 }
+
+// ==========================================
+// MODULE SANTÉ FINANCIÈRE (FIRESTORE SCHEMA)
+// ==========================================
+
+export type AccountingMethod = 'cash' | 'accrual';
+export type BusinessRegion = 'canada' | 'afrique' | 'haiti';
+export type BusinessCurrency = 'CAD' | 'FCFA' | 'HTG' | 'USD';
+export type CountryCode = 'CA' | 'FR' | 'HT' | string;
+
+export interface Business {
+  id: string; // Firestore document ID
+  ownerRef: string; // user_uid
+  businessName: string;
+  countryCode: 'CA' | 'FR' | 'HT' | string;
+  region: BusinessRegion;
+  currency: BusinessCurrency;
+
+  // Nouveaux champs pour Santé financière
+  accountingMethod: AccountingMethod;
+  availableCash: number; // Trésorerie disponible
+  currentAssets: number; // Actifs à court terme
+  currentLiabilities: number; // Passifs à court terme
+  totalOutstandingDebt: number; // Dette totale
+  createdAt: string; // ISO string ou Timestamp
+  updatedAt: string; // ISO string ou Timestamp
+}
+
+export interface FinancialHealthMetrics {
+  workingCapital: number; // Actifs à court terme - Passifs à court terme
+  currentRatio: number; // Actifs à court terme / Passifs à court terme (idéal > 1.5)
+  quickRatio: number; // Trésorerie disponible / Passifs à court terme (idéal > 1.0)
+  debtRatio: number; // Dette totale / Actifs (idéal < 0.5)
+  runwayMonths: number; // Trésorerie / Burn rate mensuel
+  healthScore: number; // Note globale sur 100
+  status: 'EXCELLENT' | 'GOOD' | 'WARNING' | 'CRITICAL';
+  statusLabel: string;
+}
+
+export interface FinancialSnapshot {
+  id: string;
+  businessId: string;
+  period: string; // e.g. "2026-05"
+  availableCash: number;
+  currentAssets: number;
+  currentLiabilities: number;
+  totalOutstandingDebt: number;
+  monthlyRevenue: number;
+  monthlyExpenses: number;
+  netProfit: number;
+  healthScore: number;
+  createdAt: string;
+}
+
+// ==========================================
+// PAIEMENTS & ENCAISSEMENTS (FIRESTORE)
+// ==========================================
+
+export type SupportedPaymentMethod = 
+  | 'manual' 
+  | 'moncash' 
+  | 'orange_money' 
+  | 'wave' 
+  | 'mtn_money'
+  | string;
+
+export interface Payment {
+  id: string;
+  businessRef: string; // ID de l'entreprise
+  invoiceRef: string; // ID de la facture liée
+  clientRef: string; // ID du client
+  amount: number;
+  currency: BusinessCurrency | string; // "CAD", "FCFA", "HTG", "USD"
+  paymentMethod: SupportedPaymentMethod; // "manual", "moncash", "orange_money", "wave", "mtn_money"
+  paymentDate: string; // Timestamp ou ISO String
+
+  // NOUVEAUX champs
+  isPartial: boolean; // Paiement partiel (true) ou total (false)
+  createdAt: string; // Date de création de la transaction
+
+  // Métadonnées & Compatibilité
+  userId?: string; // UID utilisateur pour indexation et règles Firestore
+  userEmail?: string;
+  status?: 'success' | 'pending' | 'failed' | string;
+  transactionRef?: string;
+  notes?: string;
+}
+
+// ==========================================
+// OBLIGATIONS FINANCIÈRES & DETTES (FIRESTORE)
+// ==========================================
+
+export type ObligationType = 'loan' | 'credit_card' | 'tax_payable' | 'supplier_payable' | 'other';
+export type ObligationStatus = 'active' | 'paid' | 'overdue';
+
+export interface FinancialObligation {
+  id: string;
+  businessRef: string;
+  type: ObligationType; // "loan" | "credit_card" | "tax_payable" | "supplier_payable" | "other"
+  description: string; // ex: "Prêt bancaire RBC"
+  currentBalance: number; // ex: 5000
+  monthlyPayment?: number; // ex: 250
+  dueDate: string; // Timestamp ou ISO string
+  isShortTerm: boolean; // Court terme (true) ou long terme (false)
+  currency: BusinessCurrency | string; // "CAD", "FCFA", "HTG", "USD"
+  status: ObligationStatus; // "active" | "paid" | "overdue"
+  createdAt: string; // Timestamp ou ISO string
+  updatedAt: string; // Timestamp ou ISO string
+  userId?: string;
+}
+
+// ==========================================
+// INSTANTANÉS & ALERTES SANTÉ FINANCIÈRE
+// ==========================================
+
+export interface FinancialHealthSnapshotRecord {
+  id: string;
+  businessRef: string;
+  calculatedAt: string; // ISO String ou Timestamp
+  period?: string; // ex: "2026-05"
+  availableCash?: number;
+  currentAssets?: number;
+  currentLiabilities?: number;
+  totalOutstandingDebt?: number;
+  monthlyRevenue?: number;
+  monthlyExpenses?: number;
+  netProfit?: number;
+  healthScore: number;
+  workingCapital?: number;
+  currentRatio?: number;
+  quickRatio?: number;
+  createdAt?: string;
+}
+
+export type FinancialAlertSeverity = 'info' | 'warning' | 'critical' | 'urgent';
+
+export interface FinancialAlert {
+  id: string;
+  businessRef: string;
+  title: string;
+  message: string;
+  severity: FinancialAlertSeverity; // "info" | "warning" | "critical" | "urgent"
+  isRead: boolean;
+  category?: string; // "liquidity" | "debt" | "tax" | "general"
+  createdAt: string; // Timestamp ou ISO string
+  actionUrl?: string;
+}
+
+
+

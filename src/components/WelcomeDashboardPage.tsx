@@ -86,7 +86,7 @@ export default function WelcomeDashboardPage({
       </div>
 
       {/* Main Container */}
-      <div className="flex-1 w-full max-w-sm sm:max-w-md mx-auto px-4 sm:px-6 py-6 flex flex-col justify-start">
+      <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col justify-start">
         
         {/* ======================================================== */}
         {/* 1. CANADA REGION VARIANT 🇨🇦                                */}
@@ -139,7 +139,7 @@ export default function WelcomeDashboardPage({
             </div>
 
             {/* Feature Items List (Canada - 5 Items) */}
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
               
               {/* Item 1: Facture en 1 minute */}
               <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
@@ -305,7 +305,7 @@ export default function WelcomeDashboardPage({
             </div>
 
             {/* Feature Items List (Afrique - 5 Items) */}
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
               
               {/* Item 1: Facture en 1 minute */}
               <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
@@ -434,7 +434,7 @@ export default function WelcomeDashboardPage({
             </div>
 
             {/* Feature Items List (Haïti - 5 Items) */}
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
               
               {/* Item 1: Facture en 1 minute */}
               <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
@@ -527,7 +527,7 @@ export default function WelcomeDashboardPage({
         )}
 
         {/* Primary Action Button (Commencer ->) */}
-        <div className="pt-5 pb-2">
+        <div className="max-w-md mx-auto w-full pt-6 pb-2">
           <button
             type="button"
             id="welcome-btn-commencer"
