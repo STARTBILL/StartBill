@@ -50,7 +50,8 @@ import {
   Compass,
   Clock,
   Activity,
-  Package
+  Package,
+  Bike
 } from 'lucide-react';
 import { Invoice, Expense, Client, ScreenId, InvoiceStatus, ProductItem } from '../types';
 import DetailedAnalysisPage from './DetailedAnalysisPage';
@@ -74,10 +75,10 @@ import WelcomeDashboardPage from './WelcomeDashboardPage';
 import LandingPage from './LandingPage';
 import PricingPage from './PricingPage';
 import AdminDashboard from './AdminDashboard';
+import SettingsPage from './SettingsPage';
+import { canCreateInvoice, checkFeatureAccess } from '../lib/planAccess';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { REGIONS } from '../data/regions';
-import { DEFAULT_PRODUCTS_CANADA, DEFAULT_PRODUCTS_AFRIQUE, DEFAULT_PRODUCTS_HAITI } from '../data/defaultProducts';
-import { seedRegionalSettingsInFirestore } from '../lib/regionalSettings';
 import { downloadInvoicePdf } from '../lib/pdfGenerator';
 import { useRegionalContext } from '../context/RegionalContext';
 import { useAuth } from '../context/AuthContext';
@@ -226,7 +227,7 @@ export default function DeviceSimulator({
   const [dbLoading, setDbLoading] = useState<boolean>(true);
   const [dbError, setDbError] = useState<string | null>(null);
 
-  // Module 4: Produits et services
+  // Module 4: Produits et services - strictly empty for new users
   const [products, setProducts] = useState<ProductItem[]>(() => {
     try {
       const saved = localStorage.getItem('startbill_products');
@@ -235,9 +236,7 @@ export default function DeviceSimulator({
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    if (currentRegion === 'afrique') return DEFAULT_PRODUCTS_AFRIQUE;
-    if (currentRegion === 'haiti') return DEFAULT_PRODUCTS_HAITI;
-    return DEFAULT_PRODUCTS_CANADA;
+    return [];
   });
 
   useEffect(() => {
@@ -262,9 +261,6 @@ export default function DeviceSimulator({
     try {
       setDbLoading(true);
       setDbError(null);
-
-      // Ensure regionalSettings documents exist in Firebase Firestore
-      seedRegionalSettingsInFirestore().catch(() => {});
 
       const defaultInvoices: any[] = [];
       const defaultClients: any[] = [];
@@ -341,7 +337,7 @@ export default function DeviceSimulator({
     }
   };
 
-  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin } = useAuth();
+  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin, userPlan, canAccess } = useAuth();
 
   // Determine active email and Super Admin status (contact.startbill@gmail.com)
   const currentActiveEmail = (
@@ -389,15 +385,34 @@ export default function DeviceSimulator({
   }, [clients]);
 
 
-  // Forms states
-  const [newExpenseCategory, setNewExpenseCategory] = useState('Transport');
+  // Forms states for Expenses
+  const [newExpenseTitle, setNewExpenseTitle] = useState('Logiciels & Abonnements');
+  const [newExpenseCategory, setNewExpenseCategory] = useState('Logiciels');
   const [newExpenseProvider, setNewExpenseProvider] = useState('');
-  const [newExpenseDate, setNewExpenseDate] = useState('2026-05-12');
-  const [newExpenseAmountHt, setNewExpenseAmountHt] = useState('60.00');
-  const [newExpenseTps, setNewExpenseTps] = useState('3.00');
+  const [newExpenseDate, setNewExpenseDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newExpenseProvince, setNewExpenseProvince] = useState('Québec');
+  const [newExpenseAmountHt, setNewExpenseAmountHt] = useState('100.00');
+  const [newExpenseTps, setNewExpenseTps] = useState('5.00');
+  const [newExpenseTvq, setNewExpenseTvq] = useState('9.98');
+  const [newExpenseDeductible, setNewExpenseDeductible] = useState(true);
   const [newExpensePayment, setNewExpensePayment] = useState('Carte bancaire');
   const [newExpenseNotes, setNewExpenseNotes] = useState('');
   const [receiptImg, setReceiptImg] = useState<string | null>(null);
+
+  // Auto-calculate Canadian taxes based on Province and HT amount
+  const recalculateExpenseTaxes = (amountHtStr: string, province: string) => {
+    const num = parseFloat(amountHtStr) || 0;
+    if (num <= 0) {
+      setNewExpenseTps('0.00');
+      setNewExpenseTvq('0.00');
+      return;
+    }
+    const tax = calculateTaxes(province, num);
+    const tpsHst = (tax.gst + tax.hst).toFixed(2);
+    const tvqPst = (tax.qst + tax.pst).toFixed(2);
+    setNewExpenseTps(tpsHst);
+    setNewExpenseTvq(tvqPst);
+  };
 
   // Edit Expense state
   const [isEditingExpense, setIsEditingExpense] = useState(false);
@@ -435,14 +450,14 @@ export default function DeviceSimulator({
   const [showAiAdvisor, setShowAiAdvisor] = useState(true);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
 
-  // Company state variables (persisted in localStorage)
-  const [companyName, setCompanyName] = useState(() => localStorage.getItem('company_name') || 'StartBill Canada Inc.');
-  const [companyOwner, setCompanyOwner] = useState(() => localStorage.getItem('company_owner') || 'Ferline');
-  const [companyNE, setCompanyNE] = useState(() => localStorage.getItem('company_ne') || '123456789 RC0001');
-  const [companyAddress, setCompanyAddress] = useState(() => localStorage.getItem('company_address') || '1000 Rue de la Gauchetière O, Montréal, QC H3B 4W5');
-  const [companyPhone, setCompanyPhone] = useState(() => localStorage.getItem('company_phone') || '+1 (514) 555-0199');
-  const [companyLogo, setCompanyLogo] = useState(() => localStorage.getItem('company_logo') || 'https://lh3.googleusercontent.com/d/1SJiIy3yPrhrfTZUgAAQ_35qJXkV5T_5W');
-  const [companySignature, setCompanySignature] = useState(() => localStorage.getItem('company_signature') || 'https://lh3.googleusercontent.com/d/1B0q88Z-b6RCHH_h_V6f578H8i2VfEw9u');
+  // Company state variables (strictly user-defined, no mock/fictive defaults)
+  const [companyName, setCompanyName] = useState(() => localStorage.getItem('company_name') || authUser?.companyName || '');
+  const [companyOwner, setCompanyOwner] = useState(() => localStorage.getItem('company_owner') || authUser?.fullName || '');
+  const [companyNE, setCompanyNE] = useState(() => localStorage.getItem('company_ne') || '');
+  const [companyAddress, setCompanyAddress] = useState(() => localStorage.getItem('company_address') || '');
+  const [companyPhone, setCompanyPhone] = useState(() => localStorage.getItem('company_phone') || authUser?.phone || '');
+  const [companyLogo, setCompanyLogo] = useState(() => localStorage.getItem('company_logo') || '');
+  const [companySignature, setCompanySignature] = useState(() => localStorage.getItem('company_signature') || '');
 
   // Email Confirmation Modal state
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -586,6 +601,11 @@ export default function DeviceSimulator({
 
   // Open New Invoice Modal with fully reset 2-step state
   const openNewInvoiceModal = () => {
+    if (!canCreateInvoice(userPlan, invoices.length, currentUser?.createdAt) && !isSuperAdmin) {
+      triggerToast("Votre période d'essai de 5 jours est terminée (limite de 5 factures atteinte). Passez au plan Start pour continuer à facturer en illimité !");
+      setScreen('pricing');
+      return;
+    }
     setFormStep(1);
     setIsEditingInvoice(false);
     setEditingInvoiceId(null);
@@ -667,7 +687,7 @@ export default function DeviceSimulator({
       onSuccess: () => triggerToast('Facture PDF téléchargée avec succès !'),
       onError: (err) => {
         console.error('Erreur téléchargement PDF:', err);
-        triggerToast("Échec PDF direct. Impression de la facture seule lancée...");
+        triggerToast("Génération du PDF en cours...");
       }
     });
   };
@@ -702,20 +722,25 @@ export default function DeviceSimulator({
     e.preventDefault();
     const sub = parseFloat(newExpenseAmountHt) || 0;
     const tpsVal = parseFloat(newExpenseTps) || 0;
-    const tot = parseFloat((sub + tpsVal).toFixed(2));
+    const tvqVal = parseFloat(newExpenseTvq) || 0;
+    const tot = parseFloat((sub + tpsVal + tvqVal).toFixed(2));
 
     if (isEditingExpense && editingExpenseId) {
       const updatedExp: Expense = {
         id: editingExpenseId,
         category: newExpenseCategory,
-        provider: newExpenseProvider || 'Commerçant',
+        provider: newExpenseProvider || newExpenseTitle || 'Fournisseur',
         date: newExpenseDate,
         amountHt: sub,
         tps: tpsVal,
+        tvq: tvqVal,
         total: tot,
+        province: newExpenseProvince,
         paymentMethod: newExpensePayment,
         notes: newExpenseNotes,
-        receiptUrl: receiptImg || undefined
+        receiptUrl: receiptImg || undefined,
+        isEligible: newExpenseDeductible,
+        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0
       };
       onUpdateExpense(updatedExp);
       setDbExpenses(prev => prev.map(exp => exp.id === updatedExp.id ? updatedExp : exp));
@@ -731,14 +756,18 @@ export default function DeviceSimulator({
       const newExp: Expense = {
         id: `EXP-0${expenses.length + 8}`,
         category: newExpenseCategory,
-        provider: newExpenseProvider || 'Commerçant',
+        provider: newExpenseProvider || newExpenseTitle || 'Fournisseur',
         date: newExpenseDate,
         amountHt: sub,
         tps: tpsVal,
+        tvq: tvqVal,
         total: tot,
+        province: newExpenseProvince,
         paymentMethod: newExpensePayment,
         notes: newExpenseNotes,
-        receiptUrl: receiptImg || undefined
+        receiptUrl: receiptImg || undefined,
+        isEligible: newExpenseDeductible,
+        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0
       };
 
       onAddExpense(newExp);
@@ -870,7 +899,8 @@ export default function DeviceSimulator({
               { id: 'reports' as ScreenId, label: 'Rapports & Analyses', sublabel: 'Rapports détaillés', icon: BarChart3, isPublic: false },
               { id: 'financial_health' as ScreenId, label: 'Santé financière', sublabel: 'Score et analyse', icon: TrendingUp, isPublic: false },
               { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', sublabel: 'Assistant intelligent', icon: Sparkles, isPublic: false },
-              { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false },
+              { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false, badge: 'MOD 10' },
+              { id: 'pricing' as ScreenId, label: 'Forfaits & Tarifs', sublabel: 'Gestion abonnement', icon: Zap, isPublic: false, badge: userPlan ? userPlan.toUpperCase() : 'PLAN' },
               // Admin dashboard is strictly restricted to Super Admin (contact.startbill@gmail.com)
               ...(isSuperAdminUser ? [
                 { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'Super Admin HQ', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
@@ -1154,6 +1184,7 @@ export default function DeviceSimulator({
                  currentScreen === 'tax_prep' ? 'Déclarations & Taxes' :
                  currentScreen === 'financial_alerts' ? 'Alertes & Trésorerie' :
                  currentScreen === 'pricing' ? 'Forfaits & Abonnements' :
+                 currentScreen === 'settings' ? 'Paramètres & Configuration' :
                  currentScreen === 'admin' ? 'Super Administration' :
                  currentScreen === 'notifications' ? 'Centre de Notifications' :
                  'Espace Professionnel'}
@@ -1375,6 +1406,29 @@ export default function DeviceSimulator({
               id="printable-invoice-content"
               className="bg-white border border-slate-200 shadow-lg rounded-[16px] p-6 md:p-8 text-left text-slate-800 flex flex-col font-sans space-y-6 relative overflow-hidden"
             >
+              {/* Filigrane / Cachet diagonal pour facture Soldée ou Partiellement soldée */}
+              {(selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid' || (selectedInvoice.remainingBalance !== undefined && selectedInvoice.remainingBalance === 0)) && (
+                <div 
+                  aria-hidden="true"
+                  className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 overflow-hidden"
+                >
+                  <div className="transform -rotate-25 border-4 md:border-8 border-emerald-500/35 text-emerald-600/40 font-black text-4xl sm:text-6xl md:text-7xl tracking-widest uppercase px-8 py-3 rounded-3xl shadow-sm">
+                    SOLDÉ
+                  </div>
+                </div>
+              )}
+
+              {(selectedInvoice.status === 'Partiellement payée' || selectedInvoice.status === 'partial' || ((selectedInvoice.amountPaid || 0) > 0 && (selectedInvoice.remainingBalance || 0) > 0)) && (
+                <div 
+                  aria-hidden="true"
+                  className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 overflow-hidden"
+                >
+                  <div className="transform -rotate-25 border-4 md:border-8 border-amber-500/35 text-amber-600/40 font-black text-2xl sm:text-4xl md:text-5xl tracking-widest uppercase px-6 py-2.5 rounded-3xl shadow-sm text-center">
+                    PARTIELLEMENT SOLDÉ
+                  </div>
+                </div>
+              )}
+
               {/* Decorative side color accent */}
               <div className={`absolute top-0 left-0 right-0 h-1.5 ${selectedInvoice.status === 'Payée' ? 'bg-emerald-500' : 'bg-[#1F6FEB]'}`}></div>
 
@@ -1583,41 +1637,44 @@ export default function DeviceSimulator({
 
             {/* ACTION ROW BUTTONS (PDF, EMAIL, WHATSAPP, EDIT, DUPLICATE, DELETE) */}
             <div className="space-y-3 no-print">
-              <div className={`grid ${isMobileFirst || hasChannel('whatsapp') ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
-                {/* 1. Télécharger PDF (html2canvas + jspdf) */}
+              <div className="grid grid-cols-3 gap-2">
+                {/* 1. Télécharger PDF */}
                 <button
+                  type="button"
                   onClick={() => handleDownloadPdf(selectedInvoice.id)}
-                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
+                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> PDF
                 </button>
 
-                {/* 2. Envoyer par Courriel (Pre-filled client email) */}
+                {/* 2. Envoyer par Courriel */}
                 <button
+                  type="button"
                   onClick={() => {
                     const activeClients = clients && clients.length > 0 ? clients : dbClients;
                     const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
-                    setEmailRecipient(clientObj?.email || '');
+                    const recipient = clientObj?.email || '';
+                    setEmailRecipient(recipient);
                     setShowEmailModal(true);
+                    triggerToast(`Préparation de l'envoi de la facture ${selectedInvoice.id} par courriel...`);
                   }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5" /> Courriel
                 </button>
 
-                {/* 3. Envoyer par WhatsApp (si Mobile-First / Afrique / Haïti) */}
-                {(isMobileFirst || hasChannel('whatsapp')) && (
-                  <button
-                    onClick={() => {
-                      const text = encodeURIComponent(`Bonjour, voici votre facture ${selectedInvoice.id} de ${selectedInvoice.subtotal} ${regionalSettings.currencySymbol}. Merci pour votre confiance !`);
-                      window.open(`https://wa.me/?text=${text}`, '_blank');
-                      triggerToast("Ouverture de WhatsApp...");
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
-                  </button>
-                )}
+                {/* 3. Envoyer par WhatsApp */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = encodeURIComponent(`Bonjour ${selectedInvoice.clientName},\n\nVoici votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total} $ CAD. Merci de procéder au règlement.\n\nStartBill`);
+                    window.open(`https://wa.me/?text=${text}`, '_blank');
+                    triggerToast("Ouverture de WhatsApp...");
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
+                </button>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -1689,7 +1746,19 @@ export default function DeviceSimulator({
               <div className="w-6"></div>
             </div>
 
-            <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm space-y-3.5 mb-4">
+            <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm space-y-3.5 mb-4 text-left">
+              {/* Titre de la dépense */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Titre de la dépense</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Logiciels & Abonnements, Frais de déplacement..."
+                  value={newExpenseTitle}
+                  onChange={(e) => setNewExpenseTitle(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                />
+              </div>
+
               {/* Category selector */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Catégorie</label>
@@ -1699,77 +1768,132 @@ export default function DeviceSimulator({
                   onChange={(e) => setNewExpenseCategory(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
                 >
-                  <option value="Transport">Transport</option>
+                  <option value="Logiciels">Logiciels & SaaS</option>
+                  <option value="Transport">Transport & Véhicule</option>
                   <option value="Téléphone / Internet">Téléphone / Internet</option>
-                  <option value="Publicité">Publicité</option>
+                  <option value="Publicité">Publicité & Marketing</option>
                   <option value="Fournitures de bureau">Fournitures de bureau</option>
-                  <option value="Logiciels">Logiciels</option>
-                  <option value="Repas d'affaires">Repas d'affaires</option>
-                  <option value="Assurance">Assurance</option>
-                  <option value="Autres">Autres</option>
+                  <option value="Repas d'affaires">Repas d'affaires (50%)</option>
+                  <option value="Assurance">Assurance commerciale</option>
+                  <option value="Autres">Autres dépenses</option>
                 </select>
               </div>
 
               {/* Provider field */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Fournisseur</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Fournisseur / Bénéficiaire *</label>
                 <input
                   id="input-expense-provider"
                   type="text"
                   required
-                  placeholder="Ex: Station-service Total"
+                  placeholder="Ex: Google Ads, Bell, Adobe..."
                   value={newExpenseProvider}
                   onChange={(e) => setNewExpenseProvider(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
                 />
               </div>
 
-              {/* Date field */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Date</label>
-                <input
-                  id="input-expense-date"
-                  type="date"
-                  required
-                  value={newExpenseDate}
-                  onChange={(e) => setNewExpenseDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
-                />
+              {/* Date & Province fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Date de la dépense *</label>
+                  <input
+                    id="input-expense-date"
+                    type="date"
+                    required
+                    value={newExpenseDate}
+                    onChange={(e) => setNewExpenseDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Province fiscale *</label>
+                  <select
+                    value={newExpenseProvince}
+                    onChange={(e) => {
+                      const prov = e.target.value;
+                      setNewExpenseProvince(prov);
+                      recalculateExpenseTaxes(newExpenseAmountHt, prov);
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                  >
+                    <option value="Québec">Québec (TPS 5% + TVQ 9.975%)</option>
+                    <option value="Ontario">Ontario (TVH 13%)</option>
+                    <option value="Alberta">Alberta (TPS 5%)</option>
+                    <option value="Colombie-Britannique">Colombie-Britannique (TPS 5% + TVP 7%)</option>
+                    <option value="Manitoba">Manitoba (TPS 5% + TVP 7%)</option>
+                    <option value="Saskatchewan">Saskatchewan (TPS 5% + TVP 6%)</option>
+                    <option value="Nouvelle-Écosse">Nouvelle-Écosse (TVH 14%)</option>
+                    <option value="Nouveau-Brunswick">Nouveau-Brunswick (TVH 15%)</option>
+                    <option value="Terre-Neuve-et-Labrador">Terre-Neuve-et-Labrador (TVH 15%)</option>
+                    <option value="Île-du-Prince-Édouard">Île-du-Prince-Édouard (TVH 15%)</option>
+                    <option value="Territoires">Territoires (TPS 5%)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Amounts section (HT and TPS) */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Amounts section (HT, TPS, TVQ) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Montant (HT)</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                    Montant hors taxes (HT) *
+                  </label>
                   <div className="relative">
                     <input
                       id="input-expense-amount-ht"
                       type="number"
                       step="0.01"
                       required
+                      placeholder="0.00"
                       value={newExpenseAmountHt}
                       onChange={(e) => {
                         const val = e.target.value;
                         setNewExpenseAmountHt(val);
-                        // Auto estimate TPS (5%)
-                        const num = parseFloat(val) || 0;
-                        setNewExpenseTps((num * 0.05).toFixed(2));
+                        recalculateExpenseTaxes(val, newExpenseProvince);
                       }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white text-right"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white text-right font-bold"
                     />
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">$</span>
                   </div>
                 </div>
+
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">TPS/TVH</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      TPS/TVH payée
+                    </label>
+                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">auto</span>
+                  </div>
                   <div className="relative">
                     <input
                       id="input-expense-tps"
                       type="number"
                       step="0.01"
-                      required
                       value={newExpenseTps}
                       onChange={(e) => setNewExpenseTps(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white text-right"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">$</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      {newExpenseProvince === 'Québec' ? 'TVQ (9.975%)' : 'TVP / Prov.'}
+                    </label>
+                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">auto</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="input-expense-tvq"
+                      type="number"
+                      step="0.01"
+                      value={newExpenseTvq}
+                      onChange={(e) => setNewExpenseTvq(e.target.value)}
+                      placeholder="0.00"
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white text-right"
                     />
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold">$</span>
@@ -1777,12 +1901,53 @@ export default function DeviceSimulator({
                 </div>
               </div>
 
-              {/* Total calculated display */}
-              <div className="bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex items-center justify-between text-xs">
-                <span className="font-medium text-slate-500">Total calculé</span>
-                <span className="font-bold text-slate-900">
-                  $ {((parseFloat(newExpenseAmountHt) || 0) + (parseFloat(newExpenseTps) || 0)).toFixed(2)} CAD
-                </span>
+              {/* Déductible à 100% Switch */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">Dépense déductible fiscalement à 100%</span>
+                  <span className="text-[10px] text-slate-500 font-medium">Donne droit au remboursement des taxes payées (CTI & RTI)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNewExpenseDeductible(!newExpenseDeductible)}
+                  className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                    newExpenseDeductible ? 'bg-emerald-600 justify-end' : 'bg-slate-300 justify-start'
+                  }`}
+                >
+                  <span className="bg-white w-4 h-4 rounded-full shadow-md transform transition-transform" />
+                </button>
+              </div>
+
+              {/* Total calculated display with complete breakdown */}
+              <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3.5 space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Montant Hors Taxes (HT) :</span>
+                  <span className="font-bold text-slate-800">$ {(parseFloat(newExpenseAmountHt) || 0).toFixed(2)} CAD</span>
+                </div>
+                {parseFloat(newExpenseTps) > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>TPS / TVH calculée :</span>
+                    <span className="font-semibold text-slate-700">$ {(parseFloat(newExpenseTps) || 0).toFixed(2)} CAD</span>
+                  </div>
+                )}
+                {newExpenseProvince === 'Québec' && parseFloat(newExpenseTvq) > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>TVQ (9.975%) calculée :</span>
+                    <span className="font-semibold text-slate-700">$ {(parseFloat(newExpenseTvq) || 0).toFixed(2)} CAD</span>
+                  </div>
+                )}
+                {newExpenseProvince !== 'Québec' && parseFloat(newExpenseTvq) > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>TVP / Taxe provinciale :</span>
+                    <span className="font-semibold text-slate-700">$ {(parseFloat(newExpenseTvq) || 0).toFixed(2)} CAD</span>
+                  </div>
+                )}
+                <div className="border-t border-blue-200 pt-2 flex justify-between items-center text-sm font-black text-slate-900">
+                  <span>TOTAL TTC :</span>
+                  <span className="text-blue-700 font-black text-base">
+                    $ {((parseFloat(newExpenseAmountHt) || 0) + (parseFloat(newExpenseTps) || 0) + (parseFloat(newExpenseTvq) || 0)).toFixed(2)} CAD
+                  </span>
+                </div>
               </div>
 
               {/* Payment method */}
@@ -1793,9 +1958,10 @@ export default function DeviceSimulator({
                   onChange={(e) => setNewExpensePayment(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
                 >
-                  <option value="Carte bancaire">Carte bancaire</option>
-                  <option value="Comptant">Comptant</option>
-                  <option value="Virement">Virement</option>
+                  <option value="Carte bancaire">Carte bancaire / Débit</option>
+                  <option value="Carte de crédit">Carte de crédit d'entreprise</option>
+                  <option value="Virement Interac">Virement Interac / Bancaire</option>
+                  <option value="Comptant">Comptant (Cash)</option>
                   <option value="Prélèvement automatique">Prélèvement automatique</option>
                 </select>
               </div>
@@ -2490,278 +2656,36 @@ export default function DeviceSimulator({
         )}
 
         {/* ======================================= */}
-        {/* SCREEN 12: PARAMÈTRES */}
+        {/* SCREEN 12: PARAMÈTRES (MODULE 10) */}
         {/* ======================================= */}
         {currentScreen === 'settings' && (
-          <div className="flex-1 flex flex-col px-6 py-6 pb-20 space-y-6 max-w-4xl mx-auto w-full overflow-y-auto">
-            <div className="border-b border-slate-100 pb-4">
-              <h1 className="text-[22px] font-black tracking-tight text-slate-900">Paramètres de l'application</h1>
-              <p className="text-xs text-slate-500 font-medium">Configurez vos préférences de facturation et d'entreprise.</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Box 1: Profile */}
-              <div className="bg-white border border-slate-200 rounded-[18px] p-5 shadow-sm space-y-4">
-                <h3 className="text-xs font-bold text-[#6B7280] uppercase tracking-wider">Profil de l'entreprise</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Nom commercial</label>
-                    <input 
-                      type="text" 
-                      value={companyName} 
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white" 
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Propriétaire / Représentant</label>
-                    <input 
-                      type="text" 
-                      value={companyOwner} 
-                      onChange={(e) => setCompanyOwner(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white" 
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Numéro d'entreprise (NE)</label>
-                    <input 
-                      type="text" 
-                      value={companyNE} 
-                      onChange={(e) => setCompanyNE(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white" 
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Adresse de l'entreprise</label>
-                    <input 
-                      type="text" 
-                      value={companyAddress} 
-                      onChange={(e) => setCompanyAddress(e.target.value)}
-                      placeholder="Ex: 1000 Rue de la Gauchetière, Montréal, QC"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white" 
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Téléphone de l'entreprise</label>
-                    <input 
-                      type="text" 
-                      value={companyPhone} 
-                      onChange={(e) => setCompanyPhone(e.target.value)}
-                      placeholder="Ex: +1 (514) 555-0199"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white" 
-                    />
-                  </div>
-                  
-                  {/* Logo Config */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Logo de l'entreprise (URL ou Firebase Storage)</label>
-                    <div className="flex gap-2 items-center">
-                      <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden p-1 flex-shrink-0">
-                        {companyLogo ? (
-                          <img src={companyLogo} alt="Logo" className="w-full h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).src = "https://lh3.googleusercontent.com/d/1SJiIy3yPrhrfTZUgAAQ_35qJXkV5T_5W"; }} referrerPolicy="no-referrer" />
-                        ) : (
-                          <span className="text-[8px] text-slate-400">Aucun</span>
-                        )}
-                      </div>
-                      <input 
-                        type="text" 
-                        value={companyLogo} 
-                        onChange={(e) => setCompanyLogo(e.target.value)}
-                        placeholder="URL de l'image du logo"
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] text-slate-800 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                    {/* File selector for local upload (converts to base64) */}
-                    <div className="mt-1">
-                      <label className="text-[9px] text-blue-600 hover:underline cursor-pointer font-semibold block">
-                        Téléverser un logo depuis votre appareil
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setCompanyLogo(reader.result as string);
-                                triggerToast("Logo téléversé et mis à jour !");
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Signature Config */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Signature de l'entreprise (URL ou Firebase Storage)</label>
-                    <div className="flex gap-2 items-center">
-                      <div className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden p-1 flex-shrink-0">
-                        {companySignature ? (
-                          <img src={companySignature} alt="Signature" className="w-full h-full object-contain" onError={(e) => { (e.target as HTMLImageElement).src = "https://lh3.googleusercontent.com/d/1B0q88Z-b6RCHH_h_V6f578H8i2VfEw9u"; }} referrerPolicy="no-referrer" />
-                        ) : (
-                          <span className="text-[8px] text-slate-400">Aucun</span>
-                        )}
-                      </div>
-                      <input 
-                        type="text" 
-                        value={companySignature} 
-                        onChange={(e) => setCompanySignature(e.target.value)}
-                        placeholder="URL de l'image de signature"
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] text-slate-800 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                    {/* File selector for local signature upload */}
-                    <div className="mt-1">
-                      <label className="text-[9px] text-blue-600 hover:underline cursor-pointer font-semibold block">
-                        Téléverser une signature numérisée
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setCompanySignature(reader.result as string);
-                                triggerToast("Signature téléversée et mise à jour !");
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Box 2: Taxes rates */}
-              <div className="bg-white border border-slate-200 rounded-[18px] p-5 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-[#6B7280] uppercase tracking-wider">Taxes & Renseignements fiscaux</h3>
-                  <button
-                    type="button"
-                    onClick={() => setScreen('choose_region')}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline"
-                  >
-                    Changer de région ({REGIONS[currentRegion].flag})
-                  </button>
-                </div>
-                <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{REGIONS[currentRegion].flag}</span>
-                    <div>
-                      <div className="text-xs font-extrabold text-slate-900">{REGIONS[currentRegion].name}</div>
-                      <div className="text-[10px] text-slate-500 font-semibold">Devise : {REGIONS[currentRegion].currency} ({REGIONS[currentRegion].currencySymbol})</div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setScreen('choose_region')}
-                    className="bg-white border border-blue-200 hover:border-blue-400 text-blue-700 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-2xs transition"
-                  >
-                    Modifier
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Taux TPS (Fédéral)</label>
-                      <input type="text" disabled defaultValue="5.0 %" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-500 font-bold" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Taux TVQ (Québec)</label>
-                      <input type="text" disabled defaultValue="9.975 %" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-500 font-bold" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Numéro TPS</label>
-                    <input type="text" defaultValue="123456789 RT0001" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Numéro TVQ</label>
-                    <input type="text" defaultValue="1234567890 TQ0001" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Box 3: Subscription plan */}
-              <div className="bg-white border border-slate-200 rounded-[18px] p-5 shadow-sm md:col-span-2 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-1">Votre Plan d'abonnement</h3>
-                  <p className="text-sm font-bold text-slate-900">
-                    {isPro ? "Plan StartBill PRO - Accès complet" : "Plan StartBill Gratuit - Fonctionnalités de base"}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {isPro ? "Prochain prélèvement : 19,00 $ CAD le 20 août 2026" : "Passez à la version supérieure pour l'automatisation fiscale."}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setScreen('pricing')}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 px-3 rounded-xl transition cursor-pointer"
-                  >
-                    Voir tous les forfaits
-                  </button>
-                  {!isPro ? (
-                    <button
-                      type="button"
-                      onClick={() => setScreen('pricing')}
-                      className="bg-[#1F6FEB] hover:bg-[#1a5fcd] text-white text-xs font-bold py-2 px-4 rounded-xl shadow-md transition cursor-pointer"
-                    >
-                      Devenir PRO 🚀
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsPro(false);
-                        triggerToast('Abonnement Pro suspendu. Retour au plan Gratuit.');
-                      }}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 px-4 rounded-xl transition cursor-pointer"
-                    >
-                      Résilier
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Box 4: Reset Data / Réinitialisation */}
-              <div className="bg-white border border-rose-200/90 rounded-[18px] p-5 shadow-sm md:col-span-2 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    Réinitialisation des données
-                  </h3>
-                  <p className="text-sm font-bold text-slate-900">
-                    Réinitialiser l'application aux données d'origine
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Restaure toutes les factures, dépenses et clients de la base de données aux valeurs initiales de démonstration.
-                  </p>
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setShowResetAllDataConfirm(true)}
-                    disabled={isLoading}
-                    className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold py-2.5 px-4 rounded-xl shadow-md transition cursor-pointer flex items-center gap-2 disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                    Réinitialiser les données
-                  </button>
-                </div>
-              </div>
-
-            </div>
-          </div>
+          <SettingsPage
+            companyName={companyName}
+            setCompanyName={setCompanyName}
+            companyOwner={companyOwner}
+            setCompanyOwner={setCompanyOwner}
+            companyNE={companyNE}
+            setCompanyNE={setCompanyNE}
+            companyAddress={companyAddress}
+            setCompanyAddress={setCompanyAddress}
+            companyPhone={companyPhone}
+            setCompanyPhone={setCompanyPhone}
+            companyLogo={companyLogo}
+            setCompanyLogo={setCompanyLogo}
+            companySignature={companySignature}
+            setCompanySignature={setCompanySignature}
+            currentRegion={currentRegion}
+            isPro={isPro}
+            setIsPro={setIsPro}
+            isLoading={isLoading}
+            setShowResetAllDataConfirm={setShowResetAllDataConfirm}
+            triggerToast={triggerToast}
+            setScreen={setScreen}
+            invoices={activeInvoicesList}
+            expenses={activeExpensesList}
+            clients={clients && clients.length > 0 ? clients : dbClients}
+            products={products}
+          />
         )}
 
         {/* ======================================= */}
@@ -2775,7 +2699,7 @@ export default function DeviceSimulator({
             currentUser={currentUser}
             totalRevenue={totalRevenue}
             totalTax={totalTax}
-            dbInvoices={dbInvoices}
+            dbInvoices={activeInvoicesList}
             isPro={isPro}
           />
         )}

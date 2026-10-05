@@ -39,7 +39,17 @@ interface NotificationsPageProps {
   isPro?: boolean;
 }
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [];
+const INITIAL_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: 'notif-welcome',
+    title: 'Bienvenue sur StartBill',
+    message: 'Votre espace de facturation est configuré et prêt. Créez des factures et suivez vos paiements en toute conformité.',
+    timestamp: 'Système',
+    category: 'system',
+    severity: 'success',
+    isRead: false
+  }
+];
 
 export default function NotificationsPage({
   setScreen,
@@ -64,8 +74,8 @@ export default function NotificationsPage({
     id: a.id,
     title: a.title,
     message: a.message,
-    timestamp: 'Alertes fiscales',
-    category: 'alert',
+    timestamp: a.id.includes('inv') ? 'Facturation' : 'Alertes fiscales',
+    category: a.id.includes('inv') || a.type === 'invoice_overdue' ? 'invoice' : 'alert',
     severity: a.severity,
     alertType: a.type,
     isRead: a.isRead,
@@ -74,20 +84,45 @@ export default function NotificationsPage({
     targetId: a.targetId
   }));
 
+  // Direct notifications for all invoices in dbInvoices
+  const invoiceNotifs: NotificationItem[] = (dbInvoices || []).map((inv: any, idx: number) => {
+    const invId = inv.id || `FACT-2026-0${idx + 1}`;
+    const invTotal = (inv.total || inv.subtotal || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 });
+    return {
+      id: `notif-created-${invId}`,
+      title: `Facture #${invId} émise`,
+      message: `Facture pour ${inv.clientName || 'Client'} d'un montant de ${invTotal} $. Statut : ${inv.status || 'Émise'}.`,
+      timestamp: inv.date || 'Récemment',
+      category: 'invoice',
+      severity: inv.status === 'Payée' ? 'success' : 'info',
+      alertType: 'general',
+      isRead: false,
+      actionUrl: 'invoices',
+      actionLabel: 'Consulter la facture',
+      targetId: inv.id
+    };
+  });
+
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    return [...smartNotifs, ...INITIAL_NOTIFICATIONS];
+    const combined = [...smartNotifs, ...invoiceNotifs, ...INITIAL_NOTIFICATIONS];
+    const uniqueMap = new Map<string, NotificationItem>();
+    combined.forEach(n => {
+      if (!uniqueMap.has(n.id)) uniqueMap.set(n.id, n);
+    });
+    return Array.from(uniqueMap.values());
   });
 
   useEffect(() => {
     setNotifications(prev => {
       const existingNotifIds = new Set(prev.map(n => n.id));
-      const newItems = smartNotifs.filter(sn => !existingNotifIds.has(sn.id));
+      const combined = [...smartNotifs, ...invoiceNotifs];
+      const newItems = combined.filter(sn => !existingNotifIds.has(sn.id));
       if (newItems.length > 0) {
         return [...newItems, ...prev];
       }
       return prev;
     });
-  }, [totalRevenue, totalTax, dbInvoices.length, isPro]);
+  }, [totalRevenue, totalTax, dbInvoices, isPro]);
 
   const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'danger' | 'warning' | 'invoice' | 'tax'>('all');
   const [searchQuery, setSearchQuery] = useState('');

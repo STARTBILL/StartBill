@@ -28,6 +28,7 @@ import {
 import { Invoice, Client, ScreenId, InvoiceStatus } from '../types';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
+import { downloadInvoicePdf } from '../lib/pdfGenerator';
 
 interface PaymentsPageProps {
   invoices: Invoice[];
@@ -984,8 +985,25 @@ export default function PaymentsPage({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={async () => {
+                    await downloadInvoicePdf({
+                      invoiceId: `REC-${receiptInvoice.id}`,
+                      elementId: 'printable-receipt',
+                      onStart: () => triggerToast('Téléchargement du reçu PDF en cours...'),
+                      onSuccess: () => triggerToast('Reçu de paiement téléchargé avec succès !'),
+                      onError: () => window.print()
+                    });
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                  title="Télécharger le reçu en format PDF"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Télécharger</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => window.print()}
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white transition"
+                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white transition cursor-pointer"
                   title="Imprimer le reçu"
                 >
                   <Printer className="w-4 h-4" />
@@ -993,7 +1011,7 @@ export default function PaymentsPage({
                 <button
                   type="button"
                   onClick={() => setShowReceiptModal(false)}
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white transition"
+                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1057,13 +1075,30 @@ export default function PaymentsPage({
               </div>
 
               {/* Modal footer */}
-              <div className="flex justify-end gap-2 pt-2 no-print">
+              <div className="flex items-center justify-between gap-2 pt-2 no-print">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    await downloadInvoicePdf({
+                      invoiceId: `REC-${receiptInvoice.id}`,
+                      elementId: 'printable-receipt',
+                      onStart: () => triggerToast('Téléchargement du reçu PDF en cours...'),
+                      onSuccess: () => triggerToast('Reçu de paiement téléchargé avec succès !'),
+                      onError: () => window.print()
+                    });
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold"
+                >
+                  <Download className="w-3.5 h-3.5" /> Télécharger Reçu (PDF)
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setShowReceiptModal(false)}
-                  className="w-full text-xs"
+                  className="px-4 text-xs font-medium"
                 >
                   Fermer
                 </Button>

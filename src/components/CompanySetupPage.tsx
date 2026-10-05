@@ -83,22 +83,19 @@ export default function CompanySetupPage({
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<string>('default');
 
-  // Form State for Active Company
-  const [companyName, setCompanyName] = useState('Mon Entreprise');
-  const [ownerName, setOwnerName] = useState('Nouvel Utilisateur');
+  // Form State for Active Company - strictly initialized from user profile or empty
+  const [companyName, setCompanyName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
   const [legalStatus, setLegalStatus] = useState('Travailleur autonome / Particulier');
   const [industry, setIndustry] = useState('Services professionnels');
+  const [customIndustry, setCustomIndustry] = useState('');
   const [logoUrl, setLogoUrl] = useState<string>('');
-  const [email, setEmail] = useState('ferline028@gmail.com');
-  const [phone, setPhone] = useState(
-    activeRegion === 'canada' ? '+1 (514) 000-0000' : activeRegion === 'afrique' ? '+221 77 000 0000' : '+509 0000 0000'
-  );
-  const [address, setAddress] = useState('123 Rue Principale');
-  const [city, setCity] = useState(
-    activeRegion === 'canada' ? 'Montréal' : activeRegion === 'afrique' ? 'Dakar' : 'Port-au-Prince'
-  );
-  const [taxId1, setTaxId1] = useState(activeRegion === 'canada' ? '123456789 RT 0001' : '');
-  const [taxId2, setTaxId2] = useState(activeRegion === 'canada' ? '1234567890 TQ 0001' : '');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [taxId1, setTaxId1] = useState('');
+  const [taxId2, setTaxId2] = useState('');
   const [defaultPaymentMethod, setDefaultPaymentMethod] = useState(
     activeRegion === 'canada' ? 'Virement Interac' : activeRegion === 'afrique' ? 'Wave / Orange Money' : 'MonCash'
   );
@@ -120,20 +117,20 @@ export default function CompanySetupPage({
     }
 
     if (loadedCompanies.length === 0) {
-      // Default initial company
+      // Default initial company - empty clean state
       const initialComp: CompanyProfile = {
         id: 'comp_default_' + Date.now(),
-        companyName: 'Mon Entreprise',
-        ownerName: 'Nouvel Utilisateur',
+        companyName: '',
+        ownerName: '',
         legalStatus: 'Travailleur autonome / Particulier',
         industry: 'Services professionnels',
         logoUrl: '',
-        email: 'ferline028@gmail.com',
-        phone: activeRegion === 'canada' ? '+1 (514) 000-0000' : activeRegion === 'afrique' ? '+221 77 000 0000' : '+509 0000 0000',
-        address: '123 Rue Principale',
-        city: activeRegion === 'canada' ? 'Montréal' : activeRegion === 'afrique' ? 'Dakar' : 'Port-au-Prince',
-        taxId1: activeRegion === 'canada' ? '123456789 RT 0001' : '',
-        taxId2: activeRegion === 'canada' ? '1234567890 TQ 0001' : '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        taxId1: '',
+        taxId2: '',
         defaultPaymentMethod: activeRegion === 'canada' ? 'Virement Interac' : activeRegion === 'afrique' ? 'Wave / Orange Money' : 'MonCash',
         paymentTerms: 'Payable sous 30 jours (Standard)',
         region: activeRegion,
@@ -163,15 +160,22 @@ export default function CompanySetupPage({
   }, [activeRegion]);
 
   const populateForm = (comp: CompanyProfile) => {
-    setCompanyName(comp.companyName || 'Mon Entreprise');
-    setOwnerName(comp.ownerName || 'Nouvel Utilisateur');
+    setCompanyName(comp.companyName || '');
+    setOwnerName(comp.ownerName || '');
     setLegalStatus(comp.legalStatus || 'Travailleur autonome / Particulier');
-    setIndustry(comp.industry || 'Services professionnels');
+    const savedInd = comp.industry || 'Services professionnels';
+    if (INDUSTRY_OPTIONS.includes(savedInd) && savedInd !== 'Autre') {
+      setIndustry(savedInd);
+      setCustomIndustry('');
+    } else {
+      setIndustry('Autre');
+      setCustomIndustry(savedInd === 'Autre' ? '' : savedInd);
+    }
     setLogoUrl(comp.logoUrl || '');
-    setEmail(comp.email || 'ferline028@gmail.com');
-    setPhone(comp.phone || '+1 (514) 000-0000');
-    setAddress(comp.address || '123 Rue Principale');
-    setCity(comp.city || (activeRegion === 'canada' ? 'Montréal' : 'Dakar'));
+    setEmail(comp.email || '');
+    setPhone(comp.phone || '');
+    setAddress(comp.address || '');
+    setCity(comp.city || '');
     setTaxId1(comp.taxId1 || '');
     setTaxId2(comp.taxId2 || '');
     setDefaultPaymentMethod(comp.defaultPaymentMethod || (activeRegion === 'canada' ? 'Virement Interac' : 'Wave / Orange Money'));
@@ -187,16 +191,16 @@ export default function CompanySetupPage({
     const newComp: CompanyProfile = {
       id: `comp_${Date.now()}`,
       companyName: `Entreprise ${companies.length + 1}`,
-      ownerName: ownerName || 'Nouvel Utilisateur',
+      ownerName: ownerName || '',
       legalStatus: 'Travailleur autonome / Particulier',
       industry: 'Services professionnels',
       logoUrl: '',
-      email: email || 'contact@monentreprise.com',
-      phone: phone || '+1 (514) 000-0000',
-      address: '123 Rue Principale',
-      city: city || 'Montréal',
-      taxId1: activeRegion === 'canada' ? '123456789 RT 0001' : '',
-      taxId2: activeRegion === 'canada' ? '1234567890 TQ 0001' : '',
+      email: email || '',
+      phone: phone || '',
+      address: '',
+      city: '',
+      taxId1: '',
+      taxId2: '',
       defaultPaymentMethod: defaultPaymentMethod || 'Virement Interac',
       paymentTerms: 'Payable sous 30 jours (Standard)',
       region: activeRegion,
@@ -242,12 +246,16 @@ export default function CompanySetupPage({
     e.preventDefault();
     setIsSaving(true);
 
+    const effectiveIndustry = industry === 'Autre'
+      ? (customIndustry.trim() || 'Autre')
+      : industry;
+
     const updatedCompany: CompanyProfile = {
       id: activeCompanyId,
-      companyName: companyName.trim() || 'Mon Entreprise',
+      companyName: companyName.trim(),
       ownerName: ownerName.trim(),
       legalStatus,
-      industry,
+      industry: effectiveIndustry,
       logoUrl,
       email: email.trim(),
       phone: phone.trim(),
@@ -462,7 +470,7 @@ export default function CompanySetupPage({
                     required
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="Mon Entreprise"
+                    placeholder="Ex: Mon Entreprise Inc."
                     className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-bold focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                   />
                 </div>
@@ -475,7 +483,7 @@ export default function CompanySetupPage({
                     type="text"
                     value={ownerName}
                     onChange={(e) => setOwnerName(e.target.value)}
-                    placeholder="Nouvel Utilisateur"
+                    placeholder="Ex: Jean Dupont"
                     className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                   />
                 </div>
@@ -499,7 +507,12 @@ export default function CompanySetupPage({
                   <label className="font-bold text-slate-700 block mb-1">Secteur d'activité</label>
                   <select
                     value={industry}
-                    onChange={(e) => setIndustry(e.target.value)}
+                    onChange={(e) => {
+                      setIndustry(e.target.value);
+                      if (e.target.value !== 'Autre') {
+                        setCustomIndustry('');
+                      }
+                    }}
                     className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 font-medium focus:bg-white transition"
                   >
                     {INDUSTRY_OPTIONS.map((ind) => (
@@ -508,6 +521,23 @@ export default function CompanySetupPage({
                       </option>
                     ))}
                   </select>
+
+                  {industry === 'Autre' && (
+                    <div className="mt-2.5 animate-in fade-in duration-150">
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Précisez votre secteur d'activité <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={customIndustry}
+                        onChange={(e) => setCustomIndustry(e.target.value)}
+                        placeholder="Ex: Ébénisterie, Boulangerie, Agence créative..."
+                        className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition text-xs"
+                        required
+                        autoFocus
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -538,7 +568,7 @@ export default function CompanySetupPage({
                       type="text"
                       value={taxId1}
                       onChange={(e) => setTaxId1(e.target.value)}
-                      placeholder="123456789 RT 0001"
+                      placeholder="Ex: 123456789 RT 0001"
                       className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                     />
                   </div>
@@ -551,7 +581,7 @@ export default function CompanySetupPage({
                       type="text"
                       value={taxId2}
                       onChange={(e) => setTaxId2(e.target.value)}
-                      placeholder="1234567890 TQ 0001"
+                      placeholder="Ex: 1234567890 TQ 0001"
                       className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                     />
                   </div>
@@ -582,7 +612,7 @@ export default function CompanySetupPage({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ferline028@gmail.com"
+                    placeholder="Ex: contact@votreentreprise.ca"
                     className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                   />
                 </div>
@@ -593,7 +623,7 @@ export default function CompanySetupPage({
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 (514) 000-0000"
+                    placeholder="Ex: +1 (514) 555-0100"
                     className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                   />
                 </div>
@@ -604,7 +634,7 @@ export default function CompanySetupPage({
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="123 Rue Principale"
+                    placeholder="Ex: 100 rue Principale"
                     className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                   />
                 </div>
@@ -698,10 +728,10 @@ export default function CompanySetupPage({
                       </div>
                     ) : null}
                     <h3 className="font-black text-slate-900 text-sm leading-tight">
-                      {companyName || 'Mon Entreprise'}
+                      {companyName || "Votre Entreprise"}
                     </h3>
                     <p className="text-[10px] text-slate-500 font-medium leading-tight">
-                      {industry}
+                      {industry === 'Autre' ? (customIndustry.trim() || 'Autre (à préciser)') : industry}
                     </p>
                     <p className="text-[10px] text-slate-600 truncate">{email}</p>
                     {address && <p className="text-[10px] text-slate-500">{address}, {city}</p>}

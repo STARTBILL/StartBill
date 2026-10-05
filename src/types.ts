@@ -33,7 +33,9 @@ export interface Expense {
   date: string;
   amountHt: number;
   tps: number;
+  tvq?: number;
   total: number;
+  province?: string;
   paymentMethod: string;
   notes?: string;
   receiptUrl?: string;
@@ -63,7 +65,7 @@ export interface Client {
   province?: string;
   phone?: string;
   company?: string;
-  status?: 'active' | 'inactive' | 'Actif' | 'Inactif' | 'Active' | 'Inactive' | 'Paiement en attente' | 'En retard' | string;
+  status?: 'active' | 'inactive' | 'Actif' | 'Inactif' | 'Active' | 'Inactive' | 'Bloqué' | 'Décédé' | string;
   notes?: string;
   type?: 'Entreprise' | 'Particulier';
   clientSince?: string;

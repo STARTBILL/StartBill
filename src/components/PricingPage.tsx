@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Check, 
   X, 
@@ -14,8 +14,10 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { useRegional } from '../context/RegionalContext';
+import { useAuth } from '../context/AuthContext';
 import { ScreenId } from '../types';
 import { REGIONS } from '../data/regions';
+import { getFreeTrialInfo } from '../lib/planAccess';
 
 interface PricingPageProps {
   onSelectPlan?: (planId: 'free' | 'start' | 'pro') => void;
@@ -26,7 +28,7 @@ interface PricingPageProps {
 export const PricingPage: React.FC<PricingPageProps> = ({
   onSelectPlan,
   setScreen,
-  currentPlan = 'free'
+  currentPlan
 }) => {
   const { 
     pricingStart, 
@@ -38,10 +40,19 @@ export const PricingPage: React.FC<PricingPageProps> = ({
     formatPrice 
   } = useRegional();
 
+  const { userPlan, updateUserPlan, user } = useAuth();
+  const effectiveCurrentPlan = (userPlan === 'enterprise' ? 'pro' : userPlan) || currentPlan || 'free';
+
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
-  const [activePlan, setActivePlan] = useState<'free' | 'start' | 'pro'>(currentPlan);
+  const [activePlan, setActivePlan] = useState<'free' | 'start' | 'pro'>(effectiveCurrentPlan as any);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (userPlan && userPlan !== 'enterprise') {
+      setActivePlan(userPlan as any);
+    }
+  }, [userPlan]);
 
   const regionConfig = REGIONS[region];
   const isAnnual = billingCycle === 'annual';
@@ -71,36 +82,46 @@ export const PricingPage: React.FC<PricingPageProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleChoosePlan = (planId: 'free' | 'start' | 'pro', planName: string) => {
+  const handleChoosePlan = async (planId: 'free' | 'start' | 'pro', planName: string) => {
     setActivePlan(planId);
+    try {
+      await updateUserPlan(planId);
+    } catch (e) {
+      console.warn('Notice saving plan:', e);
+    }
     if (onSelectPlan) {
       onSelectPlan(planId);
     }
-    triggerToast(`Félicitations ! Vous êtes inscrit au plan ${planName}.`);
+    triggerToast(`Félicitations ! Votre forfait est désormais le plan ${planName}.`);
   };
+
+  const trialInfo = getFreeTrialInfo(user?.createdAt);
 
   const plans = [
     {
       id: 'free' as const,
       name: 'Gratuit',
-      badge: 'Pour démarrer',
+      badge: trialInfo.isActive ? `Essai 5 jours actif (${trialInfo.daysRemaining}j) 🎁` : '5 jours d’essai offerts 🎁',
       popular: false,
       price: 0,
       currencyDisplay: currentPricing.currency,
       period: '/ mois',
-      description: 'Découverte pour les travailleurs autonomes.',
+      description: 'Factures illimitées pendant 5 jours pour découvrir la plateforme.',
       features: [
-        { label: 'Factures', value: '5 factures', included: true },
+        { label: 'Factures', value: 'Illimitées pendant 5 jours (puis 5)', included: true },
+        { label: 'Période d\'essai', value: '5 jours complets offerts', included: true },
         { label: 'Clients', value: 'Illimité', included: true },
-        { label: 'Paiements', value: 'Manuel (cash)', included: true },
-        { label: 'Téléchargement PDF', value: 'Non disponible', included: false },
+        { label: 'Paiements', value: 'Manuel (cash, virement)', included: true },
+        { label: 'Téléchargement PDF', value: 'Disponible pendant l\'essai', included: true },
         { label: 'Rappels WhatsApp / SMS', value: 'Non disponible', included: false },
         { label: 'Alertes fiscales & impôts', value: 'Non disponible', included: false },
         { label: 'Analyses financières', value: 'Non disponible', included: false },
         { label: 'Coaching & Conseils', value: 'Non disponible', included: false },
         { label: 'Exports comptables', value: 'Non disponible', included: false },
       ],
-      buttonText: activePlan === 'free' ? 'Plan Actuel' : 'Utiliser Gratuitement',
+      buttonText: activePlan === 'free' 
+        ? (trialInfo.isActive ? `Plan Actuel (Essai ${trialInfo.daysRemaining}j)` : 'Plan Actuel') 
+        : 'Commencer l’essai gratuit (5 jours)',
       buttonVariant: 'secondary'
     },
     {
@@ -211,6 +232,19 @@ export const PricingPage: React.FC<PricingPageProps> = ({
               Changer
             </button>
           )}
+        </div>
+
+        {/* 5-Day Free Trial Notice Banner */}
+        <div className="pt-2 max-w-xl mx-auto">
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200 rounded-2xl p-3.5 text-center shadow-2xs">
+            <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-800">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>🎁 Version Gratuite : Factures illimitées pendant 5 jours d'essai !</span>
+            </span>
+            <p className="text-[11px] text-emerald-700/90 mt-0.5 font-medium">
+              Créez autant de factures que nécessaire pour tester StartBill en conditions réelles sans restriction.
+            </p>
+          </div>
         </div>
 
         {/* Billing Cycle Toggle */}

@@ -20,7 +20,10 @@ import {
   Calendar,
   Building2,
   Package,
-  Tag
+  Tag,
+  Share2,
+  Send,
+  MessageCircle
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, Client, ScreenId, ProductItem } from '../types';
 import { calculateTaxes } from './DeviceSimulator';
@@ -33,6 +36,7 @@ import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
 import { ErrorState } from './ui/ErrorState';
 import { ConfirmModal } from './ui/ConfirmModal';
+import { Menu } from './ui/Menu';
 
 interface InvoicesPageProps {
   invoices: Invoice[];
@@ -180,6 +184,52 @@ export default function InvoicesPage({
       { description: 'Prestation de services', quantity: 1, unitPrice: inv.subtotal, total: inv.subtotal }
     ]);
     setShowModal(true);
+  };
+
+  // Multi-channel invoice sharing handlers (WhatsApp, Email, Facebook, Direct Link)
+  const handleShareWhatsApp = (inv: Invoice, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const clientObj = clients.find(c => c.name === inv.clientName);
+    const clientPhone = clientObj?.phone ? clientObj.phone.replace(/[^0-9]/g, '') : '';
+    const text = encodeURIComponent(
+      `Bonjour ${inv.clientName},\n\nVoici votre facture #${inv.id} d'un montant de ${inv.total.toFixed(2)} $ CAD émise par StartBill.\nÉchéance : ${inv.dueDate || inv.date}.\n\nMerci de procéder au règlement.`
+    );
+    const url = clientPhone 
+      ? `https://api.whatsapp.com/send?phone=${clientPhone}&text=${text}` 
+      : `https://api.whatsapp.com/send?text=${text}`;
+    window.open(url, '_blank');
+    triggerToast(`Ouverture de WhatsApp pour la facture ${inv.id}...`);
+  };
+
+  const handleShareEmail = (inv: Invoice, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const clientObj = clients.find(c => c.name === inv.clientName);
+    const to = clientObj?.email || '';
+    const subject = encodeURIComponent(`Facture #${inv.id} - ${inv.clientName}`);
+    const body = encodeURIComponent(
+      `Bonjour ${inv.clientName},\n\nVeuillez trouver le récapitulatif de votre facture #${inv.id} d'un montant de ${inv.total.toFixed(2)} $ CAD.\nDate d'échéance : ${inv.dueDate || inv.date}.\n\nCordialement,\nStartBill Facturation`
+    );
+    window.open(`mailto:${to}?subject=${subject}&body=${body}`, '_blank');
+    triggerToast(`Ouverture de votre messagerie pour la facture ${inv.id}...`);
+  };
+
+  const handleShareFacebook = (inv: Invoice, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const shareText = encodeURIComponent(`Facture #${inv.id} pour ${inv.clientName} - Montant : ${inv.total.toFixed(2)} $ CAD`);
+    const shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin)}&quote=${shareText}`;
+    window.open(shareUrl, '_blank');
+    triggerToast('Ouverture du partage Facebook...');
+  };
+
+  const handleCopyInvoiceLink = (inv: Invoice, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const link = `${window.location.origin}/#invoice-${inv.id}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link);
+      triggerToast(`Lien direct de la facture #${inv.id} copié dans le presse-papier !`);
+    } else {
+      triggerToast(`Lien direct : ${link}`);
+    }
   };
 
   const handleAddItemLine = () => {
@@ -370,6 +420,29 @@ export default function InvoicesPage({
         {/* Printable Invoice Document */}
         <div id="printable-invoice-content">
           <Card className="bg-white border-secondary-200 shadow-lg p-6 md:p-8 space-y-6 relative overflow-hidden">
+            {/* Filigrane / Cachet diagonal pour facture Soldée ou Partiellement soldée */}
+            {(selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid' || (selectedInvoice.remainingBalance !== undefined && selectedInvoice.remainingBalance === 0)) && (
+              <div 
+                aria-hidden="true"
+                className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 overflow-hidden"
+              >
+                <div className="transform -rotate-25 border-4 md:border-8 border-emerald-500/35 text-emerald-600/40 font-black text-4xl sm:text-6xl md:text-7xl tracking-widest uppercase px-8 py-3 rounded-3xl shadow-sm">
+                  SOLDÉ
+                </div>
+              </div>
+            )}
+
+            {(selectedInvoice.status === 'Partiellement payée' || selectedInvoice.status === 'partial' || ((selectedInvoice.amountPaid || 0) > 0 && (selectedInvoice.remainingBalance || 0) > 0)) && (
+              <div 
+                aria-hidden="true"
+                className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 overflow-hidden"
+              >
+                <div className="transform -rotate-25 border-4 md:border-8 border-amber-500/35 text-amber-600/40 font-black text-2xl sm:text-4xl md:text-5xl tracking-widest uppercase px-6 py-2.5 rounded-3xl shadow-sm text-center">
+                  PARTIELLEMENT SOLDÉ
+                </div>
+              </div>
+            )}
+
             {/* Top Accent bar */}
             <div className={`absolute top-0 left-0 right-0 h-1.5 ${
               selectedInvoice.status === 'Payée' ? 'bg-emerald-500' : 'bg-primary-600'
@@ -499,7 +572,15 @@ export default function InvoicesPage({
 
         {/* Actions Bar */}
         <div className="space-y-2 no-print">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={() => handleShareWhatsApp(selectedInvoice)}
+              className="flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4" /> Envoyer par WhatsApp
+            </button>
+
             <Button
               variant="primary"
               size="md"
@@ -511,6 +592,14 @@ export default function InvoicesPage({
             >
               <Mail className="w-4 h-4" /> Envoyer par courriel
             </Button>
+
+            <button
+              type="button"
+              onClick={() => handleShareFacebook(selectedInvoice)}
+              className="flex items-center justify-center gap-2 py-2.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-bold text-xs transition cursor-pointer"
+            >
+              <Share2 className="w-4 h-4 text-blue-600" /> Partager (Facebook)
+            </button>
 
             <Button
               variant="outline"
@@ -727,7 +816,65 @@ export default function InvoicesPage({
                       $ {inv.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Menu Envoyer / Partager via WhatsApp / Courriel / Facebook */}
+                        <Menu
+                          id={`invoice-share-${inv.id}`}
+                          align="right"
+                          trigger={
+                            <button
+                              type="button"
+                              className="px-2.5 py-1 bg-primary-50 hover:bg-primary-100 text-primary-700 hover:text-primary-800 rounded-lg border border-primary-200 transition cursor-pointer flex items-center gap-1 text-[11px] font-extrabold shadow-2xs group"
+                              title="Envoyer la facture via WhatsApp, Courriel ou Facebook"
+                            >
+                              <Send className="w-3.5 h-3.5 text-primary-600 group-hover:translate-x-0.5 transition-transform" />
+                              <span className="hidden sm:inline">Envoyer</span>
+                            </button>
+                          }
+                          items={[
+                            {
+                              id: 'whatsapp',
+                              label: (
+                                <div className="flex items-center gap-2 py-1 text-emerald-700 font-bold text-xs w-full">
+                                  <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <span>Envoyer via WhatsApp</span>
+                                </div>
+                              ),
+                              onClick: () => handleShareWhatsApp(inv)
+                            },
+                            {
+                              id: 'email',
+                              label: (
+                                <div className="flex items-center gap-2 py-1 text-primary-700 font-bold text-xs w-full">
+                                  <Mail className="w-4 h-4 text-primary-600 shrink-0" />
+                                  <span>Envoyer par Courriel</span>
+                                </div>
+                              ),
+                              onClick: () => handleShareEmail(inv)
+                            },
+                            {
+                              id: 'facebook',
+                              label: (
+                                <div className="flex items-center gap-2 py-1 text-blue-700 font-bold text-xs w-full">
+                                  <Share2 className="w-4 h-4 text-blue-600 shrink-0" />
+                                  <span>Partager sur Facebook</span>
+                                </div>
+                              ),
+                              onClick: () => handleShareFacebook(inv)
+                            },
+                            {
+                              id: 'copy-link',
+                              label: (
+                                <div className="flex items-center gap-2 py-1 text-slate-700 font-semibold text-xs border-t border-slate-100 pt-1.5 w-full hover:text-slate-900">
+                                  <Copy className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                  <span>Copier le lien direct</span>
+                                </div>
+                              ),
+                              onClick: () => handleCopyInvoiceLink(inv)
+                            }
+                          ]}
+                        />
+
                         <Button
                           variant="ghost"
                           size="xs"

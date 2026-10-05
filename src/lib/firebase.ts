@@ -1,24 +1,18 @@
-import { initializeApp } from 'firebase/app';
 import { 
-  getFirestore, 
   collection, 
   doc, 
   getDocs, 
   getDocFromServer,
   setDoc, 
   deleteDoc, 
-  writeBatch 
+  writeBatch,
+  query,
+  where
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { auth, db, storage, googleProvider } from '../firebase/config';
 import { Invoice, Expense, Client } from '../types';
-import { INITIAL_INVOICES, INITIAL_EXPENSES, INITIAL_CLIENTS } from '../data';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
-export const auth = getAuth(app);
-export const storage = getStorage(app);
+export { auth, db, storage, googleProvider };
 
 export enum OperationType {
   CREATE = 'create',
@@ -79,31 +73,36 @@ async function testConnection() {
 }
 testConnection();
 
-// Invoices collection helper
-export async function getInvoicesFromFirestore(): Promise<Invoice[]> {
+// Invoices collection helper - Strictly isolated by authenticated userId
+export async function getInvoicesFromFirestore(userId?: string): Promise<Invoice[]> {
+  const targetUid = userId || auth.currentUser?.uid;
+  if (!targetUid) {
+    // Unauthenticated or new session: return clean empty list
+    return [];
+  }
+
   try {
-    const querySnapshot = await getDocs(collection(db, 'invoices'));
-    if (querySnapshot.empty) {
-      // Seed initial invoices into Firestore if collection is empty
-      for (const inv of INITIAL_INVOICES) {
-        setDoc(doc(db, 'invoices', inv.id), inv).catch(() => {});
-      }
-      return INITIAL_INVOICES;
-    }
+    const qInvoices = query(collection(db, 'invoices'), where('userId', '==', targetUid));
+    const querySnapshot = await getDocs(qInvoices);
     const invoices: Invoice[] = [];
-    querySnapshot.forEach((doc) => {
-      invoices.push(doc.data() as Invoice);
+    querySnapshot.forEach((docSnap) => {
+      invoices.push(docSnap.data() as Invoice);
     });
-    return invoices.sort((a, b) => b.date.localeCompare(a.date));
+    return invoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   } catch (error) {
-    console.warn('Firestore unreachable or offline, using initial invoices fallback:', error);
-    return INITIAL_INVOICES;
+    console.warn('Error fetching user invoices from Firestore:', error);
+    return [];
   }
 }
 
-export async function saveInvoiceToFirestore(invoice: Invoice): Promise<void> {
+export async function saveInvoiceToFirestore(invoice: Invoice, userId?: string): Promise<void> {
   try {
-    await setDoc(doc(db, 'invoices', invoice.id), invoice);
+    const targetUid = userId || invoice.userId || auth.currentUser?.uid;
+    const invoiceToSave: Invoice = {
+      ...invoice,
+      userId: targetUid || invoice.userId || ''
+    };
+    await setDoc(doc(db, 'invoices', invoice.id), invoiceToSave, { merge: true });
   } catch (error) {
     console.error('Error saving invoice:', error);
   }
@@ -117,31 +116,35 @@ export async function deleteInvoiceFromFirestore(invoiceId: string): Promise<voi
   }
 }
 
-// Expenses collection helper
-export async function getExpensesFromFirestore(): Promise<Expense[]> {
+// Expenses collection helper - Strictly isolated by authenticated userId
+export async function getExpensesFromFirestore(userId?: string): Promise<Expense[]> {
+  const targetUid = userId || auth.currentUser?.uid;
+  if (!targetUid) {
+    return [];
+  }
+
   try {
-    const querySnapshot = await getDocs(collection(db, 'expenses'));
-    if (querySnapshot.empty) {
-      // Seed initial expenses into Firestore if empty
-      for (const exp of INITIAL_EXPENSES) {
-        setDoc(doc(db, 'expenses', exp.id), exp).catch(() => {});
-      }
-      return INITIAL_EXPENSES;
-    }
+    const qExpenses = query(collection(db, 'expenses'), where('userId', '==', targetUid));
+    const querySnapshot = await getDocs(qExpenses);
     const expenses: Expense[] = [];
-    querySnapshot.forEach((doc) => {
-      expenses.push(doc.data() as Expense);
+    querySnapshot.forEach((docSnap) => {
+      expenses.push(docSnap.data() as Expense);
     });
-    return expenses.sort((a, b) => b.date.localeCompare(a.date));
+    return expenses.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   } catch (error) {
-    console.warn('Firestore unreachable or offline, using initial expenses fallback:', error);
-    return INITIAL_EXPENSES;
+    console.warn('Error fetching user expenses from Firestore:', error);
+    return [];
   }
 }
 
-export async function saveExpenseToFirestore(expense: Expense): Promise<void> {
+export async function saveExpenseToFirestore(expense: Expense, userId?: string): Promise<void> {
   try {
-    await setDoc(doc(db, 'expenses', expense.id), expense);
+    const targetUid = userId || expense.userId || auth.currentUser?.uid;
+    const expenseToSave: Expense = {
+      ...expense,
+      userId: targetUid || expense.userId || ''
+    };
+    await setDoc(doc(db, 'expenses', expense.id), expenseToSave, { merge: true });
   } catch (error) {
     console.error('Error saving expense:', error);
   }
@@ -155,31 +158,35 @@ export async function deleteExpenseFromFirestore(expenseId: string): Promise<voi
   }
 }
 
-// Clients collection helper
-export async function getClientsFromFirestore(): Promise<Client[]> {
+// Clients collection helper - Strictly isolated by authenticated userId
+export async function getClientsFromFirestore(userId?: string): Promise<Client[]> {
+  const targetUid = userId || auth.currentUser?.uid;
+  if (!targetUid) {
+    return [];
+  }
+
   try {
-    const querySnapshot = await getDocs(collection(db, 'clients'));
-    if (querySnapshot.empty) {
-      // Seed initial clients into Firestore if empty
-      for (const cli of INITIAL_CLIENTS) {
-        setDoc(doc(db, 'clients', cli.id), cli).catch(() => {});
-      }
-      return INITIAL_CLIENTS;
-    }
+    const qClients = query(collection(db, 'clients'), where('userId', '==', targetUid));
+    const querySnapshot = await getDocs(qClients);
     const clients: Client[] = [];
-    querySnapshot.forEach((doc) => {
-      clients.push(doc.data() as Client);
+    querySnapshot.forEach((docSnap) => {
+      clients.push(docSnap.data() as Client);
     });
-    return clients;
+    return clients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   } catch (error) {
-    console.warn('Firestore unreachable or offline, using initial clients fallback:', error);
-    return INITIAL_CLIENTS;
+    console.warn('Error fetching user clients from Firestore:', error);
+    return [];
   }
 }
 
-export async function saveClientToFirestore(client: Client): Promise<void> {
+export async function saveClientToFirestore(client: Client, userId?: string): Promise<void> {
   try {
-    await setDoc(doc(db, 'clients', client.id), client);
+    const targetUid = userId || client.userId || auth.currentUser?.uid;
+    const clientToSave: Client = {
+      ...client,
+      userId: targetUid || client.userId || ''
+    };
+    await setDoc(doc(db, 'clients', client.id), clientToSave, { merge: true });
   } catch (error) {
     console.error('Error saving client:', error);
   }
@@ -193,42 +200,35 @@ export async function deleteClientFromFirestore(clientId: string): Promise<void>
   }
 }
 
-export async function resetFirestoreData(): Promise<void> {
+// Reset data helper - Deletes only documents belonging to the authenticated user; NO re-seeding
+export async function resetFirestoreData(userId?: string): Promise<void> {
+  const targetUid = userId || auth.currentUser?.uid;
+  if (!targetUid) return;
+
   try {
-    // Delete all invoices
-    const invSnap = await getDocs(collection(db, 'invoices'));
+    // Delete only user's invoices
+    const invSnap = await getDocs(query(collection(db, 'invoices'), where('userId', '==', targetUid)));
     const batch1 = writeBatch(db);
     invSnap.forEach((docSnap) => {
       batch1.delete(docSnap.ref);
     });
     await batch1.commit();
 
-    // Delete all expenses
-    const expSnap = await getDocs(collection(db, 'expenses'));
+    // Delete only user's expenses
+    const expSnap = await getDocs(query(collection(db, 'expenses'), where('userId', '==', targetUid)));
     const batch2 = writeBatch(db);
     expSnap.forEach((docSnap) => {
       batch2.delete(docSnap.ref);
     });
     await batch2.commit();
 
-    // Delete all clients
-    const cliSnap = await getDocs(collection(db, 'clients'));
+    // Delete only user's clients
+    const cliSnap = await getDocs(query(collection(db, 'clients'), where('userId', '==', targetUid)));
     const batch3 = writeBatch(db);
     cliSnap.forEach((docSnap) => {
       batch3.delete(docSnap.ref);
     });
     await batch3.commit();
-
-    // Re-seed initial data
-    for (const inv of INITIAL_INVOICES) {
-      await setDoc(doc(db, 'invoices', inv.id), inv);
-    }
-    for (const exp of INITIAL_EXPENSES) {
-      await setDoc(doc(db, 'expenses', exp.id), exp);
-    }
-    for (const cli of INITIAL_CLIENTS) {
-      await setDoc(doc(db, 'clients', cli.id), cli);
-    }
   } catch (error) {
     console.error('Error resetting firestore data:', error);
   }

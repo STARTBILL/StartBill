@@ -36,9 +36,6 @@ import { Input } from './ui/Input';
 import { Loader } from './ui/Loader';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { 
-  DEFAULT_CLIENTS_DATA, 
-  DEFAULT_CLIENT_DOCUMENTS, 
-  DEFAULT_CLIENT_NOTES,
   ClientDocument,
   ClientNote 
 } from '../data/defaultClients';
@@ -72,16 +69,9 @@ export default function ClientsPage({
   setSelectedInvoiceId,
   setShowNewInvoiceModalWithClient
 }: ClientsPageProps) {
-  // Merge Firestore clients with default Canadian showcase clients
+  // Only real clients belonging to the authenticated workspace
   const allClients = useMemo(() => {
-    if (!clients || clients.length === 0) {
-      return DEFAULT_CLIENTS_DATA;
-    }
-    const existingNames = new Set(clients.map(c => (c.name || '').toLowerCase().trim()));
-    const missingDefaults = DEFAULT_CLIENTS_DATA.filter(
-      d => !existingNames.has(d.name.toLowerCase().trim())
-    );
-    return [...clients, ...missingDefaults];
+    return clients || [];
   }, [clients]);
 
   // Local state
@@ -92,11 +82,11 @@ export default function ClientsPage({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
-  // Selected Client for Drawer (Right Panel)
+  // Selected Client for Drawer (Right Panel) - strictly null or first client if exists
   const [selectedClient, setSelectedClient] = useState<Client | null>(() => {
-    return allClients.find(c => c.name === 'Sarah Tremblay') || allClients[0] || null;
+    return allClients[0] || null;
   });
-  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Modals & form state
   const [showModal, setShowModal] = useState(false);
@@ -106,9 +96,9 @@ export default function ClientsPage({
   const [newNoteText, setNewNoteText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Associated documents & notes local state
-  const [documents, setDocuments] = useState<ClientDocument[]>(DEFAULT_CLIENT_DOCUMENTS);
-  const [notes, setNotes] = useState<ClientNote[]>(DEFAULT_CLIENT_NOTES);
+  // Associated documents & notes local state - strictly empty for new users
+  const [documents, setDocuments] = useState<ClientDocument[]>([]);
+  const [notes, setNotes] = useState<ClientNote[]>([]);
 
   // Client form data
   const [formData, setFormData] = useState({
@@ -119,16 +109,18 @@ export default function ClientsPage({
     address: '',
     province: 'Québec',
     type: 'Entreprise' as 'Entreprise' | 'Particulier',
-    status: 'Actif' as 'Actif' | 'Inactif' | 'Paiement en attente' | 'En retard',
+    status: 'Actif' as 'Actif' | 'Inactif' | 'Bloqué' | 'Décédé',
     notes: ''
   });
 
-  // Calculate top KPI statistics
+  // Calculate top KPI statistics strictly from real data
   const kpiStats = useMemo(() => {
-    const totalClients = Math.max(allClients.length, 128);
-    const activeClients = Math.max(allClients.filter(c => c.status === 'Actif').length, 112);
-    const lateInvoicesCount = 8;
-    const totalRevenue = 245680;
+    const totalClients = allClients.length;
+    const activeClients = allClients.filter(c => c.status === 'Actif' || c.status === 'active' || c.status === 'Active').length;
+    const lateInvoicesCount = (invoices || []).filter(i => i.status === 'En retard' || i.status === 'overdue').length;
+    const totalRevenue = (invoices || [])
+      .filter(i => i.status === 'Payée' || i.status === 'paid')
+      .reduce((sum, inv) => sum + (inv.total || 0), 0);
 
     return {
       totalClients,
@@ -136,7 +128,7 @@ export default function ClientsPage({
       lateInvoicesCount,
       totalRevenue
     };
-  }, [allClients]);
+  }, [allClients, invoices]);
 
   // Filtered clients list
   const filteredClients = useMemo(() => {
@@ -154,10 +146,10 @@ export default function ClientsPage({
       const matchesProvince = provinceFilter === 'Toutes' || (cli.province || 'Québec') === provinceFilter;
 
       const matchesStatus = statusFilter === 'Tous' || 
-        (statusFilter === 'Actif' && cli.status === 'Actif') ||
-        (statusFilter === 'Paiement en attente' && (cli.status === 'Paiement en attente' || (cli.amountDue || 0) > 0)) ||
-        (statusFilter === 'En retard' && cli.status === 'En retard') ||
-        (statusFilter === 'Inactif' && (cli.status === 'Inactif' || cli.status === 'Inactive'));
+        (statusFilter === 'Actif' && (cli.status === 'Actif' || cli.status === 'active' || cli.status === 'Active')) ||
+        (statusFilter === 'Inactif' && (cli.status === 'Inactif' || cli.status === 'inactive' || cli.status === 'Inactive')) ||
+        (statusFilter === 'Bloqué' && (cli.status === 'Bloqué' || cli.status === 'bloque')) ||
+        (statusFilter === 'Décédé' && (cli.status === 'Décédé' || cli.status === 'decede'));
 
       return matchesSearch && matchesType && matchesProvince && matchesStatus;
     });
@@ -170,15 +162,13 @@ export default function ClientsPage({
     return filteredClients.slice(start, start + itemsPerPage);
   }, [filteredClients, currentPage]);
 
-  // Sample invoices for the selected client / history table
-  const sampleInvoices = useMemo(() => {
-    return [
-      { id: 'INV-2026-031', date: '8 juil. 2026', amount: 420.00, status: 'En attente' },
-      { id: 'INV-2026-019', date: '18 juin 2026', amount: 980.00, status: 'Payée' },
-      { id: 'INV-2026-011', date: '2 mai 2026', amount: 650.00, status: 'Payée' },
-      { id: 'INV-2026-004', date: '14 avr. 2026', amount: 540.00, status: 'Payée' }
-    ];
-  }, []);
+  // Invoices strictly associated with the selected client
+  const clientInvoices = useMemo(() => {
+    if (!selectedClient) return [];
+    return (invoices || []).filter(inv => 
+      (inv.clientName || '').toLowerCase().trim() === (selectedClient.name || '').toLowerCase().trim()
+    );
+  }, [selectedClient, invoices]);
 
   // Handlers
   const handleOpenAdd = () => {
@@ -485,8 +475,9 @@ export default function ClientsPage({
                 >
                   <option value="Tous">Statut : Tous</option>
                   <option value="Actif">Actif</option>
-                  <option value="Paiement en attente">Paiement en attente</option>
-                  <option value="En retard">En retard</option>
+                  <option value="Inactif">Inactif</option>
+                  <option value="Bloqué">Bloqué</option>
+                  <option value="Décédé">Décédé</option>
                 </select>
               </div>
 
@@ -621,11 +612,13 @@ export default function ClientsPage({
                           {/* 8. Statut */}
                           <td className="py-3 px-4 text-center whitespace-nowrap">
                             <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                              client.status === 'Actif' 
+                              client.status === 'Actif' || client.status === 'active' || client.status === 'Active'
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                                : client.status === 'En retard'
+                                : client.status === 'Bloqué'
                                   ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : client.status === 'Décédé'
+                                    ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                    : 'bg-slate-50 text-slate-500 border-slate-200'
                             }`}>
                               {client.status || 'Actif'}
                             </span>
@@ -745,29 +738,37 @@ export default function ClientsPage({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {sampleInvoices.map((inv) => (
-                            <tr 
-                              key={inv.id} 
-                              onClick={() => {
-                                setSelectedInvoiceId(inv.id);
-                                setScreen('invoices');
-                              }}
-                              className="hover:bg-white cursor-pointer transition"
-                            >
-                              <td className="py-2 font-bold text-blue-600">{inv.id}</td>
-                              <td className="py-2 text-slate-500">{inv.date}</td>
-                              <td className="py-2 text-right font-bold text-slate-800">
-                                {inv.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
-                              </td>
-                              <td className="py-2 text-right">
-                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                                  inv.status === 'Payée' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                                }`}>
-                                  {inv.status}
-                                </span>
+                          {clientInvoices.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="py-4 text-center text-slate-400 font-medium">
+                                Aucune facture enregistrée pour ce client.
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            clientInvoices.map((inv) => (
+                              <tr 
+                                key={inv.id} 
+                                onClick={() => {
+                                  setSelectedInvoiceId(inv.id);
+                                  setScreen('invoices');
+                                }}
+                                className="hover:bg-white cursor-pointer transition"
+                              >
+                                <td className="py-2 font-bold text-blue-600">{inv.id}</td>
+                                <td className="py-2 text-slate-500">{inv.date}</td>
+                                <td className="py-2 text-right font-bold text-slate-800">
+                                  {(inv.total || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+                                </td>
+                                <td className="py-2 text-right">
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                    inv.status === 'Payée' || inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    {inv.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -1084,9 +1085,9 @@ export default function ClientsPage({
                     className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-blue-500 transition"
                   >
                     <option value="Actif">Actif</option>
-                    <option value="Paiement en attente">Paiement en attente</option>
-                    <option value="En retard">En retard</option>
                     <option value="Inactif">Inactif</option>
+                    <option value="Bloqué">Bloqué</option>
+                    <option value="Décédé">Décédé</option>
                   </select>
                 </div>
               </div>

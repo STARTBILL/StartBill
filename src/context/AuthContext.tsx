@@ -1,20 +1,30 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  User as FirebaseUser, 
+  signOut,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
+} from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
-import { UserPlan } from '../lib/planAccess';
+import { auth, db, googleProvider } from '../lib/firebase';
+import { UserPlan, UserRole, FeatureKey, checkFeatureAccess, PLAN_LIMITS } from '../lib/planAccess';
 import { isSuperAdminEmail } from '../lib/authSecurity';
 
 export interface UserProfile {
   uid: string;
   email: string | null;
   plan: UserPlan;
+  role: UserRole;
   fullName?: string;
   companyName?: string;
+  phone?: string;
   region?: 'canada' | 'afrique' | 'haiti';
-  role?: string;
   isAnonymous?: boolean;
   isSuperAdmin?: boolean;
+  createdAt?: string;
 }
 
 interface AuthContextType {
@@ -22,9 +32,23 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   loading: boolean;
   userPlan: UserPlan;
+  userRole: UserRole;
   isSuperAdmin: boolean;
+  loginWithEmail: (email: string, pass: string) => Promise<UserProfile>;
+  registerWithEmail: (
+    email: string, 
+    pass: string, 
+    extra?: { 
+      fullName?: string; 
+      companyName?: string; 
+      phone?: string; 
+      region?: string;
+    }
+  ) => Promise<UserProfile>;
+  loginWithGoogle: () => Promise<UserProfile>;
   updateUserPlan: (newPlan: UserPlan) => Promise<void>;
   signOutUser: () => Promise<void>;
+  canAccess: (feature: FeatureKey, requiredPlan?: UserPlan) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -32,9 +56,14 @@ const AuthContext = createContext<AuthContextType>({
   firebaseUser: null,
   loading: true,
   userPlan: 'free',
+  userRole: 'user',
   isSuperAdmin: false,
+  loginWithEmail: async () => { throw new Error('Not initialized'); },
+  registerWithEmail: async () => { throw new Error('Not initialized'); },
+  loginWithGoogle: async () => { throw new Error('Not initialized'); },
   updateUserPlan: async () => {},
   signOutUser: async () => {},
+  canAccess: () => true,
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -56,44 +85,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (snap.exists()) {
             const data = snap.data();
             const effectiveEmail = fbUser.email || data.email || null;
-            const isSuperAdmin = isSuperAdminEmail(effectiveEmail);
+            const isSuper = isSuperAdminEmail(effectiveEmail);
+            const userRole: UserRole = isSuper ? 'admin' : ((data.role as UserRole) || 'user');
+            const userPlan: UserPlan = isSuper ? 'enterprise' : ((data.plan as UserPlan) || 'free');
+
             setUser({
               uid: fbUser.uid,
               email: effectiveEmail,
-              plan: isSuperAdmin ? 'enterprise' : ((data.plan as UserPlan) || 'free'),
-              fullName: data.fullName || (isSuperAdmin ? 'Super Administrateur StartBill' : undefined),
-              companyName: data.companyName || (isSuperAdmin ? 'StartBill HQ' : undefined),
-              region: data.region,
-              role: isSuperAdmin ? 'admin' : (data.role || 'user'),
+              plan: userPlan,
+              role: userRole,
+              fullName: data.fullName || (isSuper ? 'Super Administrateur StartBill' : fbUser.displayName || undefined),
+              companyName: data.companyName || (isSuper ? 'StartBill HQ' : undefined),
+              phone: data.phone || fbUser.phoneNumber || undefined,
+              region: data.region || 'canada',
               isAnonymous: fbUser.isAnonymous,
-              isSuperAdmin
+              isSuperAdmin: isSuper
             });
           } else {
             // Default user profile if document doesn't exist yet
             const effectiveEmail = fbUser.email;
-            const isSuperAdmin = isSuperAdminEmail(effectiveEmail);
+            const isSuper = isSuperAdminEmail(effectiveEmail);
             setUser({
               uid: fbUser.uid,
               email: effectiveEmail,
-              plan: isSuperAdmin ? 'enterprise' : 'free',
-              fullName: isSuperAdmin ? 'Super Administrateur StartBill' : undefined,
-              role: isSuperAdmin ? 'admin' : 'user',
+              plan: isSuper ? 'enterprise' : 'free',
+              role: isSuper ? 'admin' : 'user',
+              fullName: fbUser.displayName || (isSuper ? 'Super Administrateur StartBill' : undefined),
               isAnonymous: fbUser.isAnonymous,
-              isSuperAdmin
+              isSuperAdmin: isSuper
             });
           }
           setLoading(false);
         }, (err) => {
           console.warn("AuthContext doc listener warning:", err);
           const effectiveEmail = fbUser.email;
-          const isSuperAdmin = isSuperAdminEmail(effectiveEmail);
+          const isSuper = isSuperAdminEmail(effectiveEmail);
           setUser({
             uid: fbUser.uid,
             email: effectiveEmail,
-            plan: isSuperAdmin ? 'enterprise' : 'free',
-            role: isSuperAdmin ? 'admin' : 'user',
+            plan: isSuper ? 'enterprise' : 'free',
+            role: isSuper ? 'admin' : 'user',
             isAnonymous: fbUser.isAnonymous,
-            isSuperAdmin
+            isSuperAdmin: isSuper
           });
           setLoading(false);
         });
@@ -113,19 +146,195 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const updateUserPlan = async (newPlan: UserPlan) => {
-    if (!firebaseUser) return;
+  const loginWithEmail = async (email: string, pass: string): Promise<UserProfile> => {
+    const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), pass);
+    const fbUser = cred.user;
+    const isSuper = isSuperAdminEmail(fbUser.email);
+    
+    // Check Firestore doc
+    let profileData: any = {};
     try {
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const snap = await getDoc(doc(db, 'users', fbUser.uid));
+      if (snap.exists()) {
+        profileData = snap.data();
+      } else {
+        // Seed initial user document
+        profileData = {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          role: isSuper ? 'admin' : 'user',
+          plan: isSuper ? 'enterprise' : 'free',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'users', fbUser.uid), profileData, { merge: true });
+      }
+    } catch (docErr) {
+      console.warn("Notice fetching user doc from Firestore:", docErr);
+    }
+
+    const loadedProfile: UserProfile = {
+      uid: fbUser.uid,
+      email: fbUser.email,
+      plan: isSuper ? 'enterprise' : (profileData.plan || 'free'),
+      role: isSuper ? 'admin' : (profileData.role || 'user'),
+      fullName: profileData.fullName || fbUser.displayName || undefined,
+      companyName: profileData.companyName,
+      phone: profileData.phone,
+      region: profileData.region || 'canada',
+      isSuperAdmin: isSuper
+    };
+    setUser(loadedProfile);
+    return loadedProfile;
+  };
+
+  const registerWithEmail = async (
+    email: string, 
+    pass: string, 
+    extra?: { 
+      fullName?: string; 
+      companyName?: string; 
+      phone?: string; 
+      region?: string;
+    }
+  ): Promise<UserProfile> => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, pass);
+    const fbUser = cred.user;
+    const isSuper = isSuperAdminEmail(normalizedEmail);
+
+    if (extra?.fullName) {
+      await updateProfile(fbUser, { displayName: extra.fullName });
+    }
+
+    const effectiveRole: UserRole = isSuper ? 'admin' : 'user';
+    const effectivePlan: UserPlan = isSuper ? 'enterprise' : 'free';
+
+    const userProfileData: any = {
+      uid: fbUser.uid,
+      email: normalizedEmail,
+      role: effectiveRole,
+      plan: effectivePlan,
+      fullName: extra?.fullName || '',
+      companyName: extra?.companyName || '',
+      phone: extra?.phone || '',
+      region: extra?.region || 'canada',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(doc(db, 'users', fbUser.uid), userProfileData, { merge: true });
+
+    const newProfile: UserProfile = {
+      uid: fbUser.uid,
+      email: normalizedEmail,
+      role: effectiveRole,
+      plan: effectivePlan,
+      fullName: extra?.fullName,
+      companyName: extra?.companyName,
+      phone: extra?.phone,
+      region: (extra?.region as any) || 'canada',
+      isSuperAdmin: isSuper
+    };
+
+    setUser(newProfile);
+    return newProfile;
+  };
+
+  const loginWithGoogle = async (): Promise<UserProfile> => {
+    const cred = await signInWithPopup(auth, googleProvider);
+    const fbUser = cred.user;
+    const isSuper = isSuperAdminEmail(fbUser.email);
+
+    const userDocRef = doc(db, 'users', fbUser.uid);
+    let profile: UserProfile;
+
+    try {
+      const snap = await getDoc(userDocRef);
+
+      if (snap.exists()) {
+        const data = snap.data();
+        profile = {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          plan: isSuper ? 'enterprise' : ((data.plan as UserPlan) || 'free'),
+          role: isSuper ? 'admin' : ((data.role as UserRole) || 'user'),
+          fullName: data.fullName || fbUser.displayName || undefined,
+          companyName: data.companyName,
+          phone: data.phone || fbUser.phoneNumber || undefined,
+          region: data.region || 'canada',
+          isSuperAdmin: isSuper
+        };
+      } else {
+        const effectiveRole: UserRole = isSuper ? 'admin' : 'user';
+        const initialProfile = {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          role: effectiveRole,
+          plan: isSuper ? 'enterprise' : 'free',
+          fullName: fbUser.displayName || '',
+          phone: fbUser.phoneNumber || '',
+          region: 'canada',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await setDoc(userDocRef, initialProfile, { merge: true });
+
+        profile = {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          plan: isSuper ? 'enterprise' : 'free',
+          role: effectiveRole,
+          fullName: fbUser.displayName || undefined,
+          phone: fbUser.phoneNumber || undefined,
+          region: 'canada',
+          isSuperAdmin: isSuper
+        };
+      }
+    } catch (docErr) {
+      console.warn("Notice fetching Google user profile from Firestore:", docErr);
+      profile = {
+        uid: fbUser.uid,
+        email: fbUser.email,
+        plan: isSuper ? 'enterprise' : 'free',
+        role: isSuper ? 'admin' : 'user',
+        fullName: fbUser.displayName || undefined,
+        phone: fbUser.phoneNumber || undefined,
+        region: 'canada',
+        isSuperAdmin: isSuper
+      };
+    }
+
+    setUser(profile);
+    return profile;
+  };
+
+  const updateUserPlan = async (newPlan: UserPlan) => {
+    if (!firebaseUser && !user) return;
+    const targetUid = firebaseUser?.uid || user?.uid;
+    if (!targetUid) return;
+
+    try {
+      const userDocRef = doc(db, 'users', targetUid);
       await setDoc(userDocRef, {
         plan: newPlan,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      // Also create or update subscription record in Firestore
+      const subId = `sub_${targetUid}`;
+      await setDoc(doc(db, 'subscriptions', subId), {
+        id: subId,
+        userId: targetUid,
+        userEmail: user?.email || firebaseUser?.email || '',
+        plan: newPlan,
+        status: 'active',
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
       setUser(prev => prev ? { ...prev, plan: newPlan } : null);
     } catch (error) {
       console.error("Failed to update user plan in Firestore:", error);
-      // Fallback local update
       setUser(prev => prev ? { ...prev, plan: newPlan } : null);
     }
   };
@@ -136,7 +345,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const userPlan: UserPlan = user?.plan || 'free';
+  const userRole: UserRole = user?.role || 'user';
   const isSuperAdmin: boolean = Boolean(user?.isSuperAdmin || isSuperAdminEmail(user?.email || firebaseUser?.email));
+
+  const canAccess = (feature: FeatureKey, requiredPlan?: UserPlan): boolean => {
+    if (isSuperAdmin) return true;
+    return checkFeatureAccess(userPlan, feature, requiredPlan);
+  };
 
   return (
     <AuthContext.Provider value={{
@@ -144,9 +359,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       firebaseUser,
       loading,
       userPlan,
+      userRole,
       isSuperAdmin,
+      loginWithEmail,
+      registerWithEmail,
+      loginWithGoogle,
       updateUserPlan,
-      signOutUser
+      signOutUser,
+      canAccess
     }}>
       {children}
     </AuthContext.Provider>

@@ -56,17 +56,19 @@ export default function App() {
     loadFirebaseData();
   }, []);
 
-  // Interactive CRUD updates
+  // Interactive CRUD updates with user isolation
   const handleAddInvoice = async (newInv: Invoice) => {
-    setInvoices(prev => [newInv, ...prev]);
-    await saveInvoiceToFirestore(newInv);
+    const uid = auth.currentUser?.uid || '';
+    const scopedInv: Invoice = { ...newInv, userId: newInv.userId || uid };
+    setInvoices(prev => [scopedInv, ...prev]);
+    await saveInvoiceToFirestore(scopedInv, uid);
 
     // Also update client's amountDue if the invoice is not paid
-    if (newInv.status !== 'Payée') {
+    if (scopedInv.status !== 'Payée') {
       setClients(prev => prev.map(cli => {
-        if (cli.name === newInv.clientName) {
-          const updated = { ...cli, amountDue: parseFloat((cli.amountDue + newInv.total).toFixed(2)) };
-          saveClientToFirestore(updated);
+        if (cli.name === scopedInv.clientName) {
+          const updated = { ...cli, amountDue: parseFloat((cli.amountDue + scopedInv.total).toFixed(2)), userId: cli.userId || uid };
+          saveClientToFirestore(updated, uid);
           return updated;
         }
         return cli;
@@ -75,23 +77,31 @@ export default function App() {
   };
 
   const handleAddExpense = async (newExp: Expense) => {
-    setExpenses(prev => [newExp, ...prev]);
-    await saveExpenseToFirestore(newExp);
+    const uid = auth.currentUser?.uid || '';
+    const scopedExp: Expense = { ...newExp, userId: newExp.userId || uid };
+    setExpenses(prev => [scopedExp, ...prev]);
+    await saveExpenseToFirestore(scopedExp, uid);
   };
 
   const handleUpdateExpense = async (updatedExp: Expense) => {
-    setExpenses(prev => prev.map(exp => exp.id === updatedExp.id ? updatedExp : exp));
-    await saveExpenseToFirestore(updatedExp);
+    const uid = auth.currentUser?.uid || '';
+    const scopedExp: Expense = { ...updatedExp, userId: updatedExp.userId || uid };
+    setExpenses(prev => prev.map(exp => exp.id === scopedExp.id ? scopedExp : exp));
+    await saveExpenseToFirestore(scopedExp, uid);
   };
 
   const handleAddClient = async (newCli: Client) => {
-    setClients(prev => [...prev, newCli]);
-    await saveClientToFirestore(newCli);
+    const uid = auth.currentUser?.uid || '';
+    const scopedCli: Client = { ...newCli, userId: newCli.userId || uid };
+    setClients(prev => [...prev, scopedCli]);
+    await saveClientToFirestore(scopedCli, uid);
   };
 
   const handleUpdateClient = async (updatedCli: Client) => {
-    setClients(prev => prev.map(c => c.id === updatedCli.id ? updatedCli : c));
-    await saveClientToFirestore(updatedCli);
+    const uid = auth.currentUser?.uid || '';
+    const scopedCli: Client = { ...updatedCli, userId: updatedCli.userId || uid };
+    setClients(prev => prev.map(c => c.id === scopedCli.id ? scopedCli : c));
+    await saveClientToFirestore(scopedCli, uid);
   };
 
   const handleDeleteClient = async (id: string) => {

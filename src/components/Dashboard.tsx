@@ -29,7 +29,8 @@ import {
   ChevronRight,
   PieChart,
   User,
-  Building2
+  Building2,
+  Check
 } from 'lucide-react';
 import { ScreenId, SmartAlert } from '../types';
 import { generateSmartAlerts, markAlertAsReadInFirestore } from '../lib/alerts';
@@ -103,6 +104,78 @@ export default function Dashboard({
 
   const [selectedChartRange, setSelectedChartRange] = useState('6 derniers mois');
   const [selectedAccount, setSelectedAccount] = useState('Tous les comptes');
+
+  // Multi-companies state for the current region
+  const storageKey = `startbill_companies_${region}`;
+  const [companies, setCompanies] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      const activeSaved = localStorage.getItem('startbill_active_company');
+      if (activeSaved) {
+        return [JSON.parse(activeSaved)];
+      }
+    } catch (e) {
+      console.warn('Error reading companies', e);
+    }
+    const defaultCompanies = [
+      { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region, isDefault: true },
+      { id: 'comp_educ', companyName: 'Educ.Inc', industry: 'Éducation et formation', region, isDefault: false }
+    ];
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(defaultCompanies));
+      localStorage.setItem('startbill_active_company', JSON.stringify(defaultCompanies[0]));
+    } catch (err) {}
+    return defaultCompanies;
+  });
+
+  const [activeCompany, setActiveCompany] = useState<any>(() => {
+    try {
+      const activeSaved = localStorage.getItem('startbill_active_company');
+      if (activeSaved) return JSON.parse(activeSaved);
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+      }
+    } catch (e) {
+      console.warn('Error reading active company', e);
+    }
+    return { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region };
+  });
+
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`startbill_companies_${region}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCompanies(parsed);
+          const activeSaved = localStorage.getItem('startbill_active_company');
+          if (activeSaved) {
+            const parsedActive = JSON.parse(activeSaved);
+            const found = parsed.find((c: any) => c.id === parsedActive.id || c.companyName === parsedActive.companyName);
+            setActiveCompany(found || parsed[0]);
+          } else {
+            setActiveCompany(parsed[0]);
+          }
+        }
+      }
+    } catch (e) {}
+  }, [region]);
+
+  const handleSelectCompany = (comp: any) => {
+    setActiveCompany(comp);
+    try {
+      localStorage.setItem('startbill_active_company', JSON.stringify(comp));
+      localStorage.setItem('company_name', comp.companyName);
+      if (comp.ownerName) localStorage.setItem('company_owner', comp.ownerName);
+    } catch (e) {}
+    triggerToast(`Entreprise active : ${comp.companyName}`);
+  };
 
   const userName = currentUser?.displayName 
     ? currentUser.displayName
@@ -246,11 +319,22 @@ export default function Dashboard({
               {region === 'haiti' ? `Bonjou ${userName} 👋` : `Bonjour ${userName} 👋`}
             </span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-secondary-900">
-            Dashboard (Vue d'ensemble) – {regionalSettings?.country || (region === 'afrique' ? 'Afrique' : region === 'haiti' ? 'Haïti' : 'Canada')}
-          </h1>
+          <div className="flex items-center flex-wrap gap-2.5">
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-secondary-900">
+              Dashboard (Vue d'ensemble)
+            </h1>
+            <div className="flex items-center gap-1.5 bg-primary-50 border border-primary-200/80 rounded-xl px-3 py-1 shadow-2xs">
+              <Building2 className="w-4 h-4 text-primary-600" />
+              <span className="text-xs md:text-sm font-black text-primary-700">
+                {activeCompany?.companyName || 'Santé.Inc'}
+              </span>
+            </div>
+            <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60">
+              {regionalSettings?.country || (region === 'afrique' ? 'Afrique' : region === 'haiti' ? 'Haïti' : 'Canada')}
+            </span>
+          </div>
           <p className="text-xs md:text-sm text-secondary-500 font-medium">
-            Voici la vue d'ensemble de votre entreprise ({regionalSettings?.currency || 'CAD'} - {currencySymbol}).
+            Vue consolidée pour <strong className="text-secondary-800">{activeCompany?.companyName || 'votre entreprise'}</strong> ({regionalSettings?.currency || 'CAD'} - {currencySymbol}).
           </p>
         </div>
         
@@ -273,21 +357,66 @@ export default function Dashboard({
             ]}
           />
 
-          {/* Menu Tous les comptes */}
+          {/* Menu Multi-Entreprises (Sélecteur d'entreprises de la région) */}
           <Menu
-            id="account-selector-menu"
+            id="company-selector-menu"
             align="left"
             trigger={
-              <button className="bg-slate-50 hover:bg-slate-100 border border-secondary-200/80 rounded-xl px-3.5 py-2.5 flex items-center gap-2 text-xs font-bold text-secondary-700 transition shadow-2xs cursor-pointer">
-                <Building2 className="w-4 h-4 text-primary-600" />
-                <span>{selectedAccount}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-secondary-400 ml-1" />
+              <button 
+                className="bg-slate-50 hover:bg-slate-100 border border-secondary-200/80 rounded-xl px-3.5 py-2 flex items-center gap-2.5 text-xs font-bold text-secondary-800 transition shadow-2xs cursor-pointer group"
+                title="Changer d'entreprise dans cette région"
+              >
+                <div className="w-6 h-6 rounded-lg bg-primary-100/70 text-primary-700 flex items-center justify-center font-bold text-[11px] border border-primary-200">
+                  <Building2 className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none">
+                    Entreprise
+                  </span>
+                  <span className="font-extrabold text-secondary-900 truncate max-w-[130px] leading-tight text-xs">
+                    {activeCompany?.companyName || 'Santé.Inc'}
+                  </span>
+                </div>
+                {companies.length > 1 && (
+                  <span className="bg-primary-50 text-primary-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md border border-primary-200/60">
+                    {companies.length}
+                  </span>
+                )}
+                <ChevronDown className="w-3.5 h-3.5 text-secondary-400 ml-0.5 group-hover:text-secondary-600 transition" />
               </button>
             }
             items={[
-              { id: 'all', label: 'Tous les comptes', onClick: () => setSelectedAccount('Tous les comptes') },
-              { id: 'business', label: 'Compte Entreprise', onClick: () => setSelectedAccount('Compte Entreprise') },
-              { id: 'personal', label: 'Compte Personnel', onClick: () => setSelectedAccount('Compte Personnel') },
+              ...companies.map((comp: any) => ({
+                id: comp.id,
+                label: (
+                  <div className="flex items-center justify-between gap-3 w-full py-1">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2.5 h-2.5 rounded-full ${comp.id === activeCompany?.id || comp.companyName === activeCompany?.companyName ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-300'}`} />
+                      <div className="text-left">
+                        <p className="font-bold text-slate-900 text-xs">{comp.companyName}</p>
+                        <p className="text-[10px] text-slate-400">{comp.industry || 'Entreprise de la région'}</p>
+                      </div>
+                    </div>
+                    {(comp.id === activeCompany?.id || comp.companyName === activeCompany?.companyName) && (
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    )}
+                  </div>
+                ),
+                onClick: () => handleSelectCompany(comp)
+              })),
+              {
+                id: 'add-new-company',
+                label: (
+                  <div className="flex items-center gap-2 text-primary-600 font-bold text-xs pt-1.5 border-t border-slate-100 w-full hover:text-primary-700">
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Ajouter une autre entreprise</span>
+                  </div>
+                ),
+                onClick: () => {
+                  setScreen('company_setup');
+                  triggerToast('Gestion et ajout d’entreprises dans cette région.');
+                }
+              }
             ]}
           />
 
@@ -316,20 +445,69 @@ export default function Dashboard({
             <HelpCircle className="w-4 h-4" />
           </button>
 
-          {/* Profile Pill */}
-          <button 
-            onClick={() => setScreen('login')}
-            className="flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 border border-secondary-200/80 rounded-xl p-1.5 pr-3.5 transition cursor-pointer"
-            title="Mon compte / Connexion"
-          >
-            <div className="w-8 h-8 rounded-full bg-primary-600 text-white font-black text-xs flex items-center justify-center overflow-hidden shadow-2xs">
-              <User className="w-4.5 h-4.5" />
-            </div>
-            <div className="text-left leading-tight hidden sm:block">
-              <p className="text-xs font-black text-secondary-900">{userName}</p>
-              <p className="text-[10px] text-secondary-500 font-semibold">Mon Compte</p>
-            </div>
-          </button>
+          {/* Profile Pill - Accès direct au Profil & Paramètres */}
+          <Menu
+            id="user-profile-menu"
+            align="right"
+            trigger={
+              <button 
+                className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 border border-secondary-200/80 rounded-xl p-1.5 pr-3 transition cursor-pointer group shadow-2xs"
+                title="Mon profil et paramètres de compte"
+              >
+                <div className="w-8 h-8 rounded-full bg-primary-600 text-white font-black text-xs flex items-center justify-center overflow-hidden shadow-2xs group-hover:scale-105 transition">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="text-left leading-tight hidden sm:block">
+                  <p className="text-xs font-black text-secondary-900 truncate max-w-[120px]">{userName}</p>
+                  <p className="text-[10px] text-primary-600 font-bold">Mon Profil</p>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-secondary-400 group-hover:text-secondary-600 transition hidden sm:block ml-0.5" />
+              </button>
+            }
+            items={[
+              {
+                id: 'profile-settings',
+                label: (
+                  <div className="flex items-center gap-2.5 py-1 text-slate-800 text-xs font-bold w-full">
+                    <User className="w-4 h-4 text-primary-600 shrink-0" />
+                    <div className="text-left">
+                      <p className="font-bold text-slate-900">{userName}</p>
+                      <p className="text-[10px] text-slate-400 font-medium">Mon profil & paramètres</p>
+                    </div>
+                  </div>
+                ),
+                onClick: () => {
+                  setScreen('settings');
+                  triggerToast('Accès à votre profil et paramètres.');
+                }
+              },
+              {
+                id: 'profile-company',
+                label: (
+                  <div className="flex items-center gap-2 text-slate-700 text-xs font-semibold py-1 w-full">
+                    <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span>Configuration Entreprise</span>
+                  </div>
+                ),
+                onClick: () => {
+                  setScreen('company_setup');
+                  triggerToast('Configuration des informations d’entreprise.');
+                }
+              },
+              {
+                id: 'profile-logout',
+                label: (
+                  <div className="flex items-center gap-2 text-rose-600 text-xs font-bold pt-1.5 border-t border-slate-100 w-full hover:text-rose-700">
+                    <span>Se déconnecter</span>
+                  </div>
+                ),
+                onClick: () => {
+                  setScreen('login');
+                  triggerToast('Vous êtes déconnecté.');
+                }
+              }
+            ]}
+          />
         </div>
       </div>
 

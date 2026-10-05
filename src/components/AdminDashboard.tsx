@@ -163,7 +163,6 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
 
     setIsLoading(true);
     try {
-      await seedInitialAdminData();
       const [uList, sList, pList, aList, alList, rList] = await Promise.all([
         getAllAdminUsers(),
         getAllAdminSubscriptions(),

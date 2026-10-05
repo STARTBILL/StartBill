@@ -87,24 +87,28 @@
     visibility: hidden !important;
   }
 
-  /* Display and isolate strictly the printable invoice container */
+  /* Display and isolate strictly the printable invoice container or receipt container */
   #printable-invoice-content,
-  #printable-invoice-content * {
+  #printable-invoice-content *,
+  #printable-receipt,
+  #printable-receipt * {
     visibility: visible !important;
   }
 
-  #printable-invoice-content {
+  #printable-invoice-content,
+  #printable-receipt {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 28px 36px !important;
+    padding: 24px 32px !important;
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
     background: #ffffff !important;
+    display: block !important;
   }
 
   /* Explicitly remove all navigation, app bars, back buttons, action bars, widgets, toasts, floating elements */
@@ -114,9 +118,7 @@
   footer,
   button,
   .no-print,
-  [data-no-print],
-  .fixed,
-  .sticky {
+  [data-no-print] {
     display: none !important;
     visibility: hidden !important;
   }

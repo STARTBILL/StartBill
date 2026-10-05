@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { SmartAlert, Invoice, AlertSeverity, AlertType } from '../types';
+import { getFreeTrialInfo } from './planAccess';
 
 export async function getAlertsFromFirestore(userId: string): Promise<SmartAlert[]> {
   try {
@@ -153,9 +154,10 @@ export function generateSmartAlerts(
     });
   }
 
-  // Rule 5: Free plan limit reached (invoiceCount >= 5 and free plan)
+  // Rule 5: Free plan limit reached (invoiceCount >= 5 and free plan after 5-day trial)
   const totalInvoicesCount = invoices.length;
-  if (!isPro && totalInvoicesCount >= 5) {
+  const trial = getFreeTrialInfo();
+  if (!isPro && totalInvoicesCount >= 5 && !trial.isActive) {
     const type: AlertType = 'free_limit_reached';
     const id = `alert-${userId}-${type}`;
     alertsMap.set(type, {
@@ -163,7 +165,7 @@ export function generateSmartAlerts(
       userId,
       type,
       title: 'Limite gratuite atteinte',
-      message: 'Tu as utilisé tes 5 factures gratuites. Passe au plan Start pour créer des factures illimitées.',
+      message: 'Votre période d\'essai de 5 jours est terminée et vous avez atteint la limite de 5 factures. Passez au plan Start pour créer des factures illimitées.',
       severity: 'danger',
       isRead: existingReadState.get(type) ?? existingReadState.get(id) ?? false,
       createdAt: nowStr,
@@ -189,6 +191,29 @@ export function generateSmartAlerts(
       createdAt: nowStr,
       actionUrl: 'financial_health',
       actionLabel: 'Planifier la réserve'
+    });
+  }
+
+  // Rule 7: Notification for created invoices
+  if (invoices && invoices.length > 0) {
+    invoices.slice(0, 5).forEach((inv) => {
+      const invId = inv.id || 'FACT-NOUVELLE';
+      const alertId = `alert-${userId}-inv-${invId}`;
+      const type: AlertType = 'general';
+      const invTotal = (inv.total || inv.subtotal || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 });
+      alertsMap.set(`inv_${invId}`, {
+        id: alertId,
+        userId,
+        type,
+        title: `Facture #${invId} émise`,
+        message: `Facture émise pour ${inv.clientName || 'votre client'} d'un montant de ${invTotal} $. Statut : ${inv.status || 'Émise'}.`,
+        severity: inv.status === 'Payée' ? 'success' : 'info',
+        isRead: existingReadState.get(alertId) ?? false,
+        createdAt: inv.date || nowStr,
+        actionUrl: 'invoices',
+        actionLabel: 'Consulter la facture',
+        targetId: inv.id
+      });
     });
   }
 

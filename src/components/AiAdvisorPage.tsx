@@ -32,6 +32,7 @@ import {
   Check
 } from 'lucide-react';
 import { ScreenId } from '../types';
+import FinancialNavTabs from './FinancialNavTabs';
 
 interface AiAdvisorPageProps {
   setScreen: (screen: ScreenId) => void;
@@ -91,21 +92,30 @@ export default function AiAdvisorPage({ setScreen, triggerToast }: AiAdvisorPage
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto bg-[#f8fafc] min-h-screen p-4 sm:p-6 lg:p-7 space-y-5 font-sans text-slate-800">
+      {/* Financial Suite Navigation (Santé & Ratios, Conseiller AI, Alertes, Tendances, Prévisions, Historique) */}
+      {setScreen && <FinancialNavTabs currentScreen="ai_advisor" setScreen={setScreen} />}
+
       {/* ========================================================================= */}
       {/* 1. TOP HEADER                                                             */}
       {/* ========================================================================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Title and Subtitle */}
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100 shadow-2xs">
-            <Sparkles className="w-5 h-5 text-blue-600" />
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100 shadow-2xs">
+            <Sparkles className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                Module 9 — Conseiller Financier IA
+              </span>
+              <span className="text-[11px] font-semibold text-slate-400">Recommandations & Analyses Prédictives</span>
+            </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               Conseiller AI
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium">
-              Votre assistant financier intelligent
+              Votre assistant financier intelligent, optimisations de trésorerie & scénarios
             </p>
           </div>
         </div>

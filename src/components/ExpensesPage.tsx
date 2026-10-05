@@ -37,6 +37,7 @@ import { Loader } from './ui/Loader';
 import { EmptyState } from './ui/EmptyState';
 import { ErrorState } from './ui/ErrorState';
 import { ConfirmModal } from './ui/ConfirmModal';
+import { calculateTaxes } from './DeviceSimulator';
 
 interface ExpensesPageProps {
   expenses: Expense[];
@@ -90,10 +91,31 @@ export default function ExpensesPage({
   const [formCategory, setFormCategory] = useState(CATEGORIES[0]);
   const [formProvider, setFormProvider] = useState('');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formProvince, setFormProvince] = useState('Québec');
   const [formAmountHt, setFormAmountHt] = useState('');
+  const [formTps, setFormTps] = useState('');
+  const [formTvq, setFormTvq] = useState('');
+  const [formDeductible, setFormDeductible] = useState(true);
   const [formPaymentMethod, setFormPaymentMethod] = useState('Carte bancaire');
   const [formNotes, setFormNotes] = useState('');
   const [formReceiptUrl, setFormReceiptUrl] = useState('');
+
+  // Auto-calculate Canadian taxes based on Province and HT amount
+  const handleAmountOrProvinceChange = (newHt: string, newProv: string) => {
+    setFormAmountHt(newHt);
+    setFormProvince(newProv);
+    const num = parseFloat(newHt) || 0;
+    if (num <= 0) {
+      setFormTps('0.00');
+      setFormTvq('0.00');
+      return;
+    }
+    const tax = calculateTaxes(newProv, num);
+    const tpsHst = (tax.gst + tax.hst).toFixed(2);
+    const tvqPst = (tax.qst + tax.pst).toFixed(2);
+    setFormTps(tpsHst);
+    setFormTvq(tvqPst);
+  };
 
   // OCR & Voice Dictation States
   const [showOcrModal, setShowOcrModal] = useState(false);
@@ -325,7 +347,11 @@ export default function ExpensesPage({
     setFormCategory(expense.category || CATEGORIES[0]);
     setFormProvider(expense.provider || '');
     setFormDate(expense.date || new Date().toISOString().split('T')[0]);
-    setFormAmountHt((expense.amountHt || (expense.total / 1.05)).toFixed(2));
+    setFormProvince(expense.province || 'Québec');
+    setFormAmountHt((expense.amountHt || expense.total).toFixed(2));
+    setFormTps((expense.tps || 0).toFixed(2));
+    setFormTvq((expense.tvq || 0).toFixed(2));
+    setFormDeductible(expense.isEligible !== false);
     setFormPaymentMethod(expense.paymentMethod || 'Carte bancaire');
     setFormNotes(expense.notes || '');
     setFormReceiptUrl(expense.receiptUrl || '');
@@ -337,8 +363,9 @@ export default function ExpensesPage({
     if (!formProvider.trim()) return;
 
     const amountHtNum = parseFloat(formAmountHt) || 0;
-    const tpsNum = parseFloat((amountHtNum * 0.05).toFixed(2));
-    const totalNum = parseFloat((amountHtNum + tpsNum).toFixed(2));
+    const tpsNum = parseFloat(formTps) || 0;
+    const tvqNum = parseFloat(formTvq) || 0;
+    const totalNum = parseFloat((amountHtNum + tpsNum + tvqNum).toFixed(2));
 
     if (editingExpense) {
       const updated: Expense = {
@@ -348,12 +375,14 @@ export default function ExpensesPage({
         date: formDate,
         amountHt: amountHtNum,
         tps: tpsNum,
+        tvq: tvqNum,
         total: totalNum,
+        province: formProvince,
         paymentMethod: formPaymentMethod,
         notes: formNotes.trim() || undefined,
         receiptUrl: formReceiptUrl.trim() || undefined,
-        isEligible: true,
-        taxDeductiblePercentage: 100
+        isEligible: formDeductible,
+        taxDeductiblePercentage: formDeductible ? 100 : 0
       };
 
       if (onUpdateExpense) {
@@ -373,12 +402,14 @@ export default function ExpensesPage({
         date: formDate,
         amountHt: amountHtNum,
         tps: tpsNum,
+        tvq: tvqNum,
         total: totalNum,
+        province: formProvince,
         paymentMethod: formPaymentMethod,
         notes: formNotes.trim() || undefined,
         receiptUrl: formReceiptUrl.trim() || undefined,
-        isEligible: true,
-        taxDeductiblePercentage: 100
+        isEligible: formDeductible,
+        taxDeductiblePercentage: formDeductible ? 100 : 0
       };
 
       onAddExpense(newExpense);
@@ -969,23 +1000,123 @@ export default function ExpensesPage({
                   onChange={(e) => setFormDate(e.target.value)}
                 />
 
-                <Input
-                  label="Montant Hors Taxes (HT $)"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formAmountHt}
-                  onChange={(e) => setFormAmountHt(e.target.value)}
-                />
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                    Province fiscale *
+                  </label>
+                  <select
+                    value={formProvince}
+                    onChange={(e) => handleAmountOrProvinceChange(formAmountHt, e.target.value)}
+                    className="w-full text-xs bg-secondary-50/70 border border-secondary-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-primary-500 transition"
+                  >
+                    <option value="Québec">Québec (TPS 5% + TVQ 9.975%)</option>
+                    <option value="Ontario">Ontario (TVH 13%)</option>
+                    <option value="Alberta">Alberta (TPS 5%)</option>
+                    <option value="Colombie-Britannique">Colombie-Britannique (TPS 5% + TVP 7%)</option>
+                    <option value="Manitoba">Manitoba (TPS 5% + TVP 7%)</option>
+                    <option value="Saskatchewan">Saskatchewan (TPS 5% + TVP 6%)</option>
+                    <option value="Nouvelle-Écosse">Nouvelle-Écosse (TVH 14%)</option>
+                    <option value="Nouveau-Brunswick">Nouveau-Brunswick (TVH 15%)</option>
+                    <option value="Terre-Neuve-et-Labrador">Terre-Neuve-et-Labrador (TVH 15%)</option>
+                    <option value="Île-du-Prince-Édouard">Île-du-Prince-Édouard (TVH 15%)</option>
+                    <option value="Territoires">Territoires (TPS 5%)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Tax estimation banner */}
-              {formAmountHt && parseFloat(formAmountHt) > 0 && (
-                <div className="bg-secondary-50 border border-secondary-200 rounded-xl p-2.5 text-xs text-secondary-700 flex justify-between font-medium">
-                  <span>TPS estimée (5%) : ${(parseFloat(formAmountHt) * 0.05).toFixed(2)}</span>
-                  <span className="font-bold text-secondary-900">Total TTC : ${(parseFloat(formAmountHt) * 1.05).toFixed(2)} $</span>
+              {/* Amounts section (HT, TPS, TVQ) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input
+                  label="Montant Hors Taxes (HT) *"
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="0.00"
+                  value={formAmountHt}
+                  onChange={(e) => handleAmountOrProvinceChange(e.target.value, formProvince)}
+                />
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                      TPS/TVH payée
+                    </label>
+                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">auto</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formTps}
+                    onChange={(e) => setFormTps(e.target.value)}
+                  />
                 </div>
-              )}
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                      {formProvince === 'Québec' ? 'TVQ (9.975%)' : 'TVP / Prov.'}
+                    </label>
+                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">auto</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formTvq}
+                    onChange={(e) => setFormTvq(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Déductible à 100% Toggle */}
+              <div className="flex items-center justify-between p-3 bg-secondary-50 border border-secondary-200 rounded-xl">
+                <div>
+                  <span className="text-xs font-bold text-secondary-900 block">Dépense déductible fiscalement à 100%</span>
+                  <span className="text-[10px] text-secondary-500 font-medium">Donne droit au remboursement des taxes payées (CTI & RTI)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormDeductible(!formDeductible)}
+                  className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                    formDeductible ? 'bg-emerald-600 justify-end' : 'bg-slate-300 justify-start'
+                  }`}
+                >
+                  <span className="bg-white w-4 h-4 rounded-full shadow-md transform transition-transform" />
+                </button>
+              </div>
+
+              {/* Tax estimation banner & total breakdown */}
+              <div className="bg-primary-50/70 border border-primary-200/80 rounded-xl p-3.5 space-y-1.5 text-xs">
+                <div className="flex justify-between text-secondary-600">
+                  <span>Montant Hors Taxes (HT) :</span>
+                  <span className="font-bold text-secondary-900">$ {(parseFloat(formAmountHt) || 0).toFixed(2)} CAD</span>
+                </div>
+                {parseFloat(formTps) > 0 && (
+                  <div className="flex justify-between text-secondary-600">
+                    <span>TPS / TVH calculée :</span>
+                    <span className="font-semibold text-secondary-800">$ {(parseFloat(formTps) || 0).toFixed(2)} CAD</span>
+                  </div>
+                )}
+                {formProvince === 'Québec' && parseFloat(formTvq) > 0 && (
+                  <div className="flex justify-between text-secondary-600">
+                    <span>TVQ (9.975%) calculée :</span>
+                    <span className="font-semibold text-secondary-800">$ {(parseFloat(formTvq) || 0).toFixed(2)} CAD</span>
+                  </div>
+                )}
+                {formProvince !== 'Québec' && parseFloat(formTvq) > 0 && (
+                  <div className="flex justify-between text-secondary-600">
+                    <span>TVP / Taxe provinciale :</span>
+                    <span className="font-semibold text-secondary-800">$ {(parseFloat(formTvq) || 0).toFixed(2)} CAD</span>
+                  </div>
+                )}
+                <div className="border-t border-primary-200 pt-2 flex justify-between items-center text-sm font-black text-secondary-900">
+                  <span>TOTAL TTC :</span>
+                  <span className="text-primary-700 font-black text-base">
+                    $ {((parseFloat(formAmountHt) || 0) + (parseFloat(formTps) || 0) + (parseFloat(formTvq) || 0)).toFixed(2)} CAD
+                  </span>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
