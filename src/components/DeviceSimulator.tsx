@@ -83,6 +83,7 @@ import { downloadInvoicePdf } from '../lib/pdfGenerator';
 import { useRegionalContext } from '../context/RegionalContext';
 import { useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
+import { StartBillLogo, StartBillIcon } from './common/StartBillLogo';
 import { db, auth } from '../lib/firebase';
 import { generateSmartAlerts } from '../lib/alerts';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
@@ -861,21 +862,19 @@ export default function DeviceSimulator({
     return (
       <div className="flex flex-col justify-between h-full">
         <div className="space-y-6">
-          {/* Logo */}
+          {/* Official StartBill Logo */}
           <div className="flex items-center gap-3 px-1 justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white rounded-xl border border-secondary-200/60 shadow-md flex-shrink-0 flex items-center justify-center p-0.5 overflow-hidden">
-                <img 
-                  src="https://lh3.googleusercontent.com/d/1SJiIy3yPrhrfTZUgAAQ_35qJXkV5T_5W" 
-                  alt="StartBill Logo" 
-                  className="w-full h-full object-contain scale-[1.35]"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <span className="text-[31px] font-black tracking-tight select-none leading-none">
-                <span className="text-secondary-900">Start</span>
-                <span className="text-primary-600">Bill</span>
-              </span>
+            <div 
+              onClick={() => { setScreen('dashboard'); if (onItemClick) onItemClick(); }}
+              className="cursor-pointer transition hover:opacity-95"
+              title="StartBill - Ton assistant financier"
+            >
+              <StartBillLogo 
+                variant="horizontal" 
+                size="md" 
+                theme="light" 
+                showTagline={true} 
+              />
             </div>
             {onItemClick && (
               <button 
@@ -1131,19 +1130,21 @@ export default function DeviceSimulator({
           <div className="flex items-center gap-3">
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
-              className="p-1.5 -ml-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition flex items-center justify-center"
+              className="p-1.5 -ml-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition flex items-center justify-center cursor-pointer"
             >
               <Menu className="w-6 h-6" />
             </button>
-            <div className="w-12 h-12 bg-white rounded-xl border border-slate-200 shadow-md flex-shrink-0 flex items-center justify-center p-0.5 overflow-hidden">
-              <img 
-                src="https://lh3.googleusercontent.com/d/1SJiIy3yPrhrfTZUgAAQ_35qJXkV5T_5W" 
-                alt="STARTBILL Logo" 
-                className="w-full h-full object-contain scale-[1.35]"
-                referrerPolicy="no-referrer"
+            <div 
+              onClick={() => setScreen('dashboard')} 
+              className="cursor-pointer transition hover:opacity-95"
+            >
+              <StartBillLogo 
+                variant="horizontal" 
+                size="sm" 
+                theme="dark" 
+                showTagline={false} 
               />
             </div>
-            <span className="text-xl font-black text-white uppercase tracking-wider">STARTBILL</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="bg-blue-500/10 text-blue-400 text-[9px] font-bold px-2 py-0.5 rounded-full border border-blue-500/20">
@@ -1444,7 +1445,7 @@ export default function DeviceSimulator({
                         className="max-h-full max-w-full object-contain" 
                         onError={(e) => { 
                           // fallback
-                          (e.target as HTMLImageElement).src = "https://lh3.googleusercontent.com/d/1SJiIy3yPrhrfTZUgAAQ_35qJXkV5T_5W"; 
+                          (e.target as HTMLImageElement).src = "/startbill-logo.svg"; 
                         }} 
                         referrerPolicy="no-referrer"
                       />

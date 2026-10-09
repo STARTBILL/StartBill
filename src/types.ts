@@ -24,6 +24,8 @@ export interface Invoice {
   amountPaid?: number;
   remainingBalance?: number;
   paymentStatus?: 'paid' | 'partial';
+  userId?: string;
+  stripePaymentUrl?: string;
 }
 
 export interface Expense {

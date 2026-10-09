@@ -117,7 +117,7 @@ export default function ClientsPage({
   const kpiStats = useMemo(() => {
     const totalClients = allClients.length;
     const activeClients = allClients.filter(c => c.status === 'Actif' || c.status === 'active' || c.status === 'Active').length;
-    const lateInvoicesCount = (invoices || []).filter(i => i.status === 'En retard' || i.status === 'overdue').length;
+    const lateInvoicesCount = (invoices || []).filter(i => i.status === 'En retard' || (i.status as string) === 'overdue').length;
     const totalRevenue = (invoices || [])
       .filter(i => i.status === 'Payée' || i.status === 'paid')
       .reduce((sum, inv) => sum + (inv.total || 0), 0);

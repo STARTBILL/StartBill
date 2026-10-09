@@ -3,6 +3,7 @@ import { LayoutDashboard, FileText, Receipt, Users, BarChart3, Settings, Bell, G
 import { ScreenId } from '../../types';
 import { useRegional } from '../../context/RegionalContext';
 import { REGIONS } from '../../data/regions';
+import { StartBillLogo } from '../common/StartBillLogo';
 
 interface WebSidebarProps {
   currentScreen: ScreenId;
@@ -32,15 +33,18 @@ export const WebSidebar: React.FC<WebSidebarProps> = ({
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-4 border-r border-slate-800 hidden md:flex shrink-0">
       <div className="space-y-6">
-        {/* Brand Header */}
-        <div className="flex items-center gap-3 px-2">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-lg">
-            S
-          </div>
-          <div>
-            <div className="font-black text-white text-lg tracking-tight">StartBill</div>
-            <div className="text-[10px] text-blue-400 font-extrabold uppercase tracking-wider">Web-First Pro</div>
-          </div>
+        {/* Brand Header with Official StartBill Logo */}
+        <div 
+          onClick={() => setScreen('dashboard')}
+          className="px-2 py-1.5 cursor-pointer transition hover:opacity-90"
+          title="StartBill - Ton assistant financier"
+        >
+          <StartBillLogo 
+            variant="horizontal" 
+            size="sm" 
+            theme="dark" 
+            showTagline={true} 
+          />
         </div>
 
         {/* Region Badge */}

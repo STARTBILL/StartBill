@@ -29,6 +29,7 @@ import { Invoice, Client, ScreenId, InvoiceStatus } from '../types';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { downloadInvoicePdf } from '../lib/pdfGenerator';
+import { StartBillLogo } from './common/StartBillLogo';
 
 interface PaymentsPageProps {
   invoices: Invoice[];
@@ -1022,8 +1023,8 @@ export default function PaymentsPage({
             <div className="p-6 text-slate-800 space-y-5 text-xs" id="printable-receipt">
               {/* Receipt Header */}
               <div className="flex justify-between items-start border-b border-slate-200 pb-4">
-                <div>
-                  <h4 className="text-base font-black text-slate-900 tracking-tight">STARTBILL</h4>
+                <div className="space-y-1">
+                  <StartBillLogo variant="horizontal" size="xs" showTagline={false} />
                   <p className="text-[10px] text-slate-500 font-semibold">{companyName}</p>
                 </div>
                 <div className="text-right">

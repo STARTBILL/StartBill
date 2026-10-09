@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ScreenId } from '../types';
 import { REGIONS } from '../data/regions';
 import { Globe, Check, ArrowRight, ShieldCheck, CreditCard, Sparkles, ChevronLeft } from 'lucide-react';
+import { StartBillLogo } from './common/StartBillLogo';
 
 interface ChooseRegionPageProps {
   currentRegionId?: 'canada' | 'afrique' | 'haiti';
@@ -86,11 +87,12 @@ export default function ChooseRegionPage({
                 <ChevronLeft className="w-4 h-4" />
               </button>
             )}
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setScreen && setScreen('landing')}>
-              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-black text-sm flex items-center justify-center">
-                S
-              </div>
-              <span className="text-lg font-black text-white tracking-tight">StartBill</span>
+            <div 
+              className="cursor-pointer transition hover:opacity-90" 
+              onClick={() => setScreen && setScreen('landing')}
+              title="StartBill - Ton assistant financier"
+            >
+              <StartBillLogo variant="horizontal" size="xs" theme="dark" showTagline={false} />
             </div>
           </div>
 

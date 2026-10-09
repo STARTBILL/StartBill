@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none">
+  <defs>
+    <!-- Canopy linear gradients -->
+    <linearGradient id="canopyBack" x1="120" y1="20" x2="120" y2="105" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+
+    <linearGradient id="panelFarLeft" x1="40" y1="35" x2="80" y2="105" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+
+    <linearGradient id="panelCenterLeft" x1="75" y1="20" x2="115" y2="105" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#0EA5E9"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+
+    <linearGradient id="panelCenterRight" x1="120" y1="20" x2="165" y2="105" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0EA5E9"/>
+      <stop offset="60%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+
+    <linearGradient id="panelFarRight" x1="160" y1="35" x2="200" y2="105" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1D4ED8"/>
+      <stop offset="100%" stop-color="#1E3A8A"/>
+    </linearGradient>
+
+    <linearGradient id="paperGrad" x1="120" y1="110" x2="120" y2="185" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F9FF"/>
+    </linearGradient>
+
+    <linearGradient id="paperFold" x1="120" y1="165" x2="155" y2="195" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0284C7"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#0284C7" flood-opacity="0.25"/>
+    </filter>
+
+    <filter id="billShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.05   0 0 0 0 0.1   0 0 0 0 0.25  0 0 0 0.15 0"/>
+    </filter>
+  </defs>
+
+  <!-- Ground drop shadow of floating bill -->
+  <ellipse cx="120" cy="204" rx="36" ry="5.5" fill="#0F172A" opacity="0.12" filter="url(#billShadow)" />
+
+  <!-- 1. Canopy Interior / Underside Opening -->
+  <path d="M 46 98 C 70 108 170 108 194 98 C 182 110 58 110 46 98 Z" fill="url(#canopyBack)" />
+
+  <!-- 2. Parachute Canopy Panels -->
+  <!-- Far Left Panel -->
+  <path d="M 120 22 C 86 22 56 50 46 98 C 62 103 76 100 84 94 C 74 52 96 30 120 22 Z" 
+        fill="url(#panelFarLeft)" stroke="#172554" stroke-width="3" stroke-linejoin="round" />
+
+  <!-- Center Left Panel (Highlighted / Bright) -->
+  <path d="M 120 22 C 96 30 74 52 84 94 C 98 100 112 101 120 101 C 120 70 119 38 120 22 Z" 
+        fill="url(#panelCenterLeft)" stroke="#172554" stroke-width="3" stroke-linejoin="round" />
+
+  <!-- Center Right Panel -->
+  <path d="M 120 22 C 119 38 120 70 120 101 C 128 101 142 100 156 94 C 166 52 144 30 120 22 Z" 
+        fill="url(#panelCenterRight)" stroke="#172554" stroke-width="3" stroke-linejoin="round" />
+
+  <!-- Far Right Panel -->
+  <path d="M 120 22 C 144 30 166 52 156 94 C 164 100 178 103 194 98 C 184 50 154 22 120 22 Z" 
+        fill="url(#panelFarRight)" stroke="#172554" stroke-width="3" stroke-linejoin="round" />
+
+  <!-- Canopy Outer Outline & Glossy Rim Accent -->
+  <path d="M 46 98 C 56 50 86 22 120 22 C 154 22 184 50 194 98" 
+        fill="none" stroke="#0F172A" stroke-width="4" stroke-linecap="round" />
+
+  <!-- Specular highlight on canopy dome -->
+  <path d="M 72 40 C 86 30 104 25 118 24" 
+        fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" opacity="0.65" />
+
+  <!-- 3. Parachute Suspension Lines (Cords) -->
+  <!-- Left Outer Cord -->
+  <path d="M 50 99 L 92 128" stroke="#1D4ED8" stroke-width="3.2" stroke-linecap="round" />
+  <!-- Left Inner Cord -->
+  <path d="M 84 96 L 98 127" stroke="#1D4ED8" stroke-width="3" stroke-linecap="round" />
+  <!-- Right Inner Cord -->
+  <path d="M 156 96 L 142 127" stroke="#1D4ED8" stroke-width="3" stroke-linecap="round" />
+  <!-- Right Outer Cord -->
+  <path d="M 190 99 L 148 128" stroke="#1D4ED8" stroke-width="3.2" stroke-linecap="round" />
+
+  <!-- Subtle White Inner Glow on Cords for Contrast -->
+  <path d="M 50 99 L 92 128" stroke="#93C5FD" stroke-width="1.2" stroke-linecap="round" />
+  <path d="M 84 96 L 98 127" stroke="#93C5FD" stroke-width="1.2" stroke-linecap="round" />
+  <path d="M 156 96 L 142 127" stroke="#93C5FD" stroke-width="1.2" stroke-linecap="round" />
+  <path d="M 190 99 L 148 128" stroke="#93C5FD" stroke-width="1.2" stroke-linecap="round" />
+
+  <!-- 4. Floating Bill Payload with 3D Folded Back Paper Effect -->
+  <g filter="url(#softGlow)">
+    <!-- Folded paper 3D back curl / shadow -->
+    <path d="M 132 178 C 146 178 156 168 152 154 C 150 148 144 144 138 143 L 138 174 C 138 177 135 178 132 178 Z" 
+          fill="url(#paperFold)" stroke="#172554" stroke-width="3" stroke-linejoin="round" />
+
+    <!-- Main Front Paper Sheet -->
+    <path d="M 86 126 L 144 124 C 148 124 151 127 151 131 L 146 172 C 145 178 140 182 134 183 L 94 189 C 89 190 85 186 84 181 L 80 133 C 79 129 82 126 86 126 Z" 
+          fill="url(#paperGrad)" stroke="#172554" stroke-width="3.8" stroke-linejoin="round" />
+
+    <!-- Top attachment tabs -->
+    <circle cx="89" cy="129" r="2.5" fill="#1D4ED8" />
+    <circle cx="142" cy="127" r="2.5" fill="#1D4ED8" />
+
+    <!-- Dollar Symbol ($) on the Document -->
+    <!-- Vertical stem -->
+    <path d="M 115 137 L 115 173" stroke="#0284C7" stroke-width="3.8" stroke-linecap="round" />
+    <!-- Dollar 'S' curve -->
+    <path d="M 124 146 C 124 141 120 138 115 138 C 109 138 105 142 105 147 C 105 154 112 155 117 157 C 122 159 126 161 126 166 C 126 171 121 173 115 173 C 109 173 104 170 104 164" 
+          fill="none" stroke="#0284C7" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Invoice, Expense, Client, ScreenId, InvoiceStatus } from './types';
 import { INITIAL_INVOICES, INITIAL_EXPENSES, INITIAL_CLIENTS } from './data';
 import DeviceSimulator from './components/DeviceSimulator';
@@ -18,6 +19,7 @@ import {
 
 import { RegionalProvider } from './context/RegionalContext';
 import { AuthProvider } from './context/AuthContext';
+import { auth } from './firebase/config';
 
 export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
@@ -33,27 +35,36 @@ export default function App() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
 
-  // Sync data with Firestore on mount
+  // Sync data with Firestore strictly isolated by user ID
   useEffect(() => {
-    async function loadFirebaseData() {
-      try {
-        setIsLoading(true);
-        const [dbInvoices, dbExpenses, dbClients] = await Promise.all([
-          getInvoicesFromFirestore(),
-          getExpensesFromFirestore(),
-          getClientsFromFirestore()
-        ]);
-        setInvoices(dbInvoices);
-        setExpenses(dbExpenses);
-        setClients(dbClients);
-        setIsDbConnected(true);
-      } catch (err) {
-        console.error('Error loading data from Firebase:', err);
-      } finally {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user && !user.isAnonymous) {
+        try {
+          setIsLoading(true);
+          const [dbInvoices, dbExpenses, dbClients] = await Promise.all([
+            getInvoicesFromFirestore(user.uid),
+            getExpensesFromFirestore(user.uid),
+            getClientsFromFirestore(user.uid)
+          ]);
+          setInvoices(dbInvoices);
+          setExpenses(dbExpenses);
+          setClients(dbClients);
+          setIsDbConnected(true);
+        } catch (err) {
+          console.error('Error loading data from Firebase:', err);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        // Logged out / unauthenticated: strictly empty workspace
+        setInvoices([]);
+        setExpenses([]);
+        setClients([]);
         setIsLoading(false);
       }
-    }
-    loadFirebaseData();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Interactive CRUD updates with user isolation

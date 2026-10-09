@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { useRegionalContext } from '../context/RegionalContext';
+import { StartBillLogo, StartBillIcon } from './common/StartBillLogo';
 
 interface WelcomeDashboardPageProps {
   setScreen: (screen: ScreenId) => void;
@@ -111,27 +112,28 @@ export default function WelcomeDashboardPage({
                 </div>
               </div>
 
-              {/* Header Title */}
-              <div className="relative z-10 space-y-1">
-                <p className="text-xs sm:text-sm font-semibold text-slate-700">
-                  Bienvenue dans
-                </p>
-                <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                  <span className="text-2xl sm:text-3xl font-black text-[#2A4BDE] tracking-tight">
-                    StartBill
-                  </span>
-                  <span className="text-2xl sm:text-3xl font-black text-[#DC2626] flex items-center gap-1">
-                    Canada <span className="text-xl">🍁</span>
+              {/* Header Title with Official StartBill Emblem */}
+              <div className="relative z-10 space-y-2 flex flex-col items-center">
+                <div className="mb-1 transform hover:scale-105 transition-transform duration-300">
+                  <StartBillIcon className="w-16 h-16 sm:w-20 sm:h-20" />
+                </div>
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">START</span>
+                  <span className="text-2xl sm:text-3xl font-black text-[#0284C7] tracking-tight">BILL</span>
+                  <span className="text-xl sm:text-2xl font-black text-red-600 flex items-center gap-1 ml-1">
+                    Canada 🍁
                   </span>
                 </div>
               </div>
 
               {/* Tagline */}
-              <div className="relative z-10 mt-3 space-y-1.5">
-                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 leading-snug">
-                  Ton assistant financier <br />
-                  pour une tranquillité d’esprit toute l’année
+              <div className="relative z-10 mt-2 space-y-1">
+                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 leading-snug">
+                  Ton assistant financier
                 </h2>
+                <p className="text-xs text-slate-600 font-semibold">
+                  Pour une tranquillité d’esprit toute l’année
+                </p>
                 <p className="text-[11px] sm:text-xs text-slate-500 font-medium max-w-xs mx-auto leading-relaxed">
                   StartBill t’aide à facturer, suivre tes paiements et préparer tes taxes automatiquement pour arriver serein à la période des impôts.
                 </p>

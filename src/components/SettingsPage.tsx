@@ -29,12 +29,14 @@ import {
   Copy,
   ChevronRight,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  KeyRound
 } from 'lucide-react';
 import { Invoice, Expense, Client, ProductItem, ScreenId } from '../types';
 import { REGIONS } from '../data/regions';
 import { useRegionalContext } from '../context/RegionalContext';
 import { useAuth } from '../context/AuthContext';
+import { getStripeConfig, StripeConfigResponse } from '../lib/stripeService';
 
 export type SupportedRegion = 'canada' | 'afrique' | 'haiti';
 
@@ -113,14 +115,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   );
 
   // Interac & Banking states
-  const [interacEmail, setInteracEmail] = useState(() => localStorage.getItem('sb_interac_email') || 'paiements@startbill.ca');
+  const [interacEmail, setInteracEmail] = useState(() => localStorage.getItem('sb_interac_email') || '');
   const [interacAutoDeposit, setInteracAutoDeposit] = useState(() => localStorage.getItem('sb_interac_autodeposit') !== 'false');
-  const [bankInstitution, setBankInstitution] = useState(() => localStorage.getItem('sb_bank_institution') || '003 (RBC)');
-  const [bankTransit, setBankTransit] = useState(() => localStorage.getItem('sb_bank_transit') || '12345');
-  const [bankAccount, setBankAccount] = useState(() => localStorage.getItem('sb_bank_account') || '1234567');
-  const [tpsNumber, setTpsNumber] = useState(() => localStorage.getItem('sb_tax_tps') || '123456789 RT0001');
-  const [tvqNumber, setTvqNumber] = useState(() => localStorage.getItem('sb_tax_tvq') || '1234567890 TQ0001');
+  const [bankInstitution, setBankInstitution] = useState(() => localStorage.getItem('sb_bank_institution') || '');
+  const [bankTransit, setBankTransit] = useState(() => localStorage.getItem('sb_bank_transit') || '');
+  const [bankAccount, setBankAccount] = useState(() => localStorage.getItem('sb_bank_account') || '');
+  const [tpsNumber, setTpsNumber] = useState(() => localStorage.getItem('sb_tax_tps') || '');
+  const [tvqNumber, setTvqNumber] = useState(() => localStorage.getItem('sb_tax_tvq') || '');
   const [isSmallSupplierExempt, setIsSmallSupplierExempt] = useState(() => localStorage.getItem('sb_tax_small_supplier') === 'true');
+
+  // Stripe & Access Policy status
+  const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
+  const [stripeCardPaymentsEnabled, setStripeCardPaymentsEnabled] = useState(() => localStorage.getItem('sb_stripe_card_enabled') !== 'false');
+
+  useEffect(() => {
+    getStripeConfig().then(cfg => setStripeConfig(cfg)).catch(() => {});
+  }, []);
 
   // Save all custom settings to localStorage
   const handleSaveSettings = () => {
@@ -451,7 +461,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       src={companyLogo} 
                       alt="Logo" 
                       className="w-full h-full object-contain" 
-                      onError={(e) => { (e.target as HTMLImageElement).src = "https://lh3.googleusercontent.com/d/1SJiIy3yPrhrfTZUgAAQ_35qJXkV5T_5W"; }} 
+                      onError={(e) => { (e.target as HTMLImageElement).src = "/startbill-logo.svg"; }} 
                       referrerPolicy="no-referrer" 
                     />
                   ) : (
@@ -899,6 +909,96 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Stripe Card Payment Gateway & Access Policies Card */}
+          <div className="md:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#635BFF]/10 text-[#635BFF] flex items-center justify-center font-bold shrink-0">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <span>Passerelle de Paiement Stripe (Cartes de Crédit / Débit)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Encaissement en ligne instantané de vos factures avec sécurité bancaire renforcée.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
+                  stripeConfig?.keyType === 'restricted'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : (stripeConfig?.isConfigured ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-slate-100 text-slate-600')
+                }`}>
+                  {stripeConfig?.keyType === 'restricted'
+                    ? 'Clé Restreinte Active (PoLP)'
+                    : (stripeConfig?.isConfigured ? 'Clé Standard Active' : 'Non configurée')}
+                </span>
+                <a
+                  href="https://docs.stripe.com/keys#access-policies"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-bold text-[#635BFF] hover:text-[#5046e5] inline-flex items-center gap-1"
+                >
+                  <span>Doc Politiques d'Accès</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={stripeCardPaymentsEnabled}
+                    onChange={(e) => {
+                      setStripeCardPaymentsEnabled(e.target.checked);
+                      localStorage.setItem('sb_stripe_card_enabled', String(e.target.checked));
+                      triggerToast(e.target.checked ? 'Paiements Stripe par carte activés sur les factures !' : 'Paiements Stripe désactivés.');
+                    }}
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 mt-0.5 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="font-bold text-slate-900 block">
+                      Autoriser le règlement en ligne par Carte Bancaire
+                    </span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Ajoute un bouton de paiement sécurisé Stripe direct sur chaque facture transmise à vos clients.
+                    </span>
+                  </div>
+                </label>
+
+                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500">Cartes acceptées :</span>
+                  <span className="font-bold text-slate-700">Visa, MasterCard, Amex, Apple Pay, Google Pay</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-indigo-50/60 border border-indigo-100 space-y-2">
+                <div className="flex items-center gap-2 text-indigo-900 font-extrabold text-xs">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                  <span>Architecture Sécurisée selon https://docs.stripe.com/keys#access-policies</span>
+                </div>
+                <p className="text-[11px] text-indigo-800 leading-relaxed font-medium">
+                  Les Restricted Keys Stripe appliquent le principe du moindre privilège : la clé autorise uniquement la création de sessions de règlement et ne dispose d'aucun droit sur vos soldes ou comptes bancaires.
+                </p>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setScreen('admin')}
+                    className="text-xs font-bold text-indigo-700 hover:text-indigo-900 inline-flex items-center gap-1 underline underline-offset-2 cursor-pointer"
+                  >
+                    <span>Gérer les clés et auditer les permissions dans l'Espace Admin</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1089,7 +1189,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               <div className="p-3.5 bg-indigo-50/60 border border-indigo-200 rounded-xl">
                 <div className="text-[10px] font-bold text-indigo-700 uppercase">Utilisateur Connecté</div>
                 <div className="text-sm font-black text-indigo-950 mt-0.5 truncate">
-                  {authUser?.email || 'ferline@startbill.com'}
+                  {authUser?.email || 'Compte Entreprise'}
                 </div>
                 <div className="text-[10px] text-indigo-700 mt-1">Rôle : Propriétaire du compte</div>
               </div>

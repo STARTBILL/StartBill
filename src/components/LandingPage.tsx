@@ -20,6 +20,7 @@ import {
   Clock
 } from 'lucide-react';
 import { ScreenId } from '../types';
+import { StartBillLogo, StartBillIcon } from './common/StartBillLogo';
 
 interface LandingPageProps {
   setScreen: (screen: ScreenId) => void;
@@ -48,15 +49,13 @@ export default function LandingPage({
       
       {/* Top Header */}
       <header className="w-full max-w-7xl mx-auto px-5 sm:px-8 pt-5 pb-4 flex items-center justify-between border-b border-slate-100 lg:border-none">
-        {/* Logo */}
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setScreen('landing')}>
-          <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-black text-lg flex items-center justify-center shadow-sm">
-            S
-          </div>
-          <div className="flex items-center">
-            <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Start</span>
-            <span className="text-xl sm:text-2xl font-black text-[#2563EB] tracking-tight">Bill</span>
-          </div>
+        {/* Official StartBill Logo */}
+        <div 
+          className="cursor-pointer transition hover:opacity-95" 
+          onClick={() => setScreen('landing')}
+          title="StartBill - Ton assistant financier"
+        >
+          <StartBillLogo variant="horizontal" size="md" showTagline={true} />
         </div>
 
         {/* Desktop Navigation Links */}
@@ -240,8 +239,8 @@ export default function LandingPage({
               {/* Left Mockup Mini Sidebar */}
               <div className="w-8 sm:w-10 flex flex-col items-center justify-between py-1 border-r border-slate-100 pr-2 sm:pr-3 flex-shrink-0">
                 <div className="space-y-3 flex flex-col items-center">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#4F46E5] text-white font-black text-xs flex items-center justify-center shadow-xs">
-                    S
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center shrink-0">
+                    <StartBillIcon className="w-full h-full" />
                   </div>
                   <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-[#ECFDF5] text-[#059669] flex items-center justify-center">
                     <Home className="w-3.5 h-3.5" />
@@ -443,9 +442,8 @@ export default function LandingPage({
       {/* Footer */}
       <footer className="w-full border-t border-slate-200/70 bg-white py-6 mt-8">
         <div className="max-w-7xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-800">StartBill Pro</span>
-            <span>• Facturation intelligente & gestion multi-régionale</span>
+          <div className="flex items-center gap-3">
+            <StartBillLogo variant="horizontal" size="xs" showTagline={true} />
           </div>
           <div className="flex items-center gap-6">
             <button type="button" onClick={() => setScreen('choose_region')} className="hover:text-blue-600 transition cursor-pointer">

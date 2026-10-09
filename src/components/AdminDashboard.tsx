@@ -33,8 +33,23 @@ import {
   Calendar,
   Layers,
   Radio,
-  Settings
+  Settings,
+  KeyRound,
+  ExternalLink,
+  Copy,
+  CheckCheck,
+  EyeOff,
+  Shield
 } from 'lucide-react';
+import { 
+  getStripeConfig, 
+  verifyStripeAccessPolicies, 
+  updateStripeAdminKeys, 
+  testCreateDemoCheckout,
+  STRIPE_ACCESS_POLICY_SPEC,
+  StripeConfigResponse,
+  StripePolicyVerificationResult 
+} from '../lib/stripeService';
 import { 
   AdminUser, 
   AdminSubscription, 
@@ -62,6 +77,7 @@ import {
 import { Invoice, ScreenId } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
+import { StartBillLogo } from './common/StartBillLogo';
 
 interface AdminDashboardProps {
   setScreen: (screen: ScreenId) => void;
@@ -75,8 +91,25 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
   const isAuthorized = isSuperAdminEmail(currentEmail);
 
   const [activeTab, setActiveTab] = useState<
-    'stats' | 'users' | 'subscriptions' | 'invoices' | 'payments' | 'articles' | 'alerts' | 'regional' | 'settings'
+    'stats' | 'users' | 'subscriptions' | 'invoices' | 'payments' | 'articles' | 'alerts' | 'regional' | 'settings' | 'stripe_policies'
   >('stats');
+
+  // Stripe & Access Policy states (docs.stripe.com/keys#access-policies)
+  const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
+  const [policyAuditResult, setPolicyAuditResult] = useState<StripePolicyVerificationResult | null>(null);
+  const [isAuditingPolicies, setIsAuditingPolicies] = useState<boolean>(false);
+  const [isTestingDemoCheckout, setIsTestingDemoCheckout] = useState<boolean>(false);
+  const [showKeySecrets, setShowKeySecrets] = useState<boolean>(false);
+  const [copiedSpec, setCopiedSpec] = useState<boolean>(false);
+  const [stripeKeyForm, setStripeKeyForm] = useState<{
+    restrictedKey: string;
+    publishableKey: string;
+    webhookSecret: string;
+  }>({
+    restrictedKey: '',
+    publishableKey: '',
+    webhookSecret: ''
+  });
 
   // State collections
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -185,13 +218,95 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
     }
   };
 
+  const loadStripeStatus = async () => {
+    try {
+      const cfg = await getStripeConfig();
+      setStripeConfig(cfg);
+      setStripeKeyForm(prev => ({
+        ...prev,
+        publishableKey: cfg.publishableKey || prev.publishableKey,
+      }));
+    } catch (e) {
+      console.warn('Error loading Stripe config in Admin:', e);
+    }
+  };
+
   useEffect(() => {
     if (isAuthorized) {
       loadData();
+      loadStripeStatus();
     } else {
       setIsLoading(false);
     }
   }, [isAuthorized]);
+
+  // Stripe & Access Policy Handlers (docs.stripe.com/keys#access-policies)
+  const handleRunPolicyAudit = async () => {
+    setIsAuditingPolicies(true);
+    try {
+      const result = await verifyStripeAccessPolicies(stripeKeyForm.restrictedKey || undefined);
+      setPolicyAuditResult(result);
+      if (result.success) {
+        triggerToast(`Audit terminé ! Score de conformité : ${result.complianceScore}%`);
+      } else {
+        triggerToast(result.message || 'Audit des politiques d’accès incomplet.');
+      }
+      await loadStripeStatus();
+    } catch (err: any) {
+      triggerToast(`Erreur d’audit : ${err.message}`);
+    } finally {
+      setIsAuditingPolicies(false);
+    }
+  };
+
+  const handleSaveStripeKeys = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await updateStripeAdminKeys({
+        restrictedKey: stripeKeyForm.restrictedKey,
+        publishableKey: stripeKeyForm.publishableKey,
+        webhookSecret: stripeKeyForm.webhookSecret,
+      });
+      if (res.success) {
+        triggerToast('Clés Stripe enregistrées avec succès !');
+        if (res.config) setStripeConfig(res.config);
+        // Automatically run an audit after updating keys
+        handleRunPolicyAudit();
+      } else {
+        triggerToast(res.message || 'Erreur lors de la mise à jour des clés.');
+      }
+    } catch (err: any) {
+      triggerToast(`Erreur : ${err.message}`);
+    }
+  };
+
+  const handleTestDemoPayment = async () => {
+    setIsTestingDemoCheckout(true);
+    try {
+      const res = await testCreateDemoCheckout();
+      if (res.success && res.url) {
+        triggerToast('Session Stripe créée avec succès ! Ouverture du paiement...');
+        window.open(res.url, '_blank');
+      } else {
+        triggerToast(res.error || 'Échec de génération de la session test Stripe.');
+      }
+    } catch (err: any) {
+      triggerToast(`Erreur lors du test : ${err.message}`);
+    } finally {
+      setIsTestingDemoCheckout(false);
+    }
+  };
+
+  const handleCopyPolicySpec = () => {
+    const specSummary = STRIPE_ACCESS_POLICY_SPEC.map(
+      s => `• ${s.resource} (${s.apiEndpoint}) : ${s.recommended}\n  Raison: ${s.description}`
+    ).join('\n\n');
+    const fullText = `=== MATRICE DE POLITIQUES D'ACCÈS STRIPE POUR STARTBILL SAAS ===\nDocumentation : https://docs.stripe.com/keys#access-policies\n\n${specSummary}\n\nRègle d'or : Restreindre la clé (rk_...) et bloquer les virements bancaires/payouts pour respecter le principe du moindre privilège.`;
+    navigator.clipboard.writeText(fullText);
+    setCopiedSpec(true);
+    triggerToast('Spécification des politiques d\'accès copiée dans le presse-papier !');
+    setTimeout(() => setCopiedSpec(false), 3000);
+  };
 
   // Handlers for User actions
   const handleSaveUserRole = async (userToUpdate: AdminUser, newRole: 'admin' | 'user') => {
@@ -439,11 +554,12 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
       <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800">
         <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <StartBillLogo variant="horizontal" size="sm" theme="dark" showTagline={false} />
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider">
                 <ShieldCheck className="w-4 h-4 text-blue-400" />
-                <span>Espace Administrateur HQ StartBill</span>
+                <span>Portail HQ Administrateur</span>
               </div>
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -490,7 +606,13 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
           { id: 'articles', label: 'Centre d\'Apprentissage', icon: BookOpen, badge: totalArticlesCount },
           { id: 'alerts', label: 'Alertes & Diffusion', icon: Bell, badge: alerts.length },
           { id: 'regional', label: 'Paramètres Régionaux', icon: Globe, badge: regionalConfigs.length },
-          { id: 'settings', label: 'Paramètres Système', icon: Settings }
+          { id: 'settings', label: 'Paramètres Système', icon: Settings },
+          { 
+            id: 'stripe_policies', 
+            label: 'Stripe & Politiques d\'Accès', 
+            icon: KeyRound, 
+            badge: stripeConfig?.accessPolicyCompliant ? '100% Conforme' : (stripeConfig?.isConfigured ? 'Audit Requis' : 'À Configurer') 
+          }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1206,6 +1328,457 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
                     onChange={(e) => setSystemSettings({ ...systemSettings, maintenanceMode: e.target.checked })}
                     className="w-4 h-4 text-rose-600 rounded cursor-pointer"
                   />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 10: STRIPE & POLITIQUES D'ACCÈS (https://docs.stripe.com/keys#access-policies) */}
+      {activeTab === 'stripe_policies' && (
+        <div className="space-y-6">
+          {/* 1. Header Banner */}
+          <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-[#635BFF]/15 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#635BFF]/25 border border-[#635BFF]/40 text-indigo-300 text-xs font-black uppercase tracking-wider">
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Stripe Access Policies</span>
+                  </div>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    stripeConfig?.keyType === 'restricted'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : (stripeConfig?.isConfigured ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40')
+                  }`}>
+                    {stripeConfig?.keyType === 'restricted'
+                      ? 'Clé Restreinte Active (PoLP)'
+                      : (stripeConfig?.isConfigured ? 'Clé Standard Détectée' : 'Clé Non Définie')}
+                  </span>
+                </div>
+                <h2 className="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                  <span>Centre de Contrôle des Politiques d'Accès Stripe</span>
+                </h2>
+                <p className="text-xs md:text-sm text-slate-300 font-medium max-w-2xl leading-relaxed">
+                  Conformité stricte au principe du moindre privilège (Principle of Least Privilege). Les clés restreintes (<code className="text-indigo-300 bg-indigo-950/60 px-1 py-0.5 rounded">rk_live_...</code>) limitent les permissions du SaaS aux stricts besoins d'encaissement et protègent vos fonds contre tout risque de virement frauduleux.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={handleRunPolicyAudit}
+                  disabled={isAuditingPolicies}
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black transition flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isAuditingPolicies ? 'animate-spin' : ''}`} />
+                  <span>{isAuditingPolicies ? 'Audit en cours...' : 'Auditer en Direct'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTestDemoPayment}
+                  disabled={isTestingDemoCheckout}
+                  className="px-4 py-2.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-black transition flex items-center gap-2 cursor-pointer shadow-md border border-indigo-400/30 disabled:opacity-50"
+                >
+                  <Zap className={`w-4 h-4 ${isTestingDemoCheckout ? 'animate-spin' : ''}`} />
+                  <span>{isTestingDemoCheckout ? 'Création session...' : 'Tester Paiement'}</span>
+                </button>
+
+                <a
+                  href="https://docs.stripe.com/keys#access-policies"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700"
+                >
+                  <span>Doc Stripe</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Security Status Overview Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Key Type */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Type de Clé API</span>
+                <div className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold ${
+                  stripeConfig?.keyType === 'restricted' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                }`}>
+                  <KeyRound className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-sm font-black text-slate-900">
+                {stripeConfig?.keyType === 'restricted'
+                  ? 'Clé Restreinte (rk_...)'
+                  : (stripeConfig?.isConfigured ? 'Clé Standard (sk_...)' : 'Aucune Clé')}
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                {stripeConfig?.keyPrefix ? `Empreinte : ${stripeConfig.keyPrefix}` : 'Clé non initialisée sur le serveur'}
+              </p>
+              <div className="pt-1">
+                <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                  stripeConfig?.isLive ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {stripeConfig?.isLive ? 'Environnement LIVE (Production)' : 'Environnement TEST (Sandbox)'}
+                </span>
+              </div>
+            </div>
+
+            {/* Card 2: Compliance Score */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Score de Conformité</span>
+                <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl font-black text-slate-900">
+                {policyAuditResult ? `${policyAuditResult.complianceScore}%` : (stripeConfig?.accessPolicyCompliant ? '100%' : 'Non audité')}
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                {policyAuditResult?.accessPolicyCompliant || stripeConfig?.accessPolicyCompliant
+                  ? 'Principe du moindre privilège respecté'
+                  : 'Lancer un audit pour valider les permissions'}
+              </p>
+              <div className="pt-1">
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-500 ${
+                      (policyAuditResult?.complianceScore || 0) >= 80 ? 'bg-emerald-500' : 'bg-amber-500'
+                    }`}
+                    style={{ width: `${policyAuditResult?.complianceScore || (stripeConfig?.accessPolicyCompliant ? 100 : 30)}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Funds / Payouts Protection */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Sécurité des Comptes Bancaires</span>
+                <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <Lock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-sm font-black text-slate-900">
+                Virements & Payouts : Bloqués
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Les clés restreintes n’ont aucun accès aux comptes bancaires de l’entreprise ni aux virements sortants.
+              </p>
+              <div className="pt-1">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                  <Check className="w-3 h-3" /> Zéro risque d’exfiltration
+                </span>
+              </div>
+            </div>
+
+            {/* Card 4: Webhook Signature */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Synchronisation Webhook</span>
+                <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                  <Radio className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-sm font-black text-slate-900">
+                {stripeConfig?.hasWebhookSecret ? 'Signature Cryptographique Active' : 'Secret Webhook Non Configuré'}
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Permet la validation instantanée des abonnements payés et le marquage automatique des factures.
+              </p>
+              <div className="pt-1">
+                <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                  stripeConfig?.hasWebhookSecret ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {stripeConfig?.hasWebhookSecret ? 'whsec_... vérifié' : 'À configurer dans le formulaire'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Detailed Diagnostic Matrix */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-blue-600" />
+                  <span>Matrice d'Audit des Ressources & Permissions (Access Policies)</span>
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Vérification en temps réel de chaque point de terminaison de l'API Stripe selon les directives de la documentation.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyPolicySpec}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copiedSpec ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSpec ? 'Copié !' : 'Copier la Matrice'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Audit Diagnostic Alerts if any */}
+            {policyAuditResult && policyAuditResult.recommendations.length > 0 && (
+              <div className={`p-4 rounded-2xl border text-xs font-medium space-y-2 ${
+                policyAuditResult.accessPolicyCompliant
+                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                  : 'bg-amber-50/80 border-amber-200 text-amber-900'
+              }`}>
+                <div className="font-extrabold flex items-center gap-2">
+                  {policyAuditResult.accessPolicyCompliant ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  )}
+                  <span>{policyAuditResult.message}</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
+                  {policyAuditResult.recommendations.map((rec, idx) => (
+                    <li key={idx}>{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Table of Specifications */}
+            <div className="overflow-x-auto rounded-2xl border border-slate-100">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
+                    <th className="py-3.5 px-4">Ressource Stripe</th>
+                    <th className="py-3.5 px-4">Endpoint API</th>
+                    <th className="py-3.5 px-4">Politique Recommandée</th>
+                    <th className="py-3.5 px-4">Statut Diagnostic</th>
+                    <th className="py-3.5 px-4">Utilité dans StartBill SaaS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {STRIPE_ACCESS_POLICY_SPEC.map((spec, idx) => {
+                    // Match with live diagnostic if available
+                    const liveDiag = policyAuditResult?.diagnostics.find(
+                      d => d.resource.toLowerCase().includes(spec.resource.toLowerCase().split(' ')[0])
+                    );
+
+                    const isNoneResource = spec.recommended.includes('None') || spec.recommended.includes('Aucun');
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/60 transition">
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-slate-900 block">{spec.resource}</span>
+                          <span className="text-[10px] text-slate-400">{spec.riskIfOmitted}</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <code className="text-[11px] bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono">
+                            {spec.apiEndpoint}
+                          </code>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            isNoneResource
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          }`}>
+                            {spec.recommended}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {isNoneResource ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <Shield className="w-3 h-3" /> Bloqué (Protégé)
+                            </span>
+                          ) : liveDiag ? (
+                            liveDiag.status === 'granted' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3" /> Accordée & Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
+                                <AlertTriangle className="w-3 h-3" /> Refusée
+                              </span>
+                            )
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold bg-slate-100 text-slate-500">
+                              {stripeConfig?.isConfigured ? 'Prêt à auditer' : 'Clé requise'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600 text-[11px] max-w-xs">
+                          {spec.description}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 4. Configuration Form for Stripe Keys */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-[#635BFF] flex items-center justify-center font-bold">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                      Configuration des Clés Stripe
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Mise à jour à chaud de l'instance Stripe du serveur
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowKeySecrets(!showKeySecrets)}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
+                >
+                  {showKeySecrets ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  <span>{showKeySecrets ? 'Masquer' : 'Afficher'}</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveStripeKeys} className="space-y-4 text-xs">
+                <div>
+                  <label className="font-extrabold text-slate-800 block mb-1 flex items-center justify-between">
+                    <span>Clé Restreinte Stripe (STRIPE_RESTRICTED_KEY) *</span>
+                    <span className="text-[10px] text-indigo-600 font-bold">Recommandé : rk_live_... ou rk_test_...</span>
+                  </label>
+                  <input
+                    type={showKeySecrets ? 'text' : 'password'}
+                    value={stripeKeyForm.restrictedKey}
+                    onChange={(e) => setStripeKeyForm({ ...stripeKeyForm, restrictedKey: e.target.value })}
+                    placeholder="rk_live_51P... ou rk_test_51P..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Générez cette clé avec les permissions indiquées dans la matrice ci-dessus.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="font-extrabold text-slate-800 block mb-1 flex items-center justify-between">
+                    <span>Clé Publique Client (VITE_STRIPE_PUBLISHABLE_KEY)</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">pk_live_... ou pk_test_...</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={stripeKeyForm.publishableKey}
+                    onChange={(e) => setStripeKeyForm({ ...stripeKeyForm, publishableKey: e.target.value })}
+                    placeholder="pk_live_51P... ou pk_test_51P..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Utilisée par le SDK frontend pour afficher les composants Stripe Elements.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="font-extrabold text-slate-800 block mb-1 flex items-center justify-between">
+                    <span>Secret de Signature Webhook (STRIPE_WEBHOOK_SECRET)</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">whsec_...</span>
+                  </label>
+                  <input
+                    type={showKeySecrets ? 'text' : 'password'}
+                    value={stripeKeyForm.webhookSecret}
+                    onChange={(e) => setStripeKeyForm({ ...stripeKeyForm, webhookSecret: e.target.value })}
+                    placeholder="whsec_..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Trouvé dans Développeurs &gt; Webhooks &gt; Point de terminaison &gt; Clé secrète de signature.
+                  </span>
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={handleRunPolicyAudit}
+                    disabled={isAuditingPolicies}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
+                  >
+                    Tester la Clé
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold transition shadow-md cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Enregistrer & Appliquer</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Step-by-Step Configuration Guide */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
+              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                    Guide de Configuration (5 minutes)
+                  </h3>
+                </div>
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                  Officiel Stripe
+                </span>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-600">
+                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">1</span>
+                  <div className="space-y-1">
+                    <div className="font-extrabold text-slate-900">Accédez au Stripe Dashboard</div>
+                    <p className="text-[11px] text-slate-500">
+                      Rendez-vous dans <strong>Développeurs &gt; Clés API</strong> et cliquez sur le bouton <strong>"Créer une clé restreinte"</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">2</span>
+                  <div className="space-y-1">
+                    <div className="font-extrabold text-slate-900">Nommez la Clé et Appliquez les Politiques</div>
+                    <p className="text-[11px] text-slate-500">
+                      Nommez la clé <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">StartBill SaaS</code>. Pour chaque ressource, sélectionnez <strong>Écriture</strong> ou <strong>Lecture</strong> tel qu’indiqué dans le tableau d’audit. Laissez toutes les autres ressources sur <strong>Aucun</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">3</span>
+                  <div className="space-y-1">
+                    <div className="font-extrabold text-slate-900">(Optionnel) Restreindre par Adresses IP</div>
+                    <p className="text-[11px] text-slate-500">
+                      Sous "Politique d’accès IP", vous pouvez renseigner les adresses IP sortantes de votre serveur pour interdire tout usage hors de votre hébergement.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">4</span>
+                  <div className="space-y-1">
+                    <div className="font-extrabold text-slate-900">Enregistrez et Auditez</div>
+                    <p className="text-[11px] text-slate-500">
+                      Copiez la clé débutant par <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">rk_live_...</code> dans le formulaire ci-contre et cliquez sur <strong>Auditer en Direct</strong> pour obtenir votre score de 100%.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

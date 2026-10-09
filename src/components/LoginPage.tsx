@@ -21,6 +21,7 @@ import { useRegional } from '../context/RegionalContext';
 import { REGIONS } from '../data/regions';
 import { useAuth } from '../context/AuthContext';
 import { SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
+import { StartBillLogo } from './common/StartBillLogo';
 
 interface LoginPageProps {
   setScreen: (screen: ScreenId) => void;
@@ -160,11 +161,12 @@ export default function LoginPage({
           <span>Région : {REGIONS[activeRegion].name} {REGIONS[activeRegion].flag}</span>
         </button>
 
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setScreen('landing')}>
-          <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
-            S
-          </div>
-          <span className="text-sm font-black text-slate-900 tracking-tight">StartBill</span>
+        <div 
+          className="cursor-pointer transition hover:opacity-90" 
+          onClick={() => setScreen('landing')}
+          title="StartBill - Ton assistant financier"
+        >
+          <StartBillLogo variant="horizontal" size="xs" showTagline={false} />
         </div>
       </div>
 
@@ -177,16 +179,16 @@ export default function LoginPage({
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
             <div className="relative z-10 space-y-6">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-black text-lg flex items-center justify-center shadow-md">
-                  S
-                </div>
-                <div>
-                  <div className="text-xl font-black text-white tracking-tight">StartBill</div>
-                  <div className="text-[10px] text-blue-400 font-extrabold uppercase tracking-wider">
-                    {REGIONS[activeRegion].name} {REGIONS[activeRegion].flag}
-                  </div>
-                </div>
+              <div className="flex items-center justify-between">
+                <StartBillLogo 
+                  variant="horizontal" 
+                  size="sm" 
+                  theme="dark" 
+                  showTagline={true} 
+                />
+                <span className="text-[10px] text-blue-300 font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30">
+                  {REGIONS[activeRegion].flag}
+                </span>
               </div>
 
               <div>
