@@ -20,7 +20,7 @@ import { ScreenId } from '../types';
 import { useRegional } from '../context/RegionalContext';
 import { REGIONS } from '../data/regions';
 import { useAuth } from '../context/AuthContext';
-import { SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
+import { SUPER_ADMIN_EMAIL, CANADA_ADMIN_EMAIL } from '../lib/authSecurity';
 import { StartBillLogo } from './common/StartBillLogo';
 
 interface LoginPageProps {
@@ -58,13 +58,26 @@ export default function LoginPage({
     activeRegion === 'canada' ? 'canadiens' :
     activeRegion === 'afrique' ? 'africains' : 'haïtiens';
 
+  // Real-time password requirement analysis (Firebase Auth policy)
+  const hasMinLength = password.length >= 8;
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
+  const passwordCriteriaCount = [hasMinLength, hasUpperCase, hasLowerCase, hasNumber, hasSpecialChar].filter(Boolean).length;
+
   const handleSocialGoogle = async () => {
     setIsLoading(true);
     setErrorMessage('');
     try {
-      await loginWithGoogle();
-      triggerToast('Connexion Google réussie !');
-      setScreen('dashboard');
+      const profile = await loginWithGoogle();
+      if (profile?.isSuperAdmin) {
+        triggerToast('Connexion Super Administrateur confirmée !');
+        setScreen('admin');
+      } else {
+        triggerToast('Connexion Google réussie !');
+        setScreen('dashboard');
+      }
     } catch (err: any) {
       console.error('Google auth error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
@@ -73,6 +86,10 @@ export default function LoginPage({
         setErrorMessage('La fenêtre contextuelle a été bloquée. Veuillez autoriser les popups dans votre navigateur.');
       } else if (err.code === 'auth/cancelled-popup-request') {
         setErrorMessage('Une seule demande de connexion Google à la fois est autorisée.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setErrorMessage('Domaine non autorisé dans Firebase Auth. Veuillez ajouter le domaine de l’application aux domaines autorisés dans Firebase Authentication.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setErrorMessage('L’authentification Google n’est pas activée dans votre console Firebase Authentication (onglet Fournisseurs de connexion).');
       } else {
         setErrorMessage(err.message || 'Échec de connexion avec Google. Veuillez réessayer.');
       }
@@ -98,8 +115,20 @@ export default function LoginPage({
         setErrorMessage('Les mots de passe ne correspondent pas.');
         return;
       }
-      if (password.length < 6) {
-        setErrorMessage('Le mot de passe doit comporter au moins 6 caractères.');
+      if (password.length < 8) {
+        setErrorMessage('Le mot de passe doit comporter au moins 8 caractères.');
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        setErrorMessage('Le mot de passe doit comporter au moins une lettre majuscule (A-Z).');
+        return;
+      }
+      if (!/[a-z]/.test(password)) {
+        setErrorMessage('Le mot de passe doit comporter au moins une lettre minuscule (a-z).');
+        return;
+      }
+      if (!/[^A-Za-z0-9]/.test(password)) {
+        setErrorMessage('Le mot de passe doit comporter au moins un caractère spécial (ex: ! @ # $ % & * ?).');
         return;
       }
     } else {
@@ -139,6 +168,10 @@ export default function LoginPage({
         setErrorMessage('Cette adresse courriel est déjà utilisée. Connectez-vous.');
       } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
         setErrorMessage('Courriel ou mot de passe incorrect.');
+      } else if (err.code === 'auth/password-does-not-meet-requirements' || err.code === 'auth/weak-password') {
+        setErrorMessage('Sécurité requise : Le mot de passe doit comporter au moins 8 caractères, une majuscule et un caractère spécial (ex: !?#@).');
+      } else if (err.code === 'auth/network-request-failed') {
+        setErrorMessage('Erreur réseau. Veuillez vérifier votre connexion Internet.');
       } else {
         setErrorMessage(err.message || 'Une erreur est survenue lors de l’authentification.');
       }
@@ -383,16 +416,23 @@ export default function LoginPage({
               )}
 
               <div className="space-y-1">
-                <label className="text-[10px] font-extrabold uppercase text-slate-800 tracking-wider block">
-                  MOT DE PASSE
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-800 tracking-wider block">
+                    MOT DE PASSE
+                  </label>
+                  {authMode === 'signup' && (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      Min. 8 car. • Majuscule • Spécial
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Min. 6 caractères"
+                    placeholder={authMode === 'signup' ? "Ex: StartBill2026!" : "Votre mot de passe"}
                     className="w-full h-10 bg-white border border-slate-200 focus:border-blue-600 rounded-xl pl-3 pr-10 text-xs text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                   <button
@@ -403,6 +443,59 @@ export default function LoginPage({
                     {showPassword ? <EyeOff className="w-3.5 h-3.5" strokeWidth={1.75} /> : <Eye className="w-3.5 h-3.5" strokeWidth={1.75} />}
                   </button>
                 </div>
+
+                {/* Password Criteria Feedback (Signup Mode) */}
+                {authMode === 'signup' && password.length > 0 && (
+                  <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="font-semibold text-slate-600">Force du mot de passe</span>
+                      <span className={
+                        passwordCriteriaCount >= 4 ? 'text-emerald-600 font-bold' :
+                        passwordCriteriaCount >= 2 ? 'text-amber-600 font-bold' :
+                        'text-rose-500 font-bold'
+                      }>
+                        {passwordCriteriaCount >= 4 ? 'Robuste ✓' : passwordCriteriaCount >= 2 ? 'Moyen' : 'Faible'}
+                      </span>
+                    </div>
+                    
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden flex">
+                      <div 
+                        className={`h-full transition-all duration-300 ${
+                          passwordCriteriaCount >= 4 ? 'bg-emerald-500' :
+                          passwordCriteriaCount >= 2 ? 'bg-amber-500' : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${(passwordCriteriaCount / 5) * 100}%` }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1 text-[10px]">
+                      <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasMinLength ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
+                          {hasMinLength ? '✓' : '•'}
+                        </span>
+                        <span>8+ caractères</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${hasUpperCase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasUpperCase ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
+                          {hasUpperCase ? '✓' : '•'}
+                        </span>
+                        <span>1 Majuscule (A-Z)</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${hasLowerCase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasLowerCase ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
+                          {hasLowerCase ? '✓' : '•'}
+                        </span>
+                        <span>1 Minuscule (a-z)</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${hasSpecialChar ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasSpecialChar ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
+                          {hasSpecialChar ? '✓' : '•'}
+                        </span>
+                        <span>1 Spécial (!?#@)</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {authMode === 'signup' && (
@@ -493,14 +586,30 @@ export default function LoginPage({
                 type="button"
                 onClick={() => {
                   setAuthMode('login');
+                  setActiveRegion('canada');
+                  setEmail(CANADA_ADMIN_EMAIL);
+                  setPassword('StartbillAdmin2026!');
+                  setErrorMessage('');
+                  triggerToast('Identifiants Admin Canada (CAD) préremplis');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-[11px] font-bold transition cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" strokeWidth={1.75} />
+                <span>🇨🇦 Admin Canada ({CANADA_ADMIN_EMAIL})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
                   setEmail(SUPER_ADMIN_EMAIL);
                   setPassword('StartbillAdmin2026!');
                   setErrorMessage('');
-                  triggerToast('Identifiants Super Admin préremplis');
+                  triggerToast('Identifiants Super Admin HQ préremplis');
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold transition cursor-pointer"
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" strokeWidth={1.75} />
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" strokeWidth={1.75} />
                 <span>Admin HQ ({SUPER_ADMIN_EMAIL})</span>
               </button>
 
@@ -508,8 +617,9 @@ export default function LoginPage({
                 type="button"
                 onClick={() => {
                   setAuthMode('login');
+                  setActiveRegion('canada');
                   setEmail('demo.canada@startbill.com');
-                  setPassword('demo123456');
+                  setPassword('StartbillDemo2026!');
                   setErrorMessage('');
                   triggerToast('Compte Démo Canada prérempli');
                 }}
@@ -522,8 +632,9 @@ export default function LoginPage({
                 type="button"
                 onClick={() => {
                   setAuthMode('login');
+                  setActiveRegion('afrique');
                   setEmail('demo.afrique@startbill.com');
-                  setPassword('demo123456');
+                  setPassword('StartbillDemo2026!');
                   setErrorMessage('');
                   triggerToast('Compte Démo Afrique prérempli');
                 }}

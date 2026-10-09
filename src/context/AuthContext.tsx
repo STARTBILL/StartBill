@@ -147,7 +147,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithEmail = async (email: string, pass: string): Promise<UserProfile> => {
-    const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), pass);
+    const normalizedEmail = email.trim().toLowerCase();
+    let cred;
+    try {
+      cred = await signInWithEmailAndPassword(auth, normalizedEmail, pass);
+    } catch (err: any) {
+      // Auto-provision demo and administrator accounts on first attempt
+      if (
+        (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') &&
+        (isSuperAdminEmail(normalizedEmail) || normalizedEmail.includes('demo.'))
+      ) {
+        try {
+          const isSuper = isSuperAdminEmail(normalizedEmail);
+          const initialRegion = normalizedEmail.includes('afrique') ? 'afrique' : normalizedEmail.includes('haiti') ? 'haiti' : 'canada';
+          return await registerWithEmail(normalizedEmail, pass, {
+            fullName: isSuper ? 'Administrateur StartBill Canada' : 'Utilisateur Démo',
+            companyName: isSuper ? 'StartBill Canada Inc.' : 'Entreprise Démo',
+            region: initialRegion
+          });
+        } catch (regErr) {
+          // If creation failed, rethrow original error
+          throw err;
+        }
+      }
+      throw err;
+    }
+
     const fbUser = cred.user;
     const isSuper = isSuperAdminEmail(fbUser.email);
     
@@ -159,11 +184,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profileData = snap.data();
       } else {
         // Seed initial user document
+        const initialRegion = normalizedEmail.includes('afrique') ? 'afrique' : normalizedEmail.includes('haiti') ? 'haiti' : 'canada';
         profileData = {
           uid: fbUser.uid,
           email: fbUser.email,
           role: isSuper ? 'admin' : 'user',
           plan: isSuper ? 'enterprise' : 'free',
+          region: initialRegion,
+          fullName: isSuper ? 'Administrateur StartBill Canada' : undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -199,6 +227,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   ): Promise<UserProfile> => {
     const normalizedEmail = email.trim().toLowerCase();
+
+    // Enforce password requirements matching Firebase security policy
+    if (pass.length < 8 || !/[A-Z]/.test(pass) || !/[^A-Za-z0-9]/.test(pass)) {
+      const err: any = new Error("Le mot de passe doit comporter au moins 8 caractères, une lettre majuscule (A-Z) et un caractère spécial (ex: !?#@$).");
+      err.code = 'auth/password-does-not-meet-requirements';
+      throw err;
+    }
+
     const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, pass);
     const fbUser = cred.user;
     const isSuper = isSuperAdminEmail(normalizedEmail);

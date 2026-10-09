@@ -82,13 +82,6 @@ export default function LandingPage({
           >
             Fonctionnalités
           </button>
-          <button 
-            type="button" 
-            onClick={() => setScreen('admin')}
-            className="hover:text-slate-900 text-slate-400 text-[11px] transition cursor-pointer"
-          >
-            Portail Admin
-          </button>
         </nav>
 
         {/* Header Actions */}
