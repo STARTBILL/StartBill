@@ -43,10 +43,11 @@ export function useRegionalSettings(region: 'canada' | 'afrique' | 'haiti' = 'ca
    * Helper to format amount according to regional currency symbol and locale
    */
   const formatPrice = (amount: number): string => {
+    const val = Math.max(0, Number(amount) || 0);
     if (region === 'canada') {
-      return `${amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}`;
+      return `${val.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}`;
     }
-    return `${Math.round(amount).toLocaleString('fr-FR')} ${currencySymbol}`;
+    return `${Math.round(val).toLocaleString('fr-FR')} ${currencySymbol}`;
   };
 
   /**

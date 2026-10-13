@@ -508,7 +508,7 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
               Espace Administrateur Protégé
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Cet espace d'administration globale est strictement réservé au Super Administrateur (<strong className="text-slate-800">{SUPER_ADMIN_EMAIL}</strong>), quelle que soit votre région d'exploitation (Canada, Afrique, Haïti).
+              Cet espace d'administration est strictement réservé aux comptes administrateurs autorisés (ex: <strong className="text-slate-800">admin.canada@startbill.com</strong> ou <strong className="text-slate-800">{SUPER_ADMIN_EMAIL}</strong>).
             </p>
           </div>
 
@@ -559,11 +559,11 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
               <StartBillLogo variant="horizontal" size="sm" theme="dark" showTagline={false} />
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider">
                 <ShieldCheck className="w-4 h-4 text-blue-400" />
-                <span>Portail HQ Administrateur</span>
+                <span>Console Administrateur</span>
               </div>
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>{SUPER_ADMIN_EMAIL}</span>
+                <span>{currentEmail || SUPER_ADMIN_EMAIL}</span>
               </div>
             </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
@@ -1118,9 +1118,11 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
                     <input
                       type="number"
                       step="0.001"
+                      min="0"
                       value={cfg.defaultGst}
                       onChange={(e) => {
-                        const updated = { ...cfg, defaultGst: parseFloat(e.target.value) };
+                        const raw = parseFloat(e.target.value);
+                        const updated = { ...cfg, defaultGst: isNaN(raw) ? 0 : Math.max(0, raw) };
                         handleSaveRegional(updated);
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold"
@@ -1132,9 +1134,11 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
                     <input
                       type="number"
                       step="0.0001"
+                      min="0"
                       value={cfg.defaultQst || cfg.defaultPst}
                       onChange={(e) => {
-                        const updated = { ...cfg, defaultQst: parseFloat(e.target.value) };
+                        const raw = parseFloat(e.target.value);
+                        const updated = { ...cfg, defaultQst: isNaN(raw) ? 0 : Math.max(0, raw) };
                         handleSaveRegional(updated);
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold"
@@ -1212,8 +1216,12 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
                   <label className="font-bold text-slate-700 block mb-1">Inactivité maximale session (min)</label>
                   <input
                     type="number"
+                    min="1"
                     value={systemSettings.sessionTimeoutMinutes}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, sessionTimeoutMinutes: parseInt(e.target.value) || 30 })}
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value);
+                      setSystemSettings({ ...systemSettings, sessionTimeoutMinutes: isNaN(raw) ? 30 : Math.max(1, raw) });
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold"
                   />
                 </div>
@@ -1222,8 +1230,12 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
                   <label className="font-bold text-slate-700 block mb-1">Max tentatives de connexion avant blocage</label>
                   <input
                     type="number"
+                    min="1"
                     value={systemSettings.maxFailedAttempts}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, maxFailedAttempts: parseInt(e.target.value) || 5 })}
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value);
+                      setSystemSettings({ ...systemSettings, maxFailedAttempts: isNaN(raw) ? 5 : Math.max(1, raw) });
+                    }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold"
                   />
                 </div>

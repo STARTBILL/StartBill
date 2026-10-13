@@ -113,6 +113,7 @@ export interface TaxResult {
 }
 
 export function calculateTaxes(province: string, subtotal: number): TaxResult {
+  const safeSubtotal = Math.max(0, subtotal || 0);
   const rates: Record<string, { gst: number; pst: number; qst: number; hst: number }> = {
     'Québec': { gst: 0.05, pst: 0, qst: 0.09975, hst: 0 },
     'Ontario': { gst: 0, pst: 0, qst: 0, hst: 0.13 },
@@ -128,10 +129,10 @@ export function calculateTaxes(province: string, subtotal: number): TaxResult {
   };
 
   const tax = rates[province] || { gst: 0.05, pst: 0, qst: 0, hst: 0 };
-  const gst = parseFloat((subtotal * tax.gst).toFixed(2));
-  const pst = parseFloat((subtotal * tax.pst).toFixed(2));
-  const qst = parseFloat((subtotal * tax.qst).toFixed(2));
-  const hst = parseFloat((subtotal * tax.hst).toFixed(2));
+  const gst = parseFloat((safeSubtotal * tax.gst).toFixed(2));
+  const pst = parseFloat((safeSubtotal * tax.pst).toFixed(2));
+  const qst = parseFloat((safeSubtotal * tax.qst).toFixed(2));
+  const hst = parseFloat((safeSubtotal * tax.hst).toFixed(2));
   const totalTax = parseFloat((gst + pst + qst + hst).toFixed(2));
   return {
     gst,
@@ -139,7 +140,7 @@ export function calculateTaxes(province: string, subtotal: number): TaxResult {
     qst,
     hst,
     totalTax,
-    total: parseFloat((subtotal + totalTax).toFixed(2)),
+    total: parseFloat((safeSubtotal + totalTax).toFixed(2)),
   };
 }
 
@@ -402,15 +403,16 @@ export default function DeviceSimulator({
 
   // Auto-calculate Canadian taxes based on Province and HT amount
   const recalculateExpenseTaxes = (amountHtStr: string, province: string) => {
-    const num = parseFloat(amountHtStr) || 0;
+    const raw = parseFloat(amountHtStr);
+    const num = isNaN(raw) ? 0 : Math.max(0, raw);
     if (num <= 0) {
       setNewExpenseTps('0.00');
       setNewExpenseTvq('0.00');
       return;
     }
     const tax = calculateTaxes(province, num);
-    const tpsHst = (tax.gst + tax.hst).toFixed(2);
-    const tvqPst = (tax.qst + tax.pst).toFixed(2);
+    const tpsHst = Math.max(0, tax.gst + tax.hst).toFixed(2);
+    const tvqPst = Math.max(0, tax.qst + tax.pst).toFixed(2);
     setNewExpenseTps(tpsHst);
     setNewExpenseTvq(tvqPst);
   };
@@ -623,11 +625,24 @@ export default function DeviceSimulator({
   // Handler for adding or editing an invoice
   const handleCreateInvoiceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const sub = invItems.reduce((sum, item) => sum + item.total, 0);
+
+    // Strictly enforce non-negative values
+    const sanitizedItems = invItems.map(it => {
+      const q = Math.max(0, it.quantity || 0);
+      const p = Math.max(0, it.unitPrice || 0);
+      return {
+        ...it,
+        quantity: q,
+        unitPrice: p,
+        total: parseFloat(Math.max(0, q * p).toFixed(2))
+      };
+    });
+
+    const sub = parseFloat(Math.max(0, sanitizedItems.reduce((sum, item) => sum + item.total, 0)).toFixed(2));
     const taxRes = calculateTaxes(invProvince, sub);
-    const tpsVal = parseFloat((taxRes.gst + taxRes.hst).toFixed(2));
-    const tvqVal = parseFloat((taxRes.pst + taxRes.qst).toFixed(2));
-    const tot = taxRes.total;
+    const tpsVal = parseFloat(Math.max(0, taxRes.gst + taxRes.hst).toFixed(2));
+    const tvqVal = parseFloat(Math.max(0, taxRes.pst + taxRes.qst).toFixed(2));
+    const tot = parseFloat(Math.max(0, taxRes.total).toFixed(2));
 
     if (isEditingInvoice && editingInvoiceId) {
       const updatedInv: Invoice = {
@@ -643,7 +658,7 @@ export default function DeviceSimulator({
         dueDate: invDueDate,
         currency: invCurrency,
         description: invDescription,
-        items: invItems
+        items: sanitizedItems
       };
       onUpdateInvoice(updatedInv);
       setDbInvoices(prev => prev.map(inv => inv.id === updatedInv.id ? updatedInv : inv));
@@ -667,7 +682,7 @@ export default function DeviceSimulator({
         dueDate: invDueDate,
         currency: invCurrency,
         description: invDescription,
-        items: invItems
+        items: sanitizedItems
       };
 
       onAddInvoice(newInv);
@@ -721,10 +736,14 @@ export default function DeviceSimulator({
   // Handler for adding or editing an expense
   const handleCreateExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const sub = parseFloat(newExpenseAmountHt) || 0;
-    const tpsVal = parseFloat(newExpenseTps) || 0;
-    const tvqVal = parseFloat(newExpenseTvq) || 0;
-    const tot = parseFloat((sub + tpsVal + tvqVal).toFixed(2));
+    const sub = parseFloat(Math.max(0, parseFloat(newExpenseAmountHt) || 0).toFixed(2));
+    if (sub <= 0) {
+      triggerToast('Le montant de la dépense doit être supérieur à zéro. Les valeurs négatives ne sont pas acceptées.');
+      return;
+    }
+    const tpsVal = parseFloat(Math.max(0, parseFloat(newExpenseTps) || 0).toFixed(2));
+    const tvqVal = parseFloat(Math.max(0, parseFloat(newExpenseTvq) || 0).toFixed(2));
+    const tot = parseFloat(Math.max(0, sub + tpsVal + tvqVal).toFixed(2));
 
     if (isEditingExpense && editingExpenseId) {
       const updatedExp: Expense = {
@@ -900,9 +919,9 @@ export default function DeviceSimulator({
               { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', sublabel: 'Assistant intelligent', icon: Sparkles, isPublic: false },
               { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false, badge: 'MOD 10' },
               { id: 'pricing' as ScreenId, label: 'Forfaits & Tarifs', sublabel: 'Gestion abonnement', icon: Zap, isPublic: false, badge: userPlan ? userPlan.toUpperCase() : 'PLAN' },
-              // Admin dashboard is strictly restricted to Super Admin (contact.startbill@gmail.com)
+              // Admin dashboard is strictly restricted to Administrators
               ...(isSuperAdminUser ? [
-                { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'Super Admin HQ', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
+                { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'Espace Administrateur', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
               ] : []),
             ].map((item) => {
               const Icon = item.icon;
@@ -916,7 +935,7 @@ export default function DeviceSimulator({
                   key={`${item.id}-${item.label}`}
                   onClick={() => {
                     if (item.id === 'admin' && !isSuperAdminUser) {
-                      triggerToast('Accès refusé : Espace strictement réservé au Super Administrateur (' + SUPER_ADMIN_EMAIL + ')');
+                      triggerToast('Accès refusé : Espace strictement réservé aux comptes administrateurs.');
                       return;
                     }
                     if (item.id === 'invoices') {
@@ -1845,11 +1864,13 @@ export default function DeviceSimulator({
                       id="input-expense-amount-ht"
                       type="number"
                       step="0.01"
+                      min="0"
                       required
                       placeholder="0.00"
                       value={newExpenseAmountHt}
                       onChange={(e) => {
-                        const val = e.target.value;
+                        const raw = parseFloat(e.target.value);
+                        const val = isNaN(raw) ? '' : Math.max(0, raw).toString();
                         setNewExpenseAmountHt(val);
                         recalculateExpenseTaxes(val, newExpenseProvince);
                       }}
@@ -1871,8 +1892,12 @@ export default function DeviceSimulator({
                       id="input-expense-tps"
                       type="number"
                       step="0.01"
+                      min="0"
                       value={newExpenseTps}
-                      onChange={(e) => setNewExpenseTps(e.target.value)}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        setNewExpenseTps(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                      }}
                       placeholder="0.00"
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white text-right"
                     />
@@ -1892,8 +1917,12 @@ export default function DeviceSimulator({
                       id="input-expense-tvq"
                       type="number"
                       step="0.01"
+                      min="0"
                       value={newExpenseTvq}
-                      onChange={(e) => setNewExpenseTvq(e.target.value)}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        setNewExpenseTvq(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                      }}
                       placeholder="0.00"
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white text-right"
                     />
@@ -2815,7 +2844,7 @@ export default function DeviceSimulator({
                       Espace Administrateur Protégé
                     </h2>
                     <p className="text-xs text-slate-500 leading-relaxed">
-                      L'accès à la console d'administration est strictement réservé au Super Administrateur (<strong className="text-slate-800">{SUPER_ADMIN_EMAIL}</strong>), quelle que soit votre région (Canada, Afrique, Haïti).
+                      L'accès à la console d'administration est strictement réservé aux comptes Administrateurs autorisés (ex: <strong className="text-slate-800">admin.canada@startbill.com</strong> ou <strong className="text-slate-800">{SUPER_ADMIN_EMAIL}</strong>).
                     </p>
                   </div>
 
@@ -3275,12 +3304,13 @@ export default function DeviceSimulator({
                               <label className="text-[8px] font-bold text-slate-400 uppercase">Quantité</label>
                               <input
                                 type="number"
-                                min="0.01"
+                                min="0"
                                 step="any"
                                 required
                                 value={item.quantity || ''}
                                 onChange={(e) => {
-                                  const q = parseFloat(e.target.value) || 0;
+                                  const raw = parseFloat(e.target.value);
+                                  const q = isNaN(raw) ? 0 : Math.max(0, raw);
                                   const updated = invItems.map((it, i) => {
                                     if (i === index) {
                                       return { ...it, quantity: q, total: parseFloat((q * it.unitPrice).toFixed(2)) };
@@ -3301,7 +3331,8 @@ export default function DeviceSimulator({
                                 required
                                 value={item.unitPrice || ''}
                                 onChange={(e) => {
-                                  const p = parseFloat(e.target.value) || 0;
+                                  const raw = parseFloat(e.target.value);
+                                  const p = isNaN(raw) ? 0 : Math.max(0, raw);
                                   const updated = invItems.map((it, i) => {
                                     if (i === index) {
                                       return { ...it, unitPrice: p, total: parseFloat((it.quantity * p).toFixed(2)) };

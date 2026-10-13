@@ -19,13 +19,21 @@ service cloud.firestore {
     function isSuperAdmin() {
       return isAuthenticated() && 
         request.auth.token.email != null && 
-        request.auth.token.email.lower() == 'contact.startbill@gmail.com';
+        (
+          request.auth.token.email.lower() == 'contact.startbill@gmail.com' ||
+          request.auth.token.email.lower() == 'admin.canada@startbill.com'
+        );
     }
 
     function isAdmin() {
       return isAuthenticated() && 
         (
-          (request.auth.token.email != null && request.auth.token.email.lower() == 'contact.startbill@gmail.com') ||
+          (request.auth.token.email != null && 
+            (
+              request.auth.token.email.lower() == 'contact.startbill@gmail.com' ||
+              request.auth.token.email.lower() == 'admin.canada@startbill.com'
+            )
+          ) ||
           (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
         );

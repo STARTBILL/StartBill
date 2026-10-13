@@ -28,8 +28,48 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isDbConnected, setIsDbConnected] = useState<boolean>(true);
 
-  // Active Screen ID in phone simulator (starts on Landing / Accueil page)
-  const [currentScreen, setCurrentScreen] = useState<ScreenId>('landing');
+  // Active Screen ID with persistence across page refresh
+  const [currentScreen, setCurrentScreen] = useState<ScreenId>(() => {
+    try {
+      const hash = window.location.hash.replace(/^#\/?/, '').trim() as ScreenId;
+      if (hash) return hash;
+      const saved = localStorage.getItem('startbill_active_screen') as ScreenId;
+      if (saved) return saved;
+    } catch {}
+    return 'landing';
+  });
+
+  // Keep localStorage and URL hash in sync with active screen
+  const setScreenPersisted = (screen: ScreenId) => {
+    setCurrentScreen(screen);
+    try {
+      localStorage.setItem('startbill_active_screen', screen);
+      window.location.hash = screen;
+    } catch {}
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('startbill_active_screen', currentScreen);
+      if (window.location.hash.replace(/^#\/?/, '') !== currentScreen) {
+        window.location.hash = currentScreen;
+      }
+    } catch {}
+  }, [currentScreen]);
+
+  // Synchronize browser back/forward buttons with active screen
+  useEffect(() => {
+    const handleHashChange = () => {
+      try {
+        const hash = window.location.hash.replace(/^#\/?/, '').trim() as ScreenId;
+        if (hash && hash !== currentScreen) {
+          setCurrentScreen(hash);
+        }
+      } catch {}
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentScreen]);
 
   // Selected sub items for detail screens
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -67,10 +107,38 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Interactive CRUD updates with user isolation
+  // Interactive CRUD updates with user isolation and strict non-negative value enforcement
   const handleAddInvoice = async (newInv: Invoice) => {
     const uid = auth.currentUser?.uid || '';
-    const scopedInv: Invoice = { ...newInv, userId: newInv.userId || uid };
+    const cleanItems = (newInv.items || []).map(it => {
+      const q = Math.max(0, it.quantity || 0);
+      const p = Math.max(0, it.unitPrice || 0);
+      return {
+        ...it,
+        quantity: q,
+        unitPrice: p,
+        total: parseFloat(Math.max(0, q * p).toFixed(2))
+      };
+    });
+
+    const cleanSubtotal = parseFloat(Math.max(0, newInv.subtotal || 0).toFixed(2));
+    const cleanTps = parseFloat(Math.max(0, newInv.tps || 0).toFixed(2));
+    const cleanTvq = parseFloat(Math.max(0, newInv.tvq || 0).toFixed(2));
+    const cleanTotal = parseFloat(Math.max(0, newInv.total || 0).toFixed(2));
+    const cleanAmountPaid = parseFloat(Math.max(0, newInv.amountPaid || 0).toFixed(2));
+    const cleanRemaining = parseFloat(Math.max(0, newInv.remainingBalance !== undefined ? newInv.remainingBalance : (cleanTotal - cleanAmountPaid)).toFixed(2));
+
+    const scopedInv: Invoice = {
+      ...newInv,
+      subtotal: cleanSubtotal,
+      tps: cleanTps,
+      tvq: cleanTvq,
+      total: cleanTotal,
+      amountPaid: cleanAmountPaid,
+      remainingBalance: cleanRemaining,
+      items: cleanItems.length > 0 ? cleanItems : newInv.items,
+      userId: newInv.userId || uid
+    };
     setInvoices(prev => [scopedInv, ...prev]);
     await saveInvoiceToFirestore(scopedInv, uid);
 
@@ -78,7 +146,7 @@ export default function App() {
     if (scopedInv.status !== 'Payée') {
       setClients(prev => prev.map(cli => {
         if (cli.name === scopedInv.clientName) {
-          const updated = { ...cli, amountDue: parseFloat((cli.amountDue + scopedInv.total).toFixed(2)), userId: cli.userId || uid };
+          const updated = { ...cli, amountDue: parseFloat(Math.max(0, (cli.amountDue || 0) + scopedInv.total).toFixed(2)), userId: cli.userId || uid };
           saveClientToFirestore(updated, uid);
           return updated;
         }
@@ -89,28 +157,60 @@ export default function App() {
 
   const handleAddExpense = async (newExp: Expense) => {
     const uid = auth.currentUser?.uid || '';
-    const scopedExp: Expense = { ...newExp, userId: newExp.userId || uid };
+    const cleanHt = parseFloat(Math.max(0, newExp.amountHt || 0).toFixed(2));
+    const cleanTps = parseFloat(Math.max(0, newExp.tps || 0).toFixed(2));
+    const cleanTvq = parseFloat(Math.max(0, newExp.tvq || 0).toFixed(2));
+    const cleanTot = parseFloat(Math.max(0, newExp.total || (cleanHt + cleanTps + cleanTvq)).toFixed(2));
+
+    const scopedExp: Expense = {
+      ...newExp,
+      amountHt: cleanHt,
+      tps: cleanTps,
+      tvq: cleanTvq,
+      total: cleanTot,
+      userId: newExp.userId || uid
+    };
     setExpenses(prev => [scopedExp, ...prev]);
     await saveExpenseToFirestore(scopedExp, uid);
   };
 
   const handleUpdateExpense = async (updatedExp: Expense) => {
     const uid = auth.currentUser?.uid || '';
-    const scopedExp: Expense = { ...updatedExp, userId: updatedExp.userId || uid };
+    const cleanHt = parseFloat(Math.max(0, updatedExp.amountHt || 0).toFixed(2));
+    const cleanTps = parseFloat(Math.max(0, updatedExp.tps || 0).toFixed(2));
+    const cleanTvq = parseFloat(Math.max(0, updatedExp.tvq || 0).toFixed(2));
+    const cleanTot = parseFloat(Math.max(0, updatedExp.total || (cleanHt + cleanTps + cleanTvq)).toFixed(2));
+
+    const scopedExp: Expense = {
+      ...updatedExp,
+      amountHt: cleanHt,
+      tps: cleanTps,
+      tvq: cleanTvq,
+      total: cleanTot,
+      userId: updatedExp.userId || uid
+    };
     setExpenses(prev => prev.map(exp => exp.id === scopedExp.id ? scopedExp : exp));
     await saveExpenseToFirestore(scopedExp, uid);
   };
 
   const handleAddClient = async (newCli: Client) => {
     const uid = auth.currentUser?.uid || '';
-    const scopedCli: Client = { ...newCli, userId: newCli.userId || uid };
+    const scopedCli: Client = {
+      ...newCli,
+      amountDue: parseFloat(Math.max(0, newCli.amountDue || 0).toFixed(2)),
+      userId: newCli.userId || uid
+    };
     setClients(prev => [...prev, scopedCli]);
     await saveClientToFirestore(scopedCli, uid);
   };
 
   const handleUpdateClient = async (updatedCli: Client) => {
     const uid = auth.currentUser?.uid || '';
-    const scopedCli: Client = { ...updatedCli, userId: updatedCli.userId || uid };
+    const scopedCli: Client = {
+      ...updatedCli,
+      amountDue: parseFloat(Math.max(0, updatedCli.amountDue || 0).toFixed(2)),
+      userId: updatedCli.userId || uid
+    };
     setClients(prev => prev.map(c => c.id === scopedCli.id ? scopedCli : c));
     await saveClientToFirestore(scopedCli, uid);
   };
@@ -125,49 +225,79 @@ export default function App() {
       return 0;
     }
     if (inv.remainingBalance !== undefined) {
-      return inv.remainingBalance;
+      return Math.max(0, inv.remainingBalance);
     }
-    return inv.total;
+    return Math.max(0, inv.total || 0);
   };
 
   const handleUpdateInvoice = async (updatedInv: Invoice) => {
+    const cleanItems = (updatedInv.items || []).map(it => {
+      const q = Math.max(0, it.quantity || 0);
+      const p = Math.max(0, it.unitPrice || 0);
+      return {
+        ...it,
+        quantity: q,
+        unitPrice: p,
+        total: parseFloat(Math.max(0, q * p).toFixed(2))
+      };
+    });
+
+    const cleanTotal = parseFloat(Math.max(0, updatedInv.total || 0).toFixed(2));
+    const cleanSubtotal = parseFloat(Math.max(0, updatedInv.subtotal || 0).toFixed(2));
+    const cleanTps = parseFloat(Math.max(0, updatedInv.tps || 0).toFixed(2));
+    const cleanTvq = parseFloat(Math.max(0, updatedInv.tvq || 0).toFixed(2));
+    const cleanAmountPaid = parseFloat(Math.max(0, updatedInv.amountPaid || 0).toFixed(2));
+    const cleanRemaining = parseFloat(Math.max(0, updatedInv.remainingBalance !== undefined ? updatedInv.remainingBalance : (cleanTotal - cleanAmountPaid)).toFixed(2));
+
+    const sanitizedInv: Invoice = {
+      ...updatedInv,
+      subtotal: cleanSubtotal,
+      tps: cleanTps,
+      tvq: cleanTvq,
+      total: cleanTotal,
+      amountPaid: cleanAmountPaid,
+      remainingBalance: cleanRemaining,
+      items: cleanItems.length > 0 ? cleanItems : updatedInv.items
+    };
+
     setInvoices(prev => prev.map(inv => {
-      if (inv.id === updatedInv.id) {
+      if (inv.id === sanitizedInv.id) {
         const oldOutstanding = getInvoiceOutstanding(inv);
-        const newOutstanding = getInvoiceOutstanding(updatedInv);
+        const newOutstanding = getInvoiceOutstanding(sanitizedInv);
         const diff = newOutstanding - oldOutstanding;
         if (diff !== 0) {
           setClients(prevCli => prevCli.map(c => {
             if (c.name === inv.clientName) {
-              const updated = { ...c, amountDue: parseFloat(Math.max(0, c.amountDue + diff).toFixed(2)) };
+              const updated = { ...c, amountDue: parseFloat(Math.max(0, (c.amountDue || 0) + diff).toFixed(2)) };
               saveClientToFirestore(updated);
               return updated;
             }
             return c;
           }));
         }
-        return updatedInv;
+        return sanitizedInv;
       }
       return inv;
     }));
-    await saveInvoiceToFirestore(updatedInv);
+    await saveInvoiceToFirestore(sanitizedInv);
   };
 
   const handleUpdateInvoiceStatus = async (id: string, status: InvoiceStatus) => {
     let matchedInv: Invoice | undefined;
     setInvoices(prev => prev.map(inv => {
       if (inv.id === id) {
-        let updatedRemaining = inv.remainingBalance;
-        let updatedAmountPaid = inv.amountPaid;
+        const total = Math.max(0, inv.total || 0);
+        let updatedRemaining = Math.max(0, inv.remainingBalance !== undefined ? inv.remainingBalance : total);
+        let updatedAmountPaid = Math.max(0, inv.amountPaid || 0);
         if (status === 'Payée' || status === 'paid') {
           updatedRemaining = 0;
-          updatedAmountPaid = inv.total;
+          updatedAmountPaid = total;
         } else if (status === 'Envoyée' || status === 'Brouillon') {
-          updatedRemaining = inv.total;
+          updatedRemaining = total;
           updatedAmountPaid = 0;
         } else if (status === 'Partiellement payée' || status === 'partial') {
-          updatedAmountPaid = (inv.amountPaid !== undefined && inv.amountPaid > 0) ? inv.amountPaid : parseFloat((inv.total / 2).toFixed(2));
-          updatedRemaining = parseFloat(Math.max(0, inv.total - updatedAmountPaid).toFixed(2));
+          updatedAmountPaid = (inv.amountPaid !== undefined && inv.amountPaid > 0) ? Math.min(total, Math.max(0, inv.amountPaid)) : parseFloat((total / 2).toFixed(2));
+          updatedRemaining = parseFloat(Math.max(0, total - updatedAmountPaid).toFixed(2));
         }
         matchedInv = { 
           ...inv, 
@@ -230,7 +360,7 @@ export default function App() {
     setInvoices(dbInvoices);
     setExpenses(dbExpenses);
     setClients(dbClients);
-    setCurrentScreen('dashboard');
+    setScreenPersisted('dashboard');
     setSelectedInvoiceId(null);
     setSelectedExpenseId(null);
     setIsLoading(false);
@@ -246,7 +376,7 @@ export default function App() {
               expenses={expenses}
               clients={clients}
               currentScreen={currentScreen}
-              setScreen={setCurrentScreen}
+              setScreen={setScreenPersisted}
               selectedInvoiceId={selectedInvoiceId}
               setSelectedInvoiceId={setSelectedInvoiceId}
               selectedExpenseId={selectedExpenseId}

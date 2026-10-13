@@ -121,7 +121,9 @@ export const RegionalProvider: React.FC<{
   const pricingPro = regionalSettings?.pricingPro || 0;
 
   const formatPrice = (amount: number): string => {
-    const val = Number(amount) || 0;
+    // Non-negative clamp: refuse any negative monetary value
+    const rawVal = Number(amount) || 0;
+    const val = Math.max(0, rawVal);
     if (region === 'canada') {
       return `$ ${val.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     } else if (region === 'haiti') {

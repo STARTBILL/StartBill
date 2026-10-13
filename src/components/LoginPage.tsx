@@ -20,7 +20,7 @@ import { ScreenId } from '../types';
 import { useRegional } from '../context/RegionalContext';
 import { REGIONS } from '../data/regions';
 import { useAuth } from '../context/AuthContext';
-import { SUPER_ADMIN_EMAIL, CANADA_ADMIN_EMAIL } from '../lib/authSecurity';
+import { SUPER_ADMIN_EMAIL, CANADA_ADMIN_EMAIL, isSuperAdminEmail } from '../lib/authSecurity';
 import { StartBillLogo } from './common/StartBillLogo';
 
 interface LoginPageProps {
@@ -34,8 +34,29 @@ export default function LoginPage({
   triggerToast,
   currentUser
 }: LoginPageProps) {
-  const { region: activeRegion } = useRegional();
-  const { loginWithEmail, registerWithEmail, loginWithGoogle } = useAuth();
+  const { region: activeRegion, setRegion: setActiveRegion } = useRegional();
+  const { loginWithEmail, registerWithEmail, loginWithGoogle, user: authUser, firebaseUser, signOutUser } = useAuth();
+
+  // If user is already authenticated (e.g. page refreshed while logged in),
+  // redirect them immediately instead of staying stuck on the login page!
+  const effectiveUser = authUser || currentUser;
+  const isAlreadyLoggedIn = Boolean(
+    (authUser && !authUser.isAnonymous) || 
+    (currentUser && currentUser.email && !currentUser.isAnonymous) ||
+    (firebaseUser && !firebaseUser.isAnonymous)
+  );
+
+  React.useEffect(() => {
+    if (isAlreadyLoggedIn) {
+      const email = authUser?.email || currentUser?.email || firebaseUser?.email || '';
+      const isSuper = Boolean(authUser?.isSuperAdmin || isSuperAdminEmail(email));
+      const targetScreen = isSuper ? 'admin' : 'dashboard';
+      const timer = setTimeout(() => {
+        setScreen(targetScreen);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isAlreadyLoggedIn, authUser, currentUser, firebaseUser, setScreen]);
 
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
 
@@ -335,6 +356,41 @@ export default function LoginPage({
                 </button>
               </div>
             </div>
+
+            {/* Active Session Notification if already logged in */}
+            {isAlreadyLoggedIn && (
+              <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <div>
+                    <span className="font-bold text-emerald-950 block">Session active détectée</span>
+                    <span className="text-[11px] text-emerald-700 font-mono">{effectiveUser?.email}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const isSuper = Boolean(authUser?.isSuperAdmin || isSuperAdminEmail(effectiveUser?.email));
+                      setScreen(isSuper ? 'admin' : 'dashboard');
+                    }}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[11px] transition cursor-pointer shadow-xs"
+                  >
+                    Ouvrir l'application
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await signOutUser();
+                      triggerToast('Session fermée');
+                    }}
+                    className="px-2 py-1 bg-white border border-slate-200 text-slate-600 hover:text-rose-600 font-semibold rounded-lg text-[10px] transition cursor-pointer"
+                  >
+                    Déconnecter
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-3.5">

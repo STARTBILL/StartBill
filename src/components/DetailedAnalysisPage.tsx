@@ -1111,7 +1111,10 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formAvailableCash}
-                    onChange={(e) => setFormAvailableCash(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const raw = parseFloat(e.target.value);
+                      setFormAvailableCash(isNaN(raw) ? 0 : Math.max(0, raw));
+                    }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>
@@ -1129,7 +1132,10 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formCurrentAssets}
-                    onChange={(e) => setFormCurrentAssets(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const raw = parseFloat(e.target.value);
+                      setFormCurrentAssets(isNaN(raw) ? 0 : Math.max(0, raw));
+                    }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>
@@ -1147,7 +1153,10 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formCurrentLiabilities}
-                    onChange={(e) => setFormCurrentLiabilities(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const raw = parseFloat(e.target.value);
+                      setFormCurrentLiabilities(isNaN(raw) ? 0 : Math.max(0, raw));
+                    }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>
@@ -1165,7 +1174,10 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formTotalDebt}
-                    onChange={(e) => setFormTotalDebt(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const raw = parseFloat(e.target.value);
+                      setFormTotalDebt(isNaN(raw) ? 0 : Math.max(0, raw));
+                    }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>

@@ -215,11 +215,12 @@ export default function PaymentsPage({
     const inv = invoices.find(i => i.id === targetInvoiceId);
     if (!inv) return;
 
-    const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (inv.status === 'Payée' ? 0 : inv.total);
-    const amountToRecord = paymentOption === 'total' ? remaining : parseFloat(customAmount);
+    const remaining = Math.max(0, inv.remainingBalance !== undefined ? inv.remainingBalance : (inv.status === 'Payée' ? 0 : inv.total));
+    const rawCustom = parseFloat(customAmount);
+    const amountToRecord = paymentOption === 'total' ? remaining : (isNaN(rawCustom) ? 0 : Math.max(0, rawCustom));
 
-    if (isNaN(amountToRecord) || amountToRecord <= 0) {
-      triggerToast('Veuillez entrer un montant valide supérieur à 0.');
+    if (amountToRecord <= 0) {
+      triggerToast('Veuillez entrer un montant valide supérieur à 0. Les montants négatifs ne sont pas acceptés.');
       return;
     }
 
@@ -893,7 +894,10 @@ export default function PaymentsPage({
                   step="0.01"
                   min="0.01"
                   value={customAmount}
-                  onChange={(e) => setCustomAmount(e.target.value)}
+                  onChange={(e) => {
+                    const raw = parseFloat(e.target.value);
+                    setCustomAmount(isNaN(raw) ? '' : Math.max(0, raw).toString());
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-black text-slate-900 focus:outline-none focus:border-blue-500 focus:bg-white"
                   required
                 />

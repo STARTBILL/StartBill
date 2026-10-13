@@ -286,8 +286,12 @@ export default function InvoicesPage({
     const updated = [...invItems];
     const item = { ...updated[index], [field]: val };
     if (field === 'quantity' || field === 'unitPrice') {
-      const q = field === 'quantity' ? parseFloat(val) || 0 : item.quantity;
-      const u = field === 'unitPrice' ? parseFloat(val) || 0 : item.unitPrice;
+      const rawQ = field === 'quantity' ? parseFloat(val) : item.quantity;
+      const rawU = field === 'unitPrice' ? parseFloat(val) : item.unitPrice;
+      const q = Math.max(0, isNaN(rawQ) ? 0 : rawQ);
+      const u = Math.max(0, isNaN(rawU) ? 0 : rawU);
+      if (field === 'quantity') item.quantity = q;
+      if (field === 'unitPrice') item.unitPrice = u;
       item.total = parseFloat((q * u).toFixed(2));
     }
     updated[index] = item;
@@ -1108,9 +1112,13 @@ export default function InvoicesPage({
                       <input
                         type="number"
                         step="0.01"
+                        min="0"
                         placeholder="Prix unitaire ($) *"
                         value={quickProdPrice}
-                        onChange={(e) => setQuickProdPrice(e.target.value)}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setQuickProdPrice(isNaN(v) ? '' : Math.max(0, v).toString());
+                        }}
                         className="bg-white border border-secondary-200 rounded-lg py-1 px-2.5 outline-none focus:border-primary-500 text-xs"
                       />
                       <div className="flex gap-1.5">
@@ -1195,10 +1203,13 @@ export default function InvoicesPage({
                         <div className="col-span-2">
                           <input
                             type="number"
-                            min="1"
+                            min="0"
                             placeholder="Qté"
                             value={item.quantity}
-                            onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value);
+                              handleItemChange(index, 'quantity', isNaN(v) ? 0 : Math.max(0, v));
+                            }}
                             className="w-full text-xs bg-white border border-secondary-200 rounded-lg py-1.5 px-2 outline-none focus:border-primary-500 text-center"
                           />
                         </div>
@@ -1206,9 +1217,13 @@ export default function InvoicesPage({
                           <input
                             type="number"
                             step="0.01"
+                            min="0"
                             placeholder="Prix ($)"
                             value={item.unitPrice}
-                            onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value);
+                              handleItemChange(index, 'unitPrice', isNaN(v) ? 0 : Math.max(0, v));
+                            }}
                             className="w-full text-xs bg-white border border-secondary-200 rounded-lg py-1.5 px-2 outline-none focus:border-primary-500 text-right"
                           />
                         </div>

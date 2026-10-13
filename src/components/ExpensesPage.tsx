@@ -102,9 +102,11 @@ export default function ExpensesPage({
 
   // Auto-calculate Canadian taxes based on Province and HT amount
   const handleAmountOrProvinceChange = (newHt: string, newProv: string) => {
-    setFormAmountHt(newHt);
+    const rawNum = parseFloat(newHt);
+    const num = isNaN(rawNum) ? 0 : Math.max(0, rawNum);
+    const safeHt = isNaN(rawNum) ? '' : num.toString();
+    setFormAmountHt(safeHt);
     setFormProvince(newProv);
-    const num = parseFloat(newHt) || 0;
     if (num <= 0) {
       setFormTps('0.00');
       setFormTvq('0.00');
@@ -1030,10 +1032,14 @@ export default function ExpensesPage({
                   label="Montant Hors Taxes (HT) *"
                   type="number"
                   step="0.01"
+                  min="0"
                   required
                   placeholder="0.00"
                   value={formAmountHt}
-                  onChange={(e) => handleAmountOrProvinceChange(e.target.value, formProvince)}
+                  onChange={(e) => {
+                    const raw = parseFloat(e.target.value);
+                    handleAmountOrProvinceChange(isNaN(raw) ? '' : Math.max(0, raw).toString(), formProvince);
+                  }}
                 />
 
                 <div className="flex flex-col gap-1">
@@ -1046,9 +1052,13 @@ export default function ExpensesPage({
                   <Input
                     type="number"
                     step="0.01"
+                    min="0"
                     placeholder="0.00"
                     value={formTps}
-                    onChange={(e) => setFormTps(e.target.value)}
+                    onChange={(e) => {
+                      const raw = parseFloat(e.target.value);
+                      setFormTps(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                    }}
                   />
                 </div>
 
@@ -1062,9 +1072,13 @@ export default function ExpensesPage({
                   <Input
                     type="number"
                     step="0.01"
+                    min="0"
                     placeholder="0.00"
                     value={formTvq}
-                    onChange={(e) => setFormTvq(e.target.value)}
+                    onChange={(e) => {
+                      const raw = parseFloat(e.target.value);
+                      setFormTvq(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                    }}
                   />
                 </div>
               </div>

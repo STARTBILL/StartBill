@@ -757,8 +757,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               <input 
                 type="number" 
                 step="0.1"
+                min="0"
                 value={lateFeePercent} 
-                onChange={(e) => setLateFeePercent(e.target.value)}
+                onChange={(e) => {
+                  const raw = parseFloat(e.target.value);
+                  setLateFeePercent(isNaN(raw) ? '' : Math.max(0, raw).toString());
+                }}
                 placeholder="2.0"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500" 
               />
