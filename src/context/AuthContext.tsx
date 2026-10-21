@@ -161,8 +161,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isSuper = isSuperAdminEmail(normalizedEmail);
           const initialRegion = normalizedEmail.includes('afrique') ? 'afrique' : normalizedEmail.includes('haiti') ? 'haiti' : 'canada';
           return await registerWithEmail(normalizedEmail, pass, {
-            fullName: isSuper ? 'Administrateur StartBill Canada' : 'Utilisateur Démo',
-            companyName: isSuper ? 'StartBill Canada Inc.' : 'Entreprise Démo',
+            fullName: isSuper ? 'Ferline ZOGNI' : 'Utilisateur Démo',
+            companyName: isSuper ? 'STARTBILL Inc.' : 'Entreprise Démo',
             region: initialRegion
           });
         } catch (regErr) {
@@ -191,7 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: isSuper ? 'admin' : 'user',
           plan: isSuper ? 'enterprise' : 'free',
           region: initialRegion,
-          fullName: isSuper ? 'Administrateur StartBill Canada' : undefined,
+          fullName: isSuper ? 'Ferline ZOGNI' : undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -223,10 +223,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fullName?: string; 
       companyName?: string; 
       phone?: string; 
-      region?: string;
+      region?: 'canada' | 'afrique' | 'haiti' | string;
     }
   ): Promise<UserProfile> => {
     const normalizedEmail = email.trim().toLowerCase();
+
+    // Règle absolue de sécurité : la sélection de région est obligatoire et restreinte
+    const chosenRegion = extra?.region as 'canada' | 'afrique' | 'haiti';
+    if (!chosenRegion || !['canada', 'afrique', 'haiti'].includes(chosenRegion)) {
+      const err: any = new Error("La sélection de votre région d'exploitation (Canada, Afrique ou Haïti) est obligatoire à l'inscription pour garantir le cloisonnement strict de vos données.");
+      err.code = 'auth/region-required';
+      throw err;
+    }
 
     // Enforce password requirements matching Firebase security policy
     if (pass.length < 8 || !/[A-Z]/.test(pass) || !/[^A-Za-z0-9]/.test(pass)) {
@@ -246,6 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const effectiveRole: UserRole = isSuper ? 'admin' : 'user';
     const effectivePlan: UserPlan = isSuper ? 'enterprise' : 'free';
 
+    // Stockage immuable de la région dans le profil utilisateur Firestore
     const userProfileData: any = {
       uid: fbUser.uid,
       email: normalizedEmail,
@@ -254,7 +263,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fullName: extra?.fullName || '',
       companyName: extra?.companyName || '',
       phone: extra?.phone || '',
-      region: extra?.region || 'canada',
+      region: chosenRegion,
+      regionLocked: true, // Verrouillage strict de sécurité
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -269,7 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fullName: extra?.fullName,
       companyName: extra?.companyName,
       phone: extra?.phone,
-      region: (extra?.region as any) || 'canada',
+      region: chosenRegion,
       isSuperAdmin: isSuper
     };
 

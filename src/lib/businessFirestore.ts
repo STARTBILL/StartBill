@@ -32,26 +32,37 @@ const BUSINESSES_COLLECTION = 'businesses';
 /**
  * Récupère l'entreprise active pour un utilisateur donné (par son UID)
  */
-export async function getBusinessByOwner(ownerUid: string): Promise<Business | null> {
+export async function getBusinessByOwner(ownerUid: string, region?: string): Promise<Business | null> {
   try {
-    const q = query(
+    let q = query(
       collection(db, BUSINESSES_COLLECTION),
       where('ownerRef', '==', ownerUid),
       limit(1)
     );
+    if (region) {
+      q = query(
+        collection(db, BUSINESSES_COLLECTION),
+        where('ownerRef', '==', ownerUid),
+        where('region', '==', region),
+        limit(1)
+      );
+    }
     const snapshot = await getDocs(q);
     if (snapshot.empty) {
       return null;
     }
     const docData = snapshot.docs[0];
     const data = docData.data();
+    if (region && data.region && data.region !== region) {
+      return null;
+    }
     return {
       id: docData.id,
       ownerRef: data.ownerRef || ownerUid,
       businessName: data.businessName || 'Mon Entreprise',
-      countryCode: data.countryCode || 'CA',
-      region: data.region || 'canada',
-      currency: data.currency || 'CAD',
+      countryCode: data.countryCode || (region === 'afrique' ? 'CI' : region === 'haiti' ? 'HT' : 'CA'),
+      region: data.region || region || 'canada',
+      currency: data.currency || (region === 'afrique' ? 'XOF' : region === 'haiti' ? 'HTG' : 'CAD'),
       accountingMethod: (data.accountingMethod as AccountingMethod) || 'cash',
       availableCash: Number(data.availableCash) || 0,
       currentAssets: Number(data.currentAssets) || 0,

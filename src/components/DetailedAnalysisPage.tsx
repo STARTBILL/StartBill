@@ -1111,8 +1111,15 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formAvailableCash}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                        e.preventDefault();
+                      }
+                    }}
                     onChange={(e) => {
-                      const raw = parseFloat(e.target.value);
+                      const valStr = e.target.value;
+                      if (valStr.includes('-')) return;
+                      const raw = parseFloat(valStr);
                       setFormAvailableCash(isNaN(raw) ? 0 : Math.max(0, raw));
                     }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
@@ -1132,8 +1139,15 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formCurrentAssets}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                        e.preventDefault();
+                      }
+                    }}
                     onChange={(e) => {
-                      const raw = parseFloat(e.target.value);
+                      const valStr = e.target.value;
+                      if (valStr.includes('-')) return;
+                      const raw = parseFloat(valStr);
                       setFormCurrentAssets(isNaN(raw) ? 0 : Math.max(0, raw));
                     }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
@@ -1153,8 +1167,15 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formCurrentLiabilities}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                        e.preventDefault();
+                      }
+                    }}
                     onChange={(e) => {
-                      const raw = parseFloat(e.target.value);
+                      const valStr = e.target.value;
+                      if (valStr.includes('-')) return;
+                      const raw = parseFloat(valStr);
                       setFormCurrentLiabilities(isNaN(raw) ? 0 : Math.max(0, raw));
                     }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
@@ -1174,8 +1195,15 @@ export default function DetailedAnalysisPage({
                     step="any"
                     min="0"
                     value={formTotalDebt}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                        e.preventDefault();
+                      }
+                    }}
                     onChange={(e) => {
-                      const raw = parseFloat(e.target.value);
+                      const valStr = e.target.value;
+                      if (valStr.includes('-')) return;
+                      const raw = parseFloat(valStr);
                       setFormTotalDebt(isNaN(raw) ? 0 : Math.max(0, raw));
                     }}
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"

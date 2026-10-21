@@ -759,8 +759,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 step="0.1"
                 min="0"
                 value={lateFeePercent} 
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                    e.preventDefault();
+                  }
+                }}
                 onChange={(e) => {
-                  const raw = parseFloat(e.target.value);
+                  const valStr = e.target.value;
+                  if (valStr.includes('-')) return;
+                  const raw = parseFloat(valStr);
                   setLateFeePercent(isNaN(raw) ? '' : Math.max(0, raw).toString());
                 }}
                 placeholder="2.0"

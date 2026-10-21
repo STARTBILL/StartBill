@@ -217,12 +217,21 @@ export default function PaymentsPage({
 
     const remaining = Math.max(0, inv.remainingBalance !== undefined ? inv.remainingBalance : (inv.status === 'Payée' ? 0 : inv.total));
     const rawCustom = parseFloat(customAmount);
-    const amountToRecord = paymentOption === 'total' ? remaining : (isNaN(rawCustom) ? 0 : Math.max(0, rawCustom));
-
-    if (amountToRecord <= 0) {
-      triggerToast('Veuillez entrer un montant valide supérieur à 0. Les montants négatifs ne sont pas acceptés.');
+    if (paymentOption === 'partial' && (isNaN(rawCustom) || rawCustom <= 0)) {
+      triggerToast('Veuillez entrer un montant valide supérieur à 0. Les montants négatifs sont formellement interdits.');
       return;
     }
+
+    const requestedAmount = paymentOption === 'total' ? remaining : Math.max(0, rawCustom);
+    if (requestedAmount <= 0) {
+      triggerToast('Le montant encaissé doit être supérieur à 0. Les montants négatifs ne sont pas acceptés.');
+      return;
+    }
+
+    // Ensure payment cannot exceed remaining balance, and solde cannot be negative
+    const amountToRecord = Math.min(requestedAmount, remaining);
+    const newRemaining = parseFloat(Math.max(0, remaining - amountToRecord).toFixed(2));
+    const newPaid = parseFloat(Math.max(0, (inv.amountPaid || 0) + amountToRecord).toFixed(2));
 
     onRecordPayment(targetInvoiceId, amountToRecord, paymentMethod, paymentDate, paymentReference);
     setShowPaymentModal(false);
@@ -230,11 +239,11 @@ export default function PaymentsPage({
     // Offer to view receipt
     const updatedMockInv: Invoice = {
       ...inv,
-      amountPaid: (inv.amountPaid || 0) + amountToRecord,
-      remainingBalance: Math.max(0, remaining - amountToRecord),
+      amountPaid: newPaid,
+      remainingBalance: newRemaining,
       paymentMethod,
       paymentDate,
-      status: (remaining - amountToRecord) <= 0.01 ? 'Payée' : 'Partiellement payée'
+      status: newRemaining <= 0.01 ? 'Payée' : 'Partiellement payée'
     };
 
     setReceiptInvoice(updatedMockInv);
@@ -894,8 +903,15 @@ export default function PaymentsPage({
                   step="0.01"
                   min="0.01"
                   value={customAmount}
+                  onKeyDown={(e) => {
+                    if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                      e.preventDefault();
+                    }
+                  }}
                   onChange={(e) => {
-                    const raw = parseFloat(e.target.value);
+                    const val = e.target.value;
+                    if (val.includes('-')) return;
+                    const raw = parseFloat(val);
                     setCustomAmount(isNaN(raw) ? '' : Math.max(0, raw).toString());
                   }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-black text-slate-900 focus:outline-none focus:border-blue-500 focus:bg-white"

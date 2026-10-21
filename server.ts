@@ -6,6 +6,8 @@ import Stripe from 'stripe';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import fs from 'fs';
+import { GoogleGenAI } from '@google/genai';
+import { createRegionIsolationMiddleware } from './src/middleware/regionSecurity';
 
 dotenv.config();
 
@@ -14,6 +16,24 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+// Initialize Google Gemini AI for smart receipt OCR & document analysis
+let geminiAi: GoogleGenAI | null = null;
+if (process.env.GEMINI_API_KEY) {
+  try {
+    geminiAi = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+    console.log('[Gemini Server] AI client initialized for receipt scanning.');
+  } catch (err: any) {
+    console.warn('[Gemini Server] AI client init warning:', err.message);
+  }
+}
 
 // Initialize Firebase server connection for syncing Stripe subscriptions
 let db: any = null;
@@ -154,8 +174,12 @@ app.post(
   }
 );
 
-// Standard JSON parser for other API routes
-app.use(express.json());
+// Standard JSON parser for other API routes (allows photo uploads for OCR)
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// Middleware de sécurité : Cloisonnement strict des données inter-régions
+app.use(createRegionIsolationMiddleware(db));
 
 // -------------------------------------------------------------
 // 2. STRIPE CONFIG STATUS
@@ -577,6 +601,225 @@ app.post('/api/stripe/create-invoice-payment', async (req: Request, res: Respons
   } catch (err: any) {
     console.error('[Stripe Invoice Payment] Error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 5.1 MULTIMODAL RECEIPT SCANNER & OCR API (Gemini Vision)
+// -------------------------------------------------------------
+app.post('/api/scan-receipt', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { image, mimeType = 'image/jpeg', filename = '' } = req.body;
+
+    if (!image) {
+      res.status(400).json({ error: 'Image data is required (base64 string or data URL)' });
+      return;
+    }
+
+    // Clean base64 data string and handle data URI scheme
+    const base64Data = image.replace(/^data:[^;]+;base64,/, '').trim();
+
+    // Normalize mime type
+    let cleanMime = (mimeType || 'image/jpeg').toLowerCase().split(';')[0].trim();
+    if (cleanMime === 'image/jpg') cleanMime = 'image/jpeg';
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'].includes(cleanMime)) {
+      cleanMime = 'image/jpeg';
+    }
+
+    // Default neutral fallback extractor when AI is not accessible or image lacks text
+    const getFallbackData = (name: string) => {
+      const lower = (name || '').toLowerCase();
+      let provider = 'Commerce / Marchand à vérifier';
+      let amountHt = 0;
+      let category = 'Autre';
+      let notes = 'Reçu numérisé - vérifiez les montants';
+
+      if (lower.includes('essence') || lower.includes('shell') || lower.includes('petro') || lower.includes('esso')) {
+        provider = lower.includes('petro') ? 'Petro-Canada' : lower.includes('esso') ? 'Esso' : 'Shell Canada';
+        amountHt = 0;
+        category = 'Transport';
+        notes = 'Carburant pour déplacements professionnels';
+      } else if (lower.includes('bureau') || lower.includes('staples')) {
+        provider = 'Bureau en Gros';
+        amountHt = 0;
+        category = 'Fournitures de bureau';
+        notes = 'Fournitures de bureau';
+      } else if (lower.includes('resto') || lower.includes('tim') || lower.includes('repas') || lower.includes('cafe')) {
+        provider = lower.includes('tim') ? 'Tim Hortons' : 'Restaurant';
+        amountHt = 0;
+        category = "Repas d'affaires";
+        notes = 'Repas de travail';
+      } else if (lower.includes('bell') || lower.includes('video') || lower.includes('internet') || lower.includes('tel')) {
+        provider = lower.includes('video') ? 'Vidéotron' : 'Bell Canada';
+        amountHt = 0;
+        category = 'Téléphone / Internet';
+        notes = 'Télécommunications';
+      } else if (lower.includes('hydro')) {
+        provider = 'Hydro-Québec';
+        amountHt = 0;
+        category = 'Loyer / Bureau';
+        notes = 'Électricité bureau';
+      } else if (lower.includes('costco') || lower.includes('walmart')) {
+        provider = lower.includes('costco') ? 'Costco' : 'Walmart';
+        amountHt = 0;
+        category = 'Fournitures de bureau';
+      }
+
+      return {
+        provider,
+        amountHt: 0,
+        tps: 0,
+        tvq: 0,
+        total: 0,
+        date: new Date().toISOString().split('T')[0],
+        category,
+        paymentMethod: 'Carte bancaire',
+        notes
+      };
+    };
+
+    // If Gemini client is not initialized, return the clean structured extractor
+    if (!geminiAi) {
+      console.log('[Gemini OCR] No Gemini AI client available, using neutral fallback extractor');
+      res.json({
+        success: true,
+        extracted: getFallbackData(filename),
+        source: 'structured_fallback'
+      });
+      return;
+    }
+
+    try {
+      const prompt = `Tu es un expert comptable spécialisé dans la lecture et l'extraction OCR de reçus, facturettes et justificatifs d'achat canadiens et internationaux.
+Analyse très précisément cette image de reçu ou facture.
+Extrais les données réelles et exactes imprimées sur le document :
+1. "provider" : nom commercial exact du marchand ou fournisseur (ex: nom du magasin, station-service, restaurant, entreprise).
+2. "amountHt" : sous-total hors taxes (avant taxes). Ne renvoie JAMAIS de valeur négative.
+3. "tps" : taxe TPS / GST (généralement 5% au Canada) imprimée sur le reçu (0 si non spécifiée ou non applicable).
+4. "tvq" : taxe TVQ / QST (9.975% au Québec) ou TVH/PST (13%-15% en Ontario/Maritimes) imprimée (0 si non spécifiée).
+5. "total" : montant total final TTC réellement payé.
+6. "date" : date de la transaction au format YYYY-MM-DD. Si l'année n'est pas imprimée, utilise l'année en cours (2026).
+7. "category" : catégorie la plus appropriée ('Transport', 'Repas d\\'affaires', 'Fournitures de bureau', 'Logiciels', 'Téléphone / Internet', 'Loyer / Bureau', 'Publicité & Marketing', 'Services professionnels', 'Équipement', 'Autre').
+8. "paymentMethod" : mode de paiement utilisé ('Carte bancaire', 'Carte de crédit', 'Espèces', 'Virement Interac', 'Autre').
+9. "notes" : description succincte des articles ou du reçu.
+
+Consignes strictes :
+- Réponds UNIQUEMENT avec un objet JSON valide, sans balises markdown, sans texte explicatif supplémentaire.
+{
+  "provider": string,
+  "amountHt": number,
+  "tps": number,
+  "tvq": number,
+  "total": number,
+  "date": string,
+  "category": string,
+  "paymentMethod": string,
+  "notes": string
+}`;
+
+      // Call Gemini 3.8 Flash with generous 25s safety timeout
+      const aiPromise = geminiAi.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: cleanMime,
+                  data: base64Data
+                }
+              },
+              {
+                text: prompt
+              }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('AI OCR request timeout')), 25000)
+      );
+
+      const aiResponse: any = await Promise.race([aiPromise, timeoutPromise]);
+      const rawText = aiResponse?.text || '';
+
+      let parsed: any = null;
+      try {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        const cleaned = jsonMatch ? jsonMatch[0] : rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(cleaned);
+      } catch (parseErr) {
+        console.warn('[Gemini OCR] JSON parse warning:', parseErr, 'Raw:', rawText);
+      }
+
+      if (parsed) {
+        const rawTot = parseFloat(String(parsed.total ?? 0));
+        let tot = isNaN(rawTot) ? 0 : Math.max(0, rawTot);
+
+        const rawHt = parseFloat(String(parsed.amountHt ?? 0));
+        let ht = isNaN(rawHt) ? 0 : Math.max(0, rawHt);
+
+        const rawTps = parseFloat(String(parsed.tps ?? 0));
+        let tps = isNaN(rawTps) ? 0 : Math.max(0, rawTps);
+
+        const rawTvq = parseFloat(String(parsed.tvq ?? 0));
+        let tvq = isNaN(rawTvq) ? 0 : Math.max(0, rawTvq);
+
+        // If total is present but HT is missing or 0, calculate HT from total & taxes
+        if (ht <= 0 && tot > 0) {
+          if (tps > 0 || tvq > 0) {
+            ht = parseFloat(Math.max(0, tot - tps - tvq).toFixed(2));
+          } else {
+            // Assume standard Québec tax rate or keep total
+            ht = parseFloat((tot / 1.14975).toFixed(2));
+            tps = parseFloat((ht * 0.05).toFixed(2));
+            tvq = parseFloat((ht * 0.09975).toFixed(2));
+          }
+        }
+
+        // If HT is present but total is 0 or less than HT
+        if (tot <= 0 && ht > 0) {
+          tot = parseFloat((ht + tps + tvq).toFixed(2));
+        }
+
+        const cleanResult = {
+          provider: (parsed.provider && parsed.provider !== 'Commerce / Marchand' ? parsed.provider : 'Fournisseur détecté').trim(),
+          amountHt: parseFloat(Math.max(0, ht).toFixed(2)),
+          tps: parseFloat(Math.max(0, tps).toFixed(2)),
+          tvq: parseFloat(Math.max(0, tvq).toFixed(2)),
+          total: parseFloat(Math.max(0, tot).toFixed(2)),
+          date: parsed.date && parsed.date.match(/^\d{4}-\d{2}-\d{2}$/) ? parsed.date : new Date().toISOString().split('T')[0],
+          category: parsed.category || 'Autre',
+          paymentMethod: parsed.paymentMethod || 'Carte bancaire',
+          notes: parsed.notes || 'Reçu numérisé par IA'
+        };
+
+        console.log('[Gemini OCR] Successfully extracted receipt data:', cleanResult.provider, `${cleanResult.total} CAD`);
+        res.json({
+          success: true,
+          extracted: cleanResult,
+          source: 'gemini_vision'
+        });
+        return;
+      }
+    } catch (aiErr: any) {
+      console.warn('[Gemini OCR] AI execution error/timeout:', aiErr.message);
+    }
+
+    // Neutral fallback if AI was unavailable
+    res.json({
+      success: true,
+      extracted: getFallbackData(filename),
+      source: 'smart_fallback'
+    });
+  } catch (globalErr: any) {
+    console.error('[Scan Receipt Handler Error]:', globalErr);
+    res.status(500).json({ error: globalErr.message || 'Erreur lors du traitement du reçu' });
   }
 });
 

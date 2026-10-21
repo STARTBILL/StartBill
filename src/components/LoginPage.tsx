@@ -64,6 +64,7 @@ export default function LoginPage({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [signupRegion, setSignupRegion] = useState<'canada' | 'afrique' | 'haiti'>(activeRegion || 'canada');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -162,15 +163,20 @@ export default function LoginPage({
     setIsLoading(true);
     try {
       if (authMode === 'signup') {
+        if (!signupRegion) {
+          setErrorMessage('Veuillez obligatoirement sélectionner votre région d’exploitation.');
+          return;
+        }
         const fullName = `${firstName.trim()} ${lastName.trim()}`;
         await registerWithEmail(email, password, {
           fullName,
           companyName: companyName.trim() || undefined,
           phone: phone.trim() || undefined,
-          region: activeRegion
+          region: signupRegion
         });
+        setActiveRegion(signupRegion);
 
-        triggerToast('Compte créé avec succès ! Bienvenue sur StartBill.');
+        triggerToast(`Compte créé avec succès (${REGIONS[signupRegion].name}) ! Bienvenue sur StartBill.`);
         setScreen('company_setup');
       } else {
         // Mode Login
@@ -438,6 +444,86 @@ export default function LoginPage({
                       placeholder="Ex: Tremblay Conseil Inc."
                       className="w-full h-10 bg-white border border-slate-200 focus:border-blue-600 rounded-xl px-3 text-xs text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                     />
+                  </div>
+
+                  {/* Sélection Obligatoire de la Région d'Exploitation (Cloisonnement Strict) */}
+                  <div className="space-y-2 pt-1 pb-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-extrabold uppercase text-slate-800 tracking-wider flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-blue-600" />
+                        <span>RÉGION D'EXPLOITATION (OBLIGATOIRE)</span>
+                        <span className="text-rose-500 font-black">*</span>
+                      </label>
+                      <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-blue-100">
+                        <Lock className="w-2.5 h-2.5" /> Cloisonnement strict
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSignupRegion('canada')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          signupRegion === 'canada'
+                            ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-500/20 text-slate-900 shadow-xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xl">🇨🇦</span>
+                          {signupRegion === 'canada' && <Check className="w-4 h-4 text-blue-600 stroke-[3]" />}
+                        </div>
+                        <div className="mt-2">
+                          <div className="text-xs font-black text-slate-900">Canada</div>
+                          <div className="text-[10px] text-slate-500 font-medium">CAD $ • TPS/TVQ</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSignupRegion('afrique')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          signupRegion === 'afrique'
+                            ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-500/20 text-slate-900 shadow-xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xl">🌍</span>
+                          {signupRegion === 'afrique' && <Check className="w-4 h-4 text-blue-600 stroke-[3]" />}
+                        </div>
+                        <div className="mt-2">
+                          <div className="text-xs font-black text-slate-900">Afrique</div>
+                          <div className="text-[10px] text-slate-500 font-medium">FCFA • OHADA</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSignupRegion('haiti')}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          signupRegion === 'haiti'
+                            ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-500/20 text-slate-900 shadow-xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xl">🇭🇹</span>
+                          {signupRegion === 'haiti' && <Check className="w-4 h-4 text-blue-600 stroke-[3]" />}
+                        </div>
+                        <div className="mt-2">
+                          <div className="text-xs font-black text-slate-900">Haïti</div>
+                          <div className="text-[10px] text-slate-500 font-medium">HTG / USD • DGI</div>
+                        </div>
+                      </button>
+                    </div>
+
+                    <div className="p-2 bg-slate-100/80 border border-slate-200/60 rounded-xl text-[10px] text-slate-600 flex items-start gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Règle de sécurité non négociable :</strong> Votre compte sera irréversiblement rattaché à cette zone. Vous ne verrez que les factures, clients et devises de votre région d’inscription.
+                      </span>
+                    </div>
                   </div>
                 </>
               )}

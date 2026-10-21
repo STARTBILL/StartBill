@@ -46,45 +46,7 @@ export default function WelcomeDashboardPage({
   return (
     <div className="min-h-screen bg-[#FDFDFF] text-slate-900 font-sans flex flex-col justify-between selection:bg-blue-100 selection:text-blue-900">
       
-      {/* Top Region Switcher Bar (Quick preview toggle) */}
-      <div className="w-full bg-slate-50 border-b border-slate-100 px-4 py-2 flex items-center justify-between text-xs">
-        <span className="text-slate-500 font-medium hidden sm:inline">Région active :</span>
-        <div className="flex items-center gap-1.5 mx-auto sm:mx-0">
-          <button
-            type="button"
-            onClick={() => setRegion('canada')}
-            className={`px-3 py-1 rounded-full font-bold transition text-xs cursor-pointer ${
-              activeRegion === 'canada'
-                ? 'bg-red-50 text-red-700 border border-red-200 shadow-2xs'
-                : 'text-slate-600 hover:bg-slate-200/60'
-            }`}
-          >
-            🇨🇦 Canada
-          </button>
-          <button
-            type="button"
-            onClick={() => setRegion('afrique')}
-            className={`px-3 py-1 rounded-full font-bold transition text-xs cursor-pointer ${
-              activeRegion === 'afrique'
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs'
-                : 'text-slate-600 hover:bg-slate-200/60'
-            }`}
-          >
-            🌍 Afrique
-          </button>
-          <button
-            type="button"
-            onClick={() => setRegion('haiti')}
-            className={`px-3 py-1 rounded-full font-bold transition text-xs cursor-pointer ${
-              activeRegion === 'haiti'
-                ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs'
-                : 'text-slate-600 hover:bg-slate-200/60'
-            }`}
-          >
-            🇭🇹 Haïti
-          </button>
-        </div>
-      </div>
+
 
       {/* Main Container */}
       <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col justify-start">

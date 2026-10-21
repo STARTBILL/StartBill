@@ -316,7 +316,7 @@ export default function Dashboard({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-xs font-extrabold text-primary-600 tracking-wide uppercase bg-primary-50 px-2.5 py-0.5 rounded-md border border-primary-100">
-              {region === 'haiti' ? `Bonjou ${userName} 👋` : `Bonjour ${userName} 👋`}
+              Bonjour {userName} 👋
             </span>
           </div>
           <div className="flex items-center flex-wrap gap-2.5">
@@ -329,9 +329,6 @@ export default function Dashboard({
                 {activeCompany?.companyName || 'Santé.Inc'}
               </span>
             </div>
-            <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60">
-              {regionalSettings?.country || (region === 'afrique' ? 'Afrique' : region === 'haiti' ? 'Haïti' : 'Canada')}
-            </span>
           </div>
           <p className="text-xs md:text-sm text-secondary-500 font-medium">
             Vue consolidée pour <strong className="text-secondary-800">{activeCompany?.companyName || 'votre entreprise'}</strong> ({regionalSettings?.currency || 'CAD'} - {currencySymbol}).
@@ -611,7 +608,7 @@ export default function Dashboard({
           <div>
             <div className="text-[11px] font-bold text-secondary-500 flex items-center gap-1 mb-1">
               <TrendingUp className="w-3.5 h-3.5 text-secondary-400" />
-              <span>{region === 'canada' ? 'TPS / TVQ / TVH' : 'Taxes régionales'}</span>
+              <span>TPS / TVQ / Déclarations</span>
             </div>
             {/* Sparkline chart SVG */}
             <svg viewBox="0 0 100 20" className="w-full h-5 text-amber-500 overflow-visible">
@@ -1210,7 +1207,7 @@ export default function Dashboard({
         <div className="hidden md:block text-secondary-300">|</div>
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-primary-600 shrink-0" />
-          <span>Données sécurisées et conformes au Canada</span>
+          <span>Données sécurisées et conformes</span>
         </div>
       </div>
 

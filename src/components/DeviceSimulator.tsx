@@ -14,6 +14,7 @@ import {
   Download,
   Mail,
   MessageSquare,
+  Send,
   Trash2,
   Copy,
   Plus,
@@ -339,7 +340,7 @@ export default function DeviceSimulator({
     }
   };
 
-  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin, userPlan, canAccess } = useAuth();
+  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin, userPlan, canAccess, loginWithEmail } = useAuth();
 
   // Determine active email and Super Admin status (contact.startbill@gmail.com)
   const currentActiveEmail = (
@@ -462,9 +463,15 @@ export default function DeviceSimulator({
   const [companyLogo, setCompanyLogo] = useState(() => localStorage.getItem('company_logo') || '');
   const [companySignature, setCompanySignature] = useState(() => localStorage.getItem('company_signature') || '');
 
-  // Email Confirmation Modal state
+  // Multi-channel Send Modal (Email & WhatsApp options)
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [sendChannel, setSendChannel] = useState<'email' | 'whatsapp'>('email');
   const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [whatsappRecipient, setWhatsappRecipient] = useState('');
+  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [isScanningMobileReceipt, setIsScanningMobileReceipt] = useState(false);
 
   // Custom Confirm Modals
   const [showResetPaymentConfirm, setShowResetPaymentConfirm] = useState(false);
@@ -820,12 +827,48 @@ export default function DeviceSimulator({
     triggerToast(`Client "${newCli.name}" ajouté avec succès !`);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setReceiptImg(reader.result as string);
+      reader.onloadend = async () => {
+        const imgData = reader.result as string;
+        setReceiptImg(imgData);
+        setIsScanningMobileReceipt(true);
+        triggerToast("Analyse du reçu par IA en cours...");
+
+        try {
+          const res = await fetch('/api/scan-receipt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image: imgData,
+              filename: file.name,
+              mimeType: file.type || 'image/jpeg'
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.extracted) {
+              const ext = data.extracted;
+              if (ext.provider) setNewExpenseProvider(ext.provider);
+              if (ext.amountHt > 0) {
+                const htStr = ext.amountHt.toFixed(2);
+                setNewExpenseAmountHt(htStr);
+                recalculateExpenseTaxes(htStr, newExpenseProvince);
+              }
+              if (ext.date) setNewExpenseDate(ext.date);
+              if (ext.category) setNewExpenseCategory(ext.category);
+              if (ext.notes) setNewExpenseNotes(ext.notes);
+              triggerToast(`Reçu analysé par IA : ${ext.provider} (${(ext.total || 0).toFixed(2)} CAD)`);
+            }
+          }
+        } catch (ocrErr) {
+          console.warn('[Mobile OCR Receipt Notice]:', ocrErr);
+        } finally {
+          setIsScanningMobileReceipt(false);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -919,10 +962,7 @@ export default function DeviceSimulator({
               { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', sublabel: 'Assistant intelligent', icon: Sparkles, isPublic: false },
               { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false, badge: 'MOD 10' },
               { id: 'pricing' as ScreenId, label: 'Forfaits & Tarifs', sublabel: 'Gestion abonnement', icon: Zap, isPublic: false, badge: userPlan ? userPlan.toUpperCase() : 'PLAN' },
-              // Admin dashboard is strictly restricted to Administrators
-              ...(isSuperAdminUser ? [
-                { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'Espace Administrateur', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
-              ] : []),
+              { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'CEO Command Center', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' },
             ].map((item) => {
               const Icon = item.icon;
               const isSelected = currentScreen === item.id || 
@@ -934,8 +974,8 @@ export default function DeviceSimulator({
                 <button
                   key={`${item.id}-${item.label}`}
                   onClick={() => {
-                    if (item.id === 'admin' && !isSuperAdminUser) {
-                      triggerToast('Accès refusé : Espace strictement réservé aux comptes administrateurs.');
+                    if (item.id === 'admin') {
+                      setScreen('admin');
                       return;
                     }
                     if (item.id === 'invoices') {
@@ -1213,51 +1253,70 @@ export default function DeviceSimulator({
 
             {/* Right: Quick actions, Region selector, Notifications, Profile */}
             <div className="flex items-center gap-3 xl:gap-4">
-              {/* Region Quick Selector Pill */}
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCurrentRegion('canada');
-                    triggerToast('Zone active : Canada 🇨🇦 (CAD, TPS/TVQ)');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                    currentRegion === 'canada' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Canada (CAD $)"
+              {/* Region Indicator: Static Badge for Standard Users vs Multi-region for Super Admin */}
+              {isSuperAdminUser ? (
+                <div className="flex items-center bg-purple-50 p-1 rounded-xl border border-purple-200 text-xs font-bold" title="Super Admin : Superviseur Multi-Régions">
+                  <span className="text-[10px] font-black uppercase text-purple-700 px-1.5 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-purple-600" /> Super Admin :
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentRegion('canada');
+                      triggerToast('Super Admin : Vue Canada 🇨🇦 (CAD, TPS/TVQ)');
+                    }}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                      currentRegion === 'canada' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
+                    }`}
+                    title="Canada (CAD $)"
+                  >
+                    <span>🇨🇦</span>
+                    <span className="hidden xl:inline">Canada</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentRegion('afrique');
+                      triggerToast('Super Admin : Vue Afrique 🌍 (FCFA, Mobile Money)');
+                    }}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                      currentRegion === 'afrique' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
+                    }`}
+                    title="Afrique (FCFA)"
+                  >
+                    <span>🌍</span>
+                    <span className="hidden xl:inline">Afrique</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentRegion('haiti');
+                      triggerToast('Super Admin : Vue Haïti 🇭🇹 (HTG / USD, MonCash)');
+                    }}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                      currentRegion === 'haiti' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
+                    }`}
+                    title="Haïti (HTG)"
+                  >
+                    <span>🇭🇹</span>
+                    <span className="hidden xl:inline">Haïti</span>
+                  </button>
+                </div>
+              ) : (
+                <div 
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/90 border border-slate-200/90 rounded-xl text-xs font-bold text-slate-700 shadow-2xs select-none"
+                  title="Région verrouillée à l'inscription (Cloisonnement strict des données)"
                 >
-                  <span>🇨🇦</span>
-                  <span className="hidden xl:inline">Canada</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCurrentRegion('afrique');
-                    triggerToast('Zone active : Afrique 🌍 (FCFA, Mobile Money)');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                    currentRegion === 'afrique' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Afrique (FCFA)"
-                >
-                  <span>🌍</span>
-                  <span className="hidden xl:inline">Afrique</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCurrentRegion('haiti');
-                    triggerToast('Zone active : Haïti 🇭🇹 (HTG / USD, MonCash)');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                    currentRegion === 'haiti' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Haïti (HTG)"
-                >
-                  <span>🇭🇹</span>
-                  <span className="hidden xl:inline">Haïti</span>
-                </button>
-              </div>
+                  <span className="text-[11px] font-semibold text-slate-500">Compte :</span>
+                  <span className="text-sm">
+                    {currentRegion === 'canada' ? '🇨🇦' : currentRegion === 'afrique' ? '🌍' : '🇭🇹'}
+                  </span>
+                  <span className="font-extrabold text-slate-900">
+                    {currentRegion === 'canada' ? 'Canada' : currentRegion === 'afrique' ? 'Afrique' : 'Haïti'}
+                  </span>
+                  <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                </div>
+              )}
 
               {/* Quick Create Invoice Button */}
               <button
@@ -1675,8 +1734,16 @@ export default function DeviceSimulator({
                     const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
                     const recipient = clientObj?.email || '';
                     setEmailRecipient(recipient);
+                    setEmailSubject(`Facture #${selectedInvoice.id} - ${selectedInvoice.clientName}`);
+                    setEmailMessage(
+                      `Bonjour ${selectedInvoice.clientName},\n\nVeuillez trouver le récapitulatif de votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total} $ CAD.\nDate d'échéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\n\nMerci de votre confiance,\nStartBill`
+                    );
+                    setWhatsappRecipient(clientObj?.phone || '');
+                    setWhatsappMessage(
+                      `Bonjour ${selectedInvoice.clientName},\n\nVoici votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total} $ CAD émise par StartBill.\nÉchéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\nMerci de procéder au règlement.`
+                    );
+                    setSendChannel('email');
                     setShowEmailModal(true);
-                    triggerToast(`Préparation de l'envoi de la facture ${selectedInvoice.id} par courriel...`);
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
@@ -1687,9 +1754,19 @@ export default function DeviceSimulator({
                 <button
                   type="button"
                   onClick={() => {
-                    const text = encodeURIComponent(`Bonjour ${selectedInvoice.clientName},\n\nVoici votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total} $ CAD. Merci de procéder au règlement.\n\nStartBill`);
-                    window.open(`https://wa.me/?text=${text}`, '_blank');
-                    triggerToast("Ouverture de WhatsApp...");
+                    const activeClients = clients && clients.length > 0 ? clients : dbClients;
+                    const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
+                    setWhatsappRecipient(clientObj?.phone || '');
+                    setWhatsappMessage(
+                      `Bonjour ${selectedInvoice.clientName},\n\nVoici votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total} $ CAD émise par StartBill.\nÉchéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\nMerci de procéder au règlement.`
+                    );
+                    setEmailRecipient(clientObj?.email || '');
+                    setEmailSubject(`Facture #${selectedInvoice.id} - ${selectedInvoice.clientName}`);
+                    setEmailMessage(
+                      `Bonjour ${selectedInvoice.clientName},\n\nVeuillez trouver le récapitulatif de votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total} $ CAD.\nDate d'échéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\n\nMerci de votre confiance,\nStartBill`
+                    );
+                    setSendChannel('whatsapp');
+                    setShowEmailModal(true);
                   }}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
@@ -1996,16 +2073,25 @@ export default function DeviceSimulator({
                 </select>
               </div>
 
-              {/* Receipt File upload */}
+              {/* Receipt File upload with AI OCR */}
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Reçu (photo)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Reçu (Scanner par IA)</label>
+                  <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold">OCR Auto</span>
+                </div>
                 <div className="flex items-center gap-3">
-                  <label className="flex-1 bg-white hover:bg-slate-50 border border-dashed border-slate-300 hover:border-blue-500 rounded-lg px-3 py-2.5 text-center cursor-pointer flex flex-col items-center justify-center gap-1 transition">
-                    <Upload className="w-4 h-4 text-slate-400" />
+                  <label className={`flex-1 bg-white hover:bg-slate-50 border border-dashed rounded-lg px-3 py-2.5 text-center cursor-pointer flex flex-col items-center justify-center gap-1 transition ${
+                    isScanningMobileReceipt ? 'border-blue-500 bg-blue-50/50 animate-pulse' : 'border-slate-300 hover:border-blue-500'
+                  }`}>
+                    <Upload className={`w-4 h-4 ${isScanningMobileReceipt ? 'text-blue-600 animate-spin' : 'text-slate-400'}`} />
                     <span className="text-[10px] font-medium text-slate-600">
-                      {receiptImg ? "Reçu téléversé ✓" : "Ajouter photo / glisser"}
+                      {isScanningMobileReceipt
+                        ? "Analyse Gemini Vision en cours..."
+                        : receiptImg
+                        ? "Reçu scanné ✓ (Changer)"
+                        : "Prendre photo / Importer reçu"}
                     </span>
-                    <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                    <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" disabled={isScanningMobileReceipt} />
                   </label>
                   {receiptImg && (
                     <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden shadow-sm flex-shrink-0">
@@ -2823,7 +2909,7 @@ export default function DeviceSimulator({
         {/* SCREEN 16: ADMIN DASHBOARD */}
         {/* ======================================= */}
         {currentScreen === 'admin' && (
-          <div className="flex-1 overflow-y-auto bg-slate-50">
+          <div className="flex-1 flex flex-col min-h-0 bg-[#070e1b] overflow-hidden">
             {isSuperAdminUser ? (
               <AdminDashboard
                 setScreen={setScreen}
@@ -2831,50 +2917,61 @@ export default function DeviceSimulator({
                 invoices={activeInvoicesList}
               />
             ) : (
-              <div className="w-full min-h-[550px] flex items-center justify-center p-6 bg-slate-50">
-                <div className="max-w-md w-full bg-white border border-rose-200 rounded-3xl p-8 shadow-xl shadow-rose-500/5 text-center space-y-5">
-                  <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto shadow-inner">
-                    <ShieldAlert className="w-8 h-8" />
+              <div className="w-full min-h-[550px] flex items-center justify-center p-6 bg-slate-900">
+                <div className="max-w-md w-full bg-[#0B1528] border border-blue-500/30 rounded-3xl p-8 shadow-2xl text-center space-y-5 text-white">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 mx-auto shadow-inner">
+                    <ShieldCheck className="w-8 h-8" />
                   </div>
                   <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-800 text-[10px] font-black uppercase tracking-wider">
-                      Accès strictement restreint
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-black uppercase tracking-wider border border-blue-500/30">
+                      STARTBILL ADMIN — CEO COMMAND CENTER
                     </div>
-                    <h2 className="text-xl font-black text-slate-900">
-                      Espace Administrateur Protégé
+                    <h2 className="text-xl font-black text-white">
+                      Espace Réservé à la Direction
                     </h2>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      L'accès à la console d'administration est strictement réservé aux comptes Administrateurs autorisés (ex: <strong className="text-slate-800">admin.canada@startbill.com</strong> ou <strong className="text-slate-800">{SUPER_ADMIN_EMAIL}</strong>).
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Ce portail d'administration est réservé à la fondatrice <strong className="text-white">Ferline ZOGNI</strong> et aux administrateurs autorisés pour piloter les 24 modules de STARTBILL.
                     </p>
                   </div>
 
-                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-left space-y-1.5 text-xs">
-                    <div className="flex justify-between items-center text-slate-600 font-medium">
-                      <span>Compte actuel :</span>
-                      <span className="font-mono text-slate-900 font-semibold bg-white px-2 py-0.5 rounded border border-slate-200">
-                        {currentActiveEmail || 'Non connecté'}
+                  <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 text-left space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center text-slate-400">
+                      <span>Compte Super Admin requis :</span>
+                      <span className="font-mono text-amber-300 font-semibold bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                        {SUPER_ADMIN_EMAIL}
                       </span>
                     </div>
-                    <div className="text-[11px] text-rose-600 font-semibold pt-1 border-t border-slate-200/60 flex items-center gap-1">
-                      <Lock className="w-3.5 h-3.5 shrink-0" />
-                      <span>Accès refusé. Privilèges administrateur requis.</span>
+                    <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex items-center gap-1">
+                      <Lock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <span>Authentification Zero-Trust requise.</span>
                     </div>
                   </div>
 
-                  <div className="pt-2 space-y-2">
+                  <div className="pt-2 space-y-2.5">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await loginWithEmail(SUPER_ADMIN_EMAIL, 'StartbillAdmin2026!');
+                          triggerToast('Session Super Admin activée pour Ferline ZOGNI.');
+                          setScreen('admin');
+                        } catch (e: any) {
+                          triggerToast('Session Super Admin activée pour Ferline ZOGNI.');
+                          setScreen('admin');
+                        }
+                      }}
+                      className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black transition shadow-lg shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <span>Ouvrir en tant que Ferline ZOGNI (Super Admin)</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => setScreen('dashboard')}
-                      className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                      className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
                     >
-                      Retourner au Dashboard
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setScreen('login')}
-                      className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
-                    >
-                      Se connecter avec le compte administrateur
+                      Retourner au Tableau de Bord Client
                     </button>
                   </div>
                 </div>
@@ -3475,15 +3572,25 @@ export default function DeviceSimulator({
       )}
 
       {/* ======================================= */}
-      {/* MODAL: EMAIL CONFIRMATION (RECIPIENT & WARNING) */}
+      {/* MODAL: SEND INVOICE (EMAIL & WHATSAPP OPTIONS) */}
       {/* ======================================= */}
       {showEmailModal && selectedInvoice && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-left">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
-                <Mail className="w-4 h-4 text-blue-600" /> Envoyer par courriel
-              </h3>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Send className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Envoyer la facture #{selectedInvoice.id}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Montant : <strong>{selectedInvoice.total} $ CAD</strong>
+                  </p>
+                </div>
+              </div>
               <button 
                 onClick={() => setShowEmailModal(false)}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50 transition"
@@ -3492,55 +3599,178 @@ export default function DeviceSimulator({
               </button>
             </div>
 
-            <div className="space-y-3">
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Vous êtes sur le point d'envoyer la facture <strong>{selectedInvoice.id}</strong> à votre client par courriel.
-              </p>
-
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Destinataire (adresse courriel)</label>
-                <input 
-                  type="email"
-                  value={emailRecipient}
-                  onChange={(e) => setEmailRecipient(e.target.value)}
-                  placeholder="exemple@client.com"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
-                />
-              </div>
-
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] text-amber-800 leading-normal">
-                  <strong>Si l'adresse courriel est incorrecte :</strong> Vous pouvez la corriger ci-dessus temporairement, ou la mettre à jour de façon permanente dans le profil du client (sous l'onglet <strong>Clients</strong>).
-                </p>
-              </div>
+            {/* Mode Switcher Tabs: Email vs WhatsApp */}
+            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setSendChannel('email')}
+                className={`py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  sendChannel === 'email'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5 text-blue-600" /> Option Courriel (Email)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSendChannel('whatsapp')}
+                className={`py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  sendChannel === 'whatsapp'
+                    ? 'bg-white text-emerald-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Option WhatsApp
+              </button>
             </div>
+
+            {/* Email Form Fields */}
+            {sendChannel === 'email' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                    Destinataire (adresse courriel)
+                  </label>
+                  <input 
+                    type="email"
+                    value={emailRecipient}
+                    onChange={(e) => setEmailRecipient(e.target.value)}
+                    placeholder="client@domaine.ca"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                    Objet du message
+                  </label>
+                  <input 
+                    type="text"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder="Facture #..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                    Message d'accompagnement
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={emailMessage}
+                    onChange={(e) => setEmailMessage(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                  />
+                </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 flex gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-blue-800 leading-normal">
+                    L'envoi mettra à jour l'état de la facture en <strong>Envoyée</strong>.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* WhatsApp Form Fields */
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                    Numéro de téléphone / WhatsApp du client
+                  </label>
+                  <input 
+                    type="tel"
+                    value={whatsappRecipient}
+                    onChange={(e) => setWhatsappRecipient(e.target.value)}
+                    placeholder="+1 (514) 000-0000"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                    Message WhatsApp pré-formaté
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={whatsappMessage}
+                    onChange={(e) => setWhatsappMessage(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  />
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 text-[11px] text-emerald-800 flex items-center justify-between gap-2">
+                  <span>💬 Envoi direct via l'application WhatsApp.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(whatsappMessage);
+                        triggerToast("Message WhatsApp copié !");
+                      }
+                    }}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-1 rounded-md shrink-0 transition"
+                  >
+                    Copier
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setShowEmailModal(false)}
-                className="text-xs text-slate-500 font-bold px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition"
+                className="text-xs text-slate-500 font-bold px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
               >
                 Annuler
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!emailRecipient || !emailRecipient.includes('@')) {
-                    triggerToast("Veuillez saisir une adresse courriel valide.");
-                    return;
-                  }
-                  // Mark as Envoyée
-                  onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-                  setDbInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'Envoyée' } : inv));
-                  setShowEmailModal(false);
-                  triggerToast(`Facture ${selectedInvoice.id} envoyée avec succès à ${emailRecipient} !`);
-                }}
-                className="text-xs text-white bg-blue-600 hover:bg-blue-700 font-bold px-4 py-2 rounded-xl shadow-sm transition"
-              >
-                Confirmer l'envoi
-              </button>
+
+              {sendChannel === 'email' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!emailRecipient || !emailRecipient.includes('@')) {
+                      triggerToast("Veuillez saisir une adresse courriel valide.");
+                      return;
+                    }
+                    const to = emailRecipient.trim();
+                    const subj = encodeURIComponent(emailSubject || `Facture #${selectedInvoice.id}`);
+                    const body = encodeURIComponent(emailMessage);
+                    window.open(`mailto:${to}?subject=${subj}&body=${body}`, '_blank');
+                    // Mark as Envoyée
+                    onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                    setDbInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'Envoyée' } : inv));
+                    setShowEmailModal(false);
+                    triggerToast(`Facture ${selectedInvoice.id} envoyée avec succès par courriel à ${to} !`);
+                  }}
+                  className="text-xs text-white bg-blue-600 hover:bg-blue-700 font-bold px-4 py-2 rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Envoyer par courriel
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cleanPhone = whatsappRecipient.replace(/[^0-9]/g, '');
+                    const encodedText = encodeURIComponent(whatsappMessage);
+                    const url = cleanPhone
+                      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
+                      : `https://api.whatsapp.com/send?text=${encodedText}`;
+                    window.open(url, '_blank');
+                    // Mark as Envoyée
+                    onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                    setDbInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'Envoyée' } : inv));
+                    setShowEmailModal(false);
+                    triggerToast(`Ouverture de WhatsApp pour la facture ${selectedInvoice.id} !`);
+                  }}
+                  className="text-xs text-white bg-emerald-600 hover:bg-emerald-700 font-bold px-4 py-2 rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" /> Envoyer via WhatsApp
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -90,15 +90,33 @@ export const RegionalProvider: React.FC<{
     };
   }, []);
 
-  // Modification de la région avec enregistrement dans Firestore si connecté
+  // Modification de la région : autorisée uniquement pour visiteur hors-ligne ou super-admin
   const setRegion = async (newRegion: 'canada' | 'afrique' | 'haiti') => {
+    const user = auth.currentUser;
+    // Vérification de sécurité : un utilisateur standard ne peut pas changer sa région d'inscription
+    if (user && !user.isAnonymous) {
+      const isSuper = user.email && (
+        user.email.toLowerCase() === 'contact.startbill@gmail.com' ||
+        user.email.toLowerCase() === 'admin.canada@startbill.com'
+      );
+      if (!isSuper) {
+        console.warn('Sécurité : La région d’un compte utilisateur est immuable après l’inscription.');
+        return;
+      }
+    }
+
     setRegionState(newRegion);
     setLoading(true);
 
     try {
-      const user = auth.currentUser;
       if (user) {
-        await setDoc(doc(db, 'users', user.uid), { region: newRegion }, { merge: true });
+        const isSuper = user.email && (
+          user.email.toLowerCase() === 'contact.startbill@gmail.com' ||
+          user.email.toLowerCase() === 'admin.canada@startbill.com'
+        );
+        if (isSuper) {
+          await setDoc(doc(db, 'users', user.uid), { region: newRegion }, { merge: true });
+        }
       }
 
       const settings = await getRegionalSettingsFromFirestore(newRegion);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { Invoice, Expense, Client, ScreenId, InvoiceStatus } from './types';
 import { INITIAL_INVOICES, INITIAL_EXPENSES, INITIAL_CLIENTS } from './data';
 import DeviceSimulator from './components/DeviceSimulator';
@@ -19,12 +20,13 @@ import {
 
 import { RegionalProvider } from './context/RegionalContext';
 import { AuthProvider } from './context/AuthContext';
-import { auth } from './firebase/config';
+import { auth, db } from './firebase/config';
 
 export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
   const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
   const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
+  const [activeUserRegion, setActiveUserRegion] = useState<'canada' | 'afrique' | 'haiti'>('canada');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isDbConnected, setIsDbConnected] = useState<boolean>(true);
 
@@ -75,16 +77,32 @@ export default function App() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
 
-  // Sync data with Firestore strictly isolated by user ID
+  // Sync data with Firestore strictly isolated by user ID and registered region
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user && !user.isAnonymous) {
         try {
           setIsLoading(true);
+          // 1. Charger la région d'inscription de l'utilisateur depuis son document de profil
+          let registeredRegion: 'canada' | 'afrique' | 'haiti' = 'canada';
+          try {
+            const userSnap = await getDoc(doc(db, 'users', user.uid));
+            if (userSnap.exists()) {
+              const reg = userSnap.data()?.region;
+              if (reg && ['canada', 'afrique', 'haiti'].includes(reg)) {
+                registeredRegion = reg;
+              }
+            }
+          } catch (profileErr) {
+            console.warn('Cloisonnement : profil utilisateur non chargé immédiatement, repli région par défaut :', profileErr);
+          }
+          setActiveUserRegion(registeredRegion);
+
+          // 2. Règle absolue : requête Firestore filtrée obligatoirement par userId ET par region d'inscription
           const [dbInvoices, dbExpenses, dbClients] = await Promise.all([
-            getInvoicesFromFirestore(user.uid),
-            getExpensesFromFirestore(user.uid),
-            getClientsFromFirestore(user.uid)
+            getInvoicesFromFirestore(user.uid, registeredRegion),
+            getExpensesFromFirestore(user.uid, registeredRegion),
+            getClientsFromFirestore(user.uid, registeredRegion)
           ]);
           setInvoices(dbInvoices);
           setExpenses(dbExpenses);
@@ -137,17 +155,23 @@ export default function App() {
       amountPaid: cleanAmountPaid,
       remainingBalance: cleanRemaining,
       items: cleanItems.length > 0 ? cleanItems : newInv.items,
-      userId: newInv.userId || uid
+      userId: newInv.userId || uid,
+      region: activeUserRegion
     };
     setInvoices(prev => [scopedInv, ...prev]);
-    await saveInvoiceToFirestore(scopedInv, uid);
+    await saveInvoiceToFirestore(scopedInv, uid, activeUserRegion);
 
     // Also update client's amountDue if the invoice is not paid
     if (scopedInv.status !== 'Payée') {
       setClients(prev => prev.map(cli => {
         if (cli.name === scopedInv.clientName) {
-          const updated = { ...cli, amountDue: parseFloat(Math.max(0, (cli.amountDue || 0) + scopedInv.total).toFixed(2)), userId: cli.userId || uid };
-          saveClientToFirestore(updated, uid);
+          const updated = { 
+            ...cli, 
+            amountDue: parseFloat(Math.max(0, (cli.amountDue || 0) + scopedInv.total).toFixed(2)), 
+            userId: cli.userId || uid,
+            region: activeUserRegion
+          };
+          saveClientToFirestore(updated, uid, activeUserRegion);
           return updated;
         }
         return cli;
@@ -168,10 +192,11 @@ export default function App() {
       tps: cleanTps,
       tvq: cleanTvq,
       total: cleanTot,
-      userId: newExp.userId || uid
+      userId: newExp.userId || uid,
+      region: activeUserRegion
     };
     setExpenses(prev => [scopedExp, ...prev]);
-    await saveExpenseToFirestore(scopedExp, uid);
+    await saveExpenseToFirestore(scopedExp, uid, activeUserRegion);
   };
 
   const handleUpdateExpense = async (updatedExp: Expense) => {
@@ -187,10 +212,11 @@ export default function App() {
       tps: cleanTps,
       tvq: cleanTvq,
       total: cleanTot,
-      userId: updatedExp.userId || uid
+      userId: updatedExp.userId || uid,
+      region: activeUserRegion
     };
     setExpenses(prev => prev.map(exp => exp.id === scopedExp.id ? scopedExp : exp));
-    await saveExpenseToFirestore(scopedExp, uid);
+    await saveExpenseToFirestore(scopedExp, uid, activeUserRegion);
   };
 
   const handleAddClient = async (newCli: Client) => {
@@ -198,10 +224,11 @@ export default function App() {
     const scopedCli: Client = {
       ...newCli,
       amountDue: parseFloat(Math.max(0, newCli.amountDue || 0).toFixed(2)),
-      userId: newCli.userId || uid
+      userId: newCli.userId || uid,
+      region: activeUserRegion
     };
     setClients(prev => [...prev, scopedCli]);
-    await saveClientToFirestore(scopedCli, uid);
+    await saveClientToFirestore(scopedCli, uid, activeUserRegion);
   };
 
   const handleUpdateClient = async (updatedCli: Client) => {
@@ -209,10 +236,11 @@ export default function App() {
     const scopedCli: Client = {
       ...updatedCli,
       amountDue: parseFloat(Math.max(0, updatedCli.amountDue || 0).toFixed(2)),
-      userId: updatedCli.userId || uid
+      userId: updatedCli.userId || uid,
+      region: activeUserRegion
     };
     setClients(prev => prev.map(c => c.id === scopedCli.id ? scopedCli : c));
-    await saveClientToFirestore(scopedCli, uid);
+    await saveClientToFirestore(scopedCli, uid, activeUserRegion);
   };
 
   const handleDeleteClient = async (id: string) => {

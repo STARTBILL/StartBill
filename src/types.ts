@@ -26,6 +26,7 @@ export interface Invoice {
   paymentStatus?: 'paid' | 'partial';
   userId?: string;
   stripePaymentUrl?: string;
+  region?: 'canada' | 'afrique' | 'haiti';
 }
 
 export interface Expense {
@@ -56,6 +57,7 @@ export interface Expense {
   eligibleAmount?: number; // Montant admissible fiscalement
   createdAt?: string;
   userId?: string;
+  region?: 'canada' | 'afrique' | 'haiti';
 }
 
 export interface Client {
@@ -82,6 +84,7 @@ export interface Client {
   totalPaid?: number;
   createdAt?: string;
   userId?: string;
+  region?: 'canada' | 'afrique' | 'haiti';
 }
 
 export interface ProductItem {
@@ -94,6 +97,7 @@ export interface ProductItem {
   taxApplicable?: boolean;
   sku?: string;
   createdAt?: string;
+  region?: 'canada' | 'afrique' | 'haiti';
 }
 
 export type ScreenId =

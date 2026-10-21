@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Global Safety Net
+    // Global Safety Net: default deny
     match /{document=**} {
       allow read, write: if false;
     }
@@ -28,12 +28,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (
-          (request.auth.token.email != null && 
-            (
-              request.auth.token.email.lower() == 'contact.startbill@gmail.com' ||
-              request.auth.token.email.lower() == 'admin.canada@startbill.com'
-            )
-          ) ||
+          isSuperAdmin() ||
           (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
         );
@@ -50,48 +45,166 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // User collection: Users can access their own document; Admins have global access
-    match /users/{userId} {
-      allow read, write: if isAdmin() || isUserSelf(userId);
+    // RÈGLE D'OR : CLOISONNEMENT STRICT DES DONNÉES PAR RÉGION
+    // Récupère la région d'inscription immuable de l'utilisateur connecté
+    function userRegisteredRegion() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) ?
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.region : null;
     }
 
-    // Businesses collection: Owners manage their own business profiles and balance sheet metrics
+    // Valide que la ressource ciblée correspond exactement à la région de l'utilisateur
+    function matchesUserRegion(docRegion) {
+      return isAuthenticated() && (
+        docRegion == userRegisteredRegion()
+      );
+    }
+
+    // User collection:
+    // - Inscription : capture obligatoire de la région parmi 'canada', 'afrique', 'haiti'
+    // - Mise à jour : interdiction absolue de modifier le champ 'region'
+    match /users/{userId} {
+      allow read: if isAdmin() || isUserSelf(userId);
+      allow create: if isUserSelf(userId) && 
+        request.resource.data.region in ['canada', 'afrique', 'haiti'];
+      allow update: if isAdmin() || (
+        isUserSelf(userId) && 
+        (!('region' in request.resource.data) || request.resource.data.region == resource.data.region)
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Businesses collection: STRICT DATA ISOLATION
     match /businesses/{businessId} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.ownerRef == request.auth.uid));
-      allow create: if isAdmin() || (isAuthenticated() && request.resource.data.ownerRef == request.auth.uid);
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.ownerRef == request.auth.uid);
+      allow read: if isAdmin() || (
+        isAuthenticated() && 
+        resource.data.ownerRef == request.auth.uid &&
+        matchesUserRegion(resource.data.region)
+      );
+      allow create: if isAdmin() || (
+        isAuthenticated() && 
+        request.resource.data.ownerRef == request.auth.uid &&
+        matchesUserRegion(request.resource.data.region)
+      );
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        resource.data.ownerRef == request.auth.uid &&
+        matchesUserRegion(resource.data.region) &&
+        request.resource.data.region == resource.data.region
+      );
+      allow delete: if isAdmin() || (
+        isAuthenticated() && 
+        resource.data.ownerRef == request.auth.uid &&
+        matchesUserRegion(resource.data.region)
+      );
 
       // Financial snapshots subcollection (for monthly historical health trends)
       match /financialSnapshots/{snapshotId} {
-        allow read, write: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerRef == request.auth.uid);
+        allow read, write: if isAdmin() || (
+          isAuthenticated() && 
+          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerRef == request.auth.uid &&
+          matchesUserRegion(get(/databases/$(database)/documents/businesses/$(businessId)).data.region)
+        );
       }
+    }
+
+    // Invoices collection: STRICT DATA ISOLATION (No cross-region reading/writing)
+    match /invoices/{invoiceId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))) &&
+        matchesUserRegion(resource.data.region)
+      );
+      allow create: if isAdmin() || (
+        isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        matchesUserRegion(request.resource.data.region)
+      );
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))) &&
+        matchesUserRegion(resource.data.region) &&
+        request.resource.data.region == resource.data.region
+      );
+      allow delete: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))) &&
+        matchesUserRegion(resource.data.region)
+      );
+    }
+
+    // Expenses collection: STRICT DATA ISOLATION
+    match /expenses/{expenseId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))) &&
+        matchesUserRegion(resource.data.region)
+      );
+      allow create: if isAdmin() || (
+        isAuthenticated() && 
+        (request.resource.data.userId == request.auth.uid || request.resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(request.resource.data.region)
+      );
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(resource.data.region) &&
+        request.resource.data.region == resource.data.region
+      );
+      allow delete: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(resource.data.region)
+      );
+    }
+
+    // Clients collection: STRICT DATA ISOLATION
+    match /clients/{clientId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))) &&
+        matchesUserRegion(resource.data.region)
+      );
+      allow create: if isAdmin() || (
+        isAuthenticated() && 
+        (request.resource.data.userId == request.auth.uid || request.resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(request.resource.data.region)
+      );
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(resource.data.region) &&
+        request.resource.data.region == resource.data.region
+      );
+      allow delete: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(resource.data.region)
+      );
+    }
+
+    // Payments collection: STRICT DATA ISOLATION
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(resource.data.region)
+      );
+      allow create: if isAdmin() || (
+        isAuthenticated() && 
+        (request.resource.data.userId == request.auth.uid || request.resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(request.resource.data.region)
+      );
+      allow update, delete: if isAdmin() || (
+        isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
+        matchesUserRegion(resource.data.region) &&
+        request.resource.data.region == resource.data.region
+      );
     }
 
     // Subscriptions: Users access their own, Admins have global access
     match /subscriptions/{subscriptionId} {
       allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid));
-    }
-
-    // Invoices: Users access their own, Admins have global access
-    match /invoices/{invoiceId} {
-      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
-    }
-
-    // Expenses: Users access their own, Admins have global access
-    match /expenses/{expenseId} {
-      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
-    }
-
-    // Clients: Users access their own, Admins have global access
-    match /clients/{clientId} {
-      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
-    }
-
-    // Payments: Users access their own payments, Admins manage all
-    match /payments/{paymentId} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
-      allow create: if isAdmin() || (isAuthenticated() && (request.resource.data.userId == request.auth.uid || request.resource.data.ownerRef == request.auth.uid || (request.resource.data.businessRef != null && isOwner(request.resource.data.businessRef))));
-      allow update, delete: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))));
     }
 
     // financial_obligations
@@ -138,9 +251,9 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Test collection
+    // Test connection collection
     match /test/{testId} {
-      allow read, write: if isAdmin();
+      allow read, write: if true;
     }
   }
 }

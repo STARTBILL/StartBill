@@ -106,9 +106,14 @@ export default function InvoicesPage({
   const [paymentOption, setPaymentOption] = useState<'total' | 'partial'>('total');
   const [customAmountPaid, setCustomAmountPaid] = useState<string>('');
 
-  // Email modal state
+  // Multi-channel invoice dispatch modal state (Email & WhatsApp)
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [sendChannel, setSendChannel] = useState<'email' | 'whatsapp'>('email');
   const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [whatsappRecipient, setWhatsappRecipient] = useState('');
+  const [whatsappMessage, setWhatsappMessage] = useState('');
 
   // Stripe Online Payment modal state
   const [stripePaymentModal, setStripePaymentModal] = useState<{
@@ -626,7 +631,20 @@ export default function InvoicesPage({
 
             <button
               type="button"
-              onClick={() => handleShareWhatsApp(selectedInvoice)}
+              onClick={() => {
+                const clientObj = clients.find(c => c.name === selectedInvoice.clientName);
+                setWhatsappRecipient(clientObj?.phone || '');
+                setWhatsappMessage(
+                  `Bonjour ${selectedInvoice.clientName},\n\nVoici votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total.toFixed(2)} $ CAD émise par StartBill.\nÉchéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\n\nMerci de procéder au règlement.`
+                );
+                setEmailRecipient(clientObj?.email || '');
+                setEmailSubject(`Facture #${selectedInvoice.id} - ${selectedInvoice.clientName}`);
+                setEmailMessage(
+                  `Bonjour ${selectedInvoice.clientName},\n\nVeuillez trouver le récapitulatif de votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total.toFixed(2)} $ CAD.\nDate d'échéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\n\nCordialement,\nStartBill Facturation`
+                );
+                setSendChannel('whatsapp');
+                setShowEmailModal(true);
+              }}
               className="flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition cursor-pointer"
             >
               <MessageCircle className="w-4 h-4" /> Envoyer par WhatsApp
@@ -638,6 +656,15 @@ export default function InvoicesPage({
               onClick={() => {
                 const clientObj = clients.find(c => c.name === selectedInvoice.clientName);
                 setEmailRecipient(clientObj?.email || '');
+                setEmailSubject(`Facture #${selectedInvoice.id} - ${selectedInvoice.clientName}`);
+                setEmailMessage(
+                  `Bonjour ${selectedInvoice.clientName},\n\nVeuillez trouver le récapitulatif de votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total.toFixed(2)} $ CAD.\nDate d'échéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\n\nCordialement,\nStartBill Facturation`
+                );
+                setWhatsappRecipient(clientObj?.phone || '');
+                setWhatsappMessage(
+                  `Bonjour ${selectedInvoice.clientName},\n\nVoici votre facture #${selectedInvoice.id} d'un montant de ${selectedInvoice.total.toFixed(2)} $ CAD émise par StartBill.\nÉchéance : ${selectedInvoice.dueDate || selectedInvoice.date}.\n\nMerci de procéder au règlement.`
+                );
+                setSendChannel('email');
                 setShowEmailModal(true);
               }}
             >
@@ -698,41 +725,186 @@ export default function InvoicesPage({
           </div>
         </div>
 
-        {/* EMAIL MODAL */}
+        {/* SEND MODAL: EMAIL & WHATSAPP OPTIONS */}
         {showEmailModal && (
           <div className="fixed inset-0 bg-secondary-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-md bg-white p-6 space-y-4">
+            <Card className="w-full max-w-lg bg-white p-6 space-y-4 shadow-2xl rounded-2xl">
               <div className="flex items-center justify-between border-b border-secondary-100 pb-3">
-                <h3 className="text-sm font-black text-secondary-900">Envoyer la facture par courriel</h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center font-bold">
+                    <Send className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-secondary-900">
+                      Envoyer la facture #{selectedInvoice.id}
+                    </h3>
+                    <p className="text-[11px] text-secondary-500 font-medium">
+                      Choisissez le canal de transmission : Courriel ou WhatsApp.
+                    </p>
+                  </div>
+                </div>
                 <button onClick={() => setShowEmailModal(false)} className="text-secondary-400 hover:text-secondary-700">
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="space-y-3">
-                <Input
-                  label="Adresse courriel du destinataire"
-                  type="email"
-                  placeholder="client@domaine.ca"
-                  value={emailRecipient}
-                  onChange={(e) => setEmailRecipient(e.target.value)}
-                />
+              {/* Tabs Switcher: Email vs WhatsApp */}
+              <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setSendChannel('email')}
+                  className={`py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+                    sendChannel === 'email'
+                      ? 'bg-white text-blue-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5 text-blue-600" /> Option Courriel (Email)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSendChannel('whatsapp')}
+                  className={`py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+                    sendChannel === 'whatsapp'
+                      ? 'bg-white text-emerald-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" /> Option WhatsApp
+                </button>
               </div>
+
+              {/* Content: Email Option */}
+              {sendChannel === 'email' ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Adresse courriel du destinataire
+                    </label>
+                    <Input
+                      type="email"
+                      placeholder="client@domaine.ca"
+                      value={emailRecipient}
+                      onChange={(e) => setEmailRecipient(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Objet du courriel
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="Facture #..."
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Message d'accompagnement
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={emailMessage}
+                      onChange={(e) => setEmailMessage(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-[11px] text-blue-800">
+                    ℹ️ L'envoi marquera automatiquement la facture comme <strong>Envoyée</strong>.
+                  </div>
+                </div>
+              ) : (
+                /* Content: WhatsApp Option */
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Numéro de téléphone / WhatsApp du client
+                    </label>
+                    <Input
+                      type="tel"
+                      placeholder="+1 (514) 000-0000"
+                      value={whatsappRecipient}
+                      onChange={(e) => setWhatsappRecipient(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Message WhatsApp pré-rempli
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={whatsappMessage}
+                      onChange={(e) => setWhatsappMessage(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-[11px] text-emerald-800 flex items-center justify-between gap-2">
+                    <span>💬 Ouverture directe de l'application WhatsApp en 1 clic.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(whatsappMessage);
+                          triggerToast("Message WhatsApp copié dans le presse-papier !");
+                        }
+                      }}
+                      className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg shrink-0 transition cursor-pointer"
+                    >
+                      Copier
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2 border-t border-secondary-100">
                 <Button variant="outline" size="sm" onClick={() => setShowEmailModal(false)}>
                   Annuler
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    setShowEmailModal(false);
-                    triggerToast(`Facture ${selectedInvoice.id} envoyée avec succès à ${emailRecipient || 'votre client'} !`);
-                  }}
-                >
-                  Envoyer
-                </Button>
+                {sendChannel === 'email' ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      if (!emailRecipient || !emailRecipient.includes('@')) {
+                        triggerToast("Veuillez saisir une adresse courriel valide.");
+                        return;
+                      }
+                      const to = emailRecipient.trim();
+                      const subj = encodeURIComponent(emailSubject || `Facture #${selectedInvoice.id}`);
+                      const body = encodeURIComponent(emailMessage);
+                      window.open(`mailto:${to}?subject=${subj}&body=${body}`, '_blank');
+                      onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                      setShowEmailModal(false);
+                      triggerToast(`Facture ${selectedInvoice.id} transmise par courriel à ${to} !`);
+                    }}
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Envoyer par courriel
+                  </Button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cleanPhone = whatsappRecipient.replace(/[^0-9]/g, '');
+                      const encodedText = encodeURIComponent(whatsappMessage);
+                      const url = cleanPhone
+                        ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
+                        : `https://api.whatsapp.com/send?text=${encodedText}`;
+                      window.open(url, '_blank');
+                      onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                      setShowEmailModal(false);
+                      triggerToast(`Ouverture de WhatsApp pour la facture ${selectedInvoice.id} !`);
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" /> Envoyer via WhatsApp
+                  </button>
+                )}
               </div>
             </Card>
           </div>

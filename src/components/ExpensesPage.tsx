@@ -132,6 +132,8 @@ export default function ExpensesPage({
     total?: number;
     date?: string;
     category?: string;
+    paymentMethod?: string;
+    notes?: string;
   } | null>(null);
 
   // Speech Recognition States
@@ -144,62 +146,78 @@ export default function ExpensesPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Start OCR Scanning process on an uploaded or captured image file
-  const processOcrImage = (file: File) => {
+  // Start real OCR Scanning process on an uploaded or captured image file via Gemini Vision API
+  const processOcrImage = async (file: File) => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const imgDataUrl = reader.result as string;
       setOcrPreviewImage(imgDataUrl);
       setIsOcrScanning(true);
       setOcrProgress(15);
       setShowOcrModal(true);
 
-      // Simulate step-by-step AI OCR analysis
-      setTimeout(() => setOcrProgress(45), 600);
-      setTimeout(() => setOcrProgress(75), 1200);
+      const progressInterval = setInterval(() => {
+        setOcrProgress(prev => {
+          if (prev >= 85) return prev;
+          return prev + 10;
+        });
+      }, 350);
 
-      setTimeout(() => {
+      try {
+        const response = await fetch('/api/scan-receipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: imgDataUrl,
+            filename: file.name,
+            mimeType: file.type || 'image/jpeg'
+          })
+        });
+
+        clearInterval(progressInterval);
         setOcrProgress(100);
-        setIsOcrScanning(false);
 
-        // Intelligently generate plausible extracted receipt data based on filename or defaults
-        const fileNameLower = file.name.toLowerCase();
-        let provider = 'Bell Canada';
-        let amountHt = 89.99;
-        let category = 'Téléphone / Internet';
-
-        if (fileNameLower.includes('essence') || fileNameLower.includes('shell') || fileNameLower.includes('petro')) {
-          provider = 'Shell Canada';
-          amountHt = 54.78;
-          category = 'Transport';
-        } else if (fileNameLower.includes('bureau') || fileNameLower.includes('staples')) {
-          provider = 'Bureau en Gros';
-          amountHt = 132.50;
-          category = 'Fournitures de bureau';
-        } else if (fileNameLower.includes('resto') || fileNameLower.includes('repas')) {
-          provider = 'Restaurant Le Montréalais';
-          amountHt = 65.00;
-          category = 'Repas d\'affaires';
+        if (!response.ok) {
+          throw new Error(`Erreur serveur (${response.status})`);
         }
 
-        const tps = parseFloat((amountHt * 0.05).toFixed(2));
-        const tvq = parseFloat((amountHt * 0.09975).toFixed(2));
-        const total = parseFloat((amountHt + tps + tvq).toFixed(2));
-        const dateStr = new Date().toISOString().split('T')[0];
-
-        const detected = {
-          provider,
-          amountHt,
-          tps,
-          tvq,
-          total,
-          date: dateStr,
-          category
-        };
-
-        setOcrDetectedData(detected);
-        triggerToast("Lecture OCR du reçu terminée avec succès !");
-      }, 1800);
+        const data = await response.json();
+        if (data.extracted) {
+          const ext = data.extracted;
+          setOcrDetectedData({
+            provider: ext.provider || 'Commerce détecté',
+            amountHt: Number(ext.amountHt) || 0,
+            tps: Number(ext.tps) || 0,
+            tvq: Number(ext.tvq) || 0,
+            total: Number(ext.total) || 0,
+            date: ext.date || new Date().toISOString().split('T')[0],
+            category: ext.category || 'Autre',
+            paymentMethod: ext.paymentMethod || 'Carte bancaire',
+            notes: ext.notes || ''
+          });
+          triggerToast(`Reçu scanné : ${ext.provider} (${(ext.total || 0).toFixed(2)} CAD)`);
+        } else {
+          throw new Error('Réponse vide');
+        }
+      } catch (err: any) {
+        clearInterval(progressInterval);
+        console.warn('[OCR Scan Notice]:', err);
+        setOcrProgress(100);
+        setOcrDetectedData({
+          provider: 'Fournisseur à vérifier',
+          amountHt: 0,
+          tps: 0,
+          tvq: 0,
+          total: 0,
+          date: new Date().toISOString().split('T')[0],
+          category: 'Autre',
+          paymentMethod: 'Carte bancaire',
+          notes: ''
+        });
+        triggerToast("Image importée. Vous pouvez vérifier ou saisir les montants.");
+      } finally {
+        setIsOcrScanning(false);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -207,10 +225,18 @@ export default function ExpensesPage({
   const handleApplyOcrData = () => {
     if (!ocrDetectedData) return;
     setFormProvider(ocrDetectedData.provider || '');
-    setFormAmountHt(ocrDetectedData.amountHt?.toString() || '');
+    setFormAmountHt(Math.max(0, ocrDetectedData.amountHt || 0).toString());
+    setFormTps(Math.max(0, ocrDetectedData.tps || 0).toString());
+    setFormTvq(Math.max(0, ocrDetectedData.tvq || 0).toString());
     setFormDate(ocrDetectedData.date || new Date().toISOString().split('T')[0]);
     if (ocrDetectedData.category) {
       setFormCategory(ocrDetectedData.category);
+    }
+    if (ocrDetectedData.paymentMethod) {
+      setFormPaymentMethod(ocrDetectedData.paymentMethod);
+    }
+    if (ocrDetectedData.notes) {
+      setFormNotes(ocrDetectedData.notes);
     }
     if (ocrPreviewImage) {
       setFormReceiptUrl(ocrPreviewImage);
@@ -219,7 +245,7 @@ export default function ExpensesPage({
     if (!showModal) {
       setShowModal(true);
     }
-    triggerToast("Données du reçu appliquées au formulaire de dépense.");
+    triggerToast("Données vérifiées et appliquées à la dépense !");
   };
 
   // Toggle Voice Dictation using SpeechRecognition API with simulated voice dictation fallback
@@ -1303,36 +1329,78 @@ export default function ExpensesPage({
                     </span>
                   </div>
 
-                  {/* Detected Fields */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
-                    <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
-                      Données Extracted du Reçu
-                    </span>
+                  {/* Interactive Verified Fields */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
+                        Données Extraites (Vérifiables)
+                      </span>
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
+                        Gemini Vision IA
+                      </span>
+                    </div>
 
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex justify-between">
-                        <span className="text-slate-500 font-medium">Fournisseur :</span>
-                        <span className="font-extrabold text-slate-900">{ocrDetectedData?.provider}</span>
+                    <div className="space-y-2 pt-1">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Fournisseur</label>
+                        <input
+                          type="text"
+                          value={ocrDetectedData?.provider || ''}
+                          onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, provider: e.target.value } : null)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                        />
                       </div>
 
-                      <div className="flex justify-between">
-                        <span className="text-slate-500 font-medium">Montant HT :</span>
-                        <span className="font-bold text-slate-800">${ocrDetectedData?.amountHt?.toFixed(2)}</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Montant HT ($)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={ocrDetectedData?.amountHt ?? 0}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseFloat(e.target.value) || 0);
+                              const tps = parseFloat((val * 0.05).toFixed(2));
+                              const tvq = parseFloat((val * 0.09975).toFixed(2));
+                              const tot = parseFloat((val + tps + tvq).toFixed(2));
+                              setOcrDetectedData(prev => prev ? {
+                                ...prev,
+                                amountHt: val,
+                                tps,
+                                tvq,
+                                total: tot
+                              } : null);
+                            }}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Date</label>
+                          <input
+                            type="date"
+                            value={ocrDetectedData?.date || ''}
+                            onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, date: e.target.value } : null)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
                       </div>
 
-                      <div className="flex justify-between text-slate-600">
-                        <span>TPS (5%) :</span>
-                        <span>${ocrDetectedData?.tps?.toFixed(2)}</span>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200">
+                        <div className="flex justify-between">
+                          <span>TPS (5%) :</span>
+                          <span className="font-bold text-slate-800">${(ocrDetectedData?.tps ?? 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>TVQ (9.975%) :</span>
+                          <span className="font-bold text-slate-800">${(ocrDetectedData?.tvq ?? 0).toFixed(2)}</span>
+                        </div>
                       </div>
 
-                      <div className="flex justify-between text-slate-600">
-                        <span>TVQ (9.975%) :</span>
-                        <span>${ocrDetectedData?.tvq?.toFixed(2)}</span>
-                      </div>
-
-                      <div className="flex justify-between pt-1 border-t border-slate-200 font-black text-sm text-blue-700">
-                        <span>Total TTC :</span>
-                        <span>${ocrDetectedData?.total?.toFixed(2)} CAD</span>
+                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-200 font-black text-sm text-blue-700">
+                        <span>Total Payé TTC :</span>
+                        <span className="text-base">${(ocrDetectedData?.total ?? 0).toFixed(2)} CAD</span>
                       </div>
                     </div>
                   </div>

@@ -73,20 +73,33 @@ async function testConnection() {
 }
 testConnection();
 
-// Invoices collection helper - Strictly isolated by authenticated userId
-export async function getInvoicesFromFirestore(userId?: string): Promise<Invoice[]> {
+// Invoices collection helper - Strictly isolated by authenticated userId and registered region
+export async function getInvoicesFromFirestore(userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<Invoice[]> {
   const targetUid = userId || auth.currentUser?.uid;
   if (!targetUid) {
-    // Unauthenticated or new session: return clean empty list
     return [];
   }
 
   try {
-    const qInvoices = query(collection(db, 'invoices'), where('userId', '==', targetUid));
+    let qInvoices;
+    if (region) {
+      qInvoices = query(
+        collection(db, 'invoices'), 
+        where('userId', '==', targetUid),
+        where('region', '==', region)
+      );
+    } else {
+      qInvoices = query(collection(db, 'invoices'), where('userId', '==', targetUid));
+    }
+
     const querySnapshot = await getDocs(qInvoices);
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
-      invoices.push(docSnap.data() as Invoice);
+      const data = docSnap.data() as Invoice;
+      // Double barrière de sécurité : élimination stricte de toute facture hors de la région cible
+      if (!region || data.region === region) {
+        invoices.push(data);
+      }
     });
     return invoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   } catch (error) {
@@ -95,12 +108,14 @@ export async function getInvoicesFromFirestore(userId?: string): Promise<Invoice
   }
 }
 
-export async function saveInvoiceToFirestore(invoice: Invoice, userId?: string): Promise<void> {
+export async function saveInvoiceToFirestore(invoice: Invoice, userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<void> {
   try {
     const targetUid = userId || invoice.userId || auth.currentUser?.uid;
+    const targetRegion = region || invoice.region || 'canada';
     const invoiceToSave: Invoice = {
       ...invoice,
-      userId: targetUid || invoice.userId || ''
+      userId: targetUid || invoice.userId || '',
+      region: targetRegion as any
     };
     await setDoc(doc(db, 'invoices', invoice.id), invoiceToSave, { merge: true });
   } catch (error) {
@@ -116,19 +131,32 @@ export async function deleteInvoiceFromFirestore(invoiceId: string): Promise<voi
   }
 }
 
-// Expenses collection helper - Strictly isolated by authenticated userId
-export async function getExpensesFromFirestore(userId?: string): Promise<Expense[]> {
+// Expenses collection helper - Strictly isolated by authenticated userId and registered region
+export async function getExpensesFromFirestore(userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<Expense[]> {
   const targetUid = userId || auth.currentUser?.uid;
   if (!targetUid) {
     return [];
   }
 
   try {
-    const qExpenses = query(collection(db, 'expenses'), where('userId', '==', targetUid));
+    let qExpenses;
+    if (region) {
+      qExpenses = query(
+        collection(db, 'expenses'), 
+        where('userId', '==', targetUid),
+        where('region', '==', region)
+      );
+    } else {
+      qExpenses = query(collection(db, 'expenses'), where('userId', '==', targetUid));
+    }
+
     const querySnapshot = await getDocs(qExpenses);
     const expenses: Expense[] = [];
     querySnapshot.forEach((docSnap) => {
-      expenses.push(docSnap.data() as Expense);
+      const data = docSnap.data() as Expense;
+      if (!region || data.region === region) {
+        expenses.push(data);
+      }
     });
     return expenses.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   } catch (error) {
@@ -137,12 +165,14 @@ export async function getExpensesFromFirestore(userId?: string): Promise<Expense
   }
 }
 
-export async function saveExpenseToFirestore(expense: Expense, userId?: string): Promise<void> {
+export async function saveExpenseToFirestore(expense: Expense, userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<void> {
   try {
     const targetUid = userId || expense.userId || auth.currentUser?.uid;
+    const targetRegion = region || expense.region || 'canada';
     const expenseToSave: Expense = {
       ...expense,
-      userId: targetUid || expense.userId || ''
+      userId: targetUid || expense.userId || '',
+      region: targetRegion as any
     };
     await setDoc(doc(db, 'expenses', expense.id), expenseToSave, { merge: true });
   } catch (error) {
@@ -158,19 +188,32 @@ export async function deleteExpenseFromFirestore(expenseId: string): Promise<voi
   }
 }
 
-// Clients collection helper - Strictly isolated by authenticated userId
-export async function getClientsFromFirestore(userId?: string): Promise<Client[]> {
+// Clients collection helper - Strictly isolated by authenticated userId and registered region
+export async function getClientsFromFirestore(userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<Client[]> {
   const targetUid = userId || auth.currentUser?.uid;
   if (!targetUid) {
     return [];
   }
 
   try {
-    const qClients = query(collection(db, 'clients'), where('userId', '==', targetUid));
+    let qClients;
+    if (region) {
+      qClients = query(
+        collection(db, 'clients'), 
+        where('userId', '==', targetUid),
+        where('region', '==', region)
+      );
+    } else {
+      qClients = query(collection(db, 'clients'), where('userId', '==', targetUid));
+    }
+
     const querySnapshot = await getDocs(qClients);
     const clients: Client[] = [];
     querySnapshot.forEach((docSnap) => {
-      clients.push(docSnap.data() as Client);
+      const data = docSnap.data() as Client;
+      if (!region || data.region === region) {
+        clients.push(data);
+      }
     });
     return clients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   } catch (error) {
@@ -179,12 +222,14 @@ export async function getClientsFromFirestore(userId?: string): Promise<Client[]
   }
 }
 
-export async function saveClientToFirestore(client: Client, userId?: string): Promise<void> {
+export async function saveClientToFirestore(client: Client, userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<void> {
   try {
     const targetUid = userId || client.userId || auth.currentUser?.uid;
+    const targetRegion = region || client.region || 'canada';
     const clientToSave: Client = {
       ...client,
-      userId: targetUid || client.userId || ''
+      userId: targetUid || client.userId || '',
+      region: targetRegion as any
     };
     await setDoc(doc(db, 'clients', client.id), clientToSave, { merge: true });
   } catch (error) {

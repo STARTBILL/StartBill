@@ -1,83 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  CreditCard, 
-  FileText, 
-  DollarSign, 
-  BookOpen, 
-  Bell, 
-  Globe, 
-  TrendingUp, 
-  ShieldCheck, 
-  ShieldAlert,
-  Plus, 
-  Search, 
-  Filter, 
-  Trash2, 
-  Edit3, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Lock, 
-  UserPlus, 
-  RefreshCw, 
-  Eye, 
-  Download, 
-  Zap, 
-  Sparkles, 
-  X, 
-  ChevronRight, 
-  ArrowUpRight,
-  Sliders,
-  Check,
-  Building2,
-  Calendar,
-  Layers,
-  Radio,
-  Settings,
-  KeyRound,
-  ExternalLink,
-  Copy,
-  CheckCheck,
-  EyeOff,
-  Shield
-} from 'lucide-react';
-import { 
-  getStripeConfig, 
-  verifyStripeAccessPolicies, 
-  updateStripeAdminKeys, 
-  testCreateDemoCheckout,
-  STRIPE_ACCESS_POLICY_SPEC,
-  StripeConfigResponse,
-  StripePolicyVerificationResult 
-} from '../lib/stripeService';
-import { 
-  AdminUser, 
-  AdminSubscription, 
-  AdminPayment, 
-  LearningArticle, 
-  GlobalAlert, 
-  RegionalSettingConfig,
-  seedInitialAdminData,
-  getAllAdminUsers,
-  updateAdminUser,
-  deleteAdminUser,
-  getAllAdminSubscriptions,
-  saveAdminSubscription,
-  getAllAdminPayments,
-  saveAdminPayment,
-  getAllLearningArticles,
-  saveLearningArticle,
-  deleteLearningArticle,
-  getAllAdminAlerts,
-  saveAdminAlert,
-  deleteAdminAlert,
-  getAllAdminRegionalSettings,
-  saveAdminRegionalSetting
-} from '../lib/adminFirestore';
-import { Invoice, ScreenId } from '../types';
+import {
+  AdminModuleId,
+  AdminProfile,
+  AdminBusiness,
+  Founding100Candidate,
+  StrategicObjective,
+  FeatureFlagItem,
+  AiSupervisionState,
+  AdminSupportTicket,
+  PlatformGeneralConfig,
+  AdminUserAccount,
+} from './admin/adminTypes';
+import {
+  loadAdminStore,
+  saveAdminStore,
+  AdminStoreState,
+  INITIAL_RBAC_MATRIX,
+} from './admin/adminStore';
+import { AdminSidebar } from './admin/AdminSidebar';
+import { AdminHeader } from './admin/AdminHeader';
+import { AdminProfileModal } from './admin/AdminProfileModal';
+import { CeoDashboardView } from './admin/modules/CeoDashboardView';
+import { Founding100View } from './admin/modules/Founding100View';
+import { StrategicSteeringView } from './admin/modules/StrategicSteeringView';
+import { BusinessesModule } from './admin/modules/BusinessesModule';
+import { RbacPermissionsView } from './admin/modules/RbacPermissionsView';
+import { ComprehensiveModulesView } from './admin/modules/ComprehensiveModulesView';
+import { ScreenId, Invoice } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
-import { StartBillLogo } from './common/StartBillLogo';
+import {
+  getStripeConfig,
+  verifyStripeAccessPolicies,
+  updateStripeAdminKeys,
+  StripeConfigResponse,
+  StripePolicyVerificationResult,
+} from '../lib/stripeService';
+import {
+  KeyRound,
+  ShieldCheck,
+  RefreshCw,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 
 interface AdminDashboardProps {
   setScreen: (screen: ScreenId) => void;
@@ -85,22 +51,34 @@ interface AdminDashboardProps {
   invoices?: Invoice[];
 }
 
-export default function AdminDashboard({ setScreen, triggerToast, invoices = [] }: AdminDashboardProps) {
+export default function AdminDashboard({
+  setScreen,
+  triggerToast,
+  invoices = [],
+}: AdminDashboardProps) {
   const { user: authUser, firebaseUser } = useAuth();
   const currentEmail = (authUser?.email || firebaseUser?.email || '').trim().toLowerCase();
   const isAuthorized = isSuperAdminEmail(currentEmail);
 
-  const [activeTab, setActiveTab] = useState<
-    'stats' | 'users' | 'subscriptions' | 'invoices' | 'payments' | 'articles' | 'alerts' | 'regional' | 'settings' | 'stripe_policies'
-  >('stats');
+  // Active module in the 24 modules list
+  const [activeModule, setActiveModule] = useState<AdminModuleId>('ceo_dashboard');
 
-  // Stripe & Access Policy states (docs.stripe.com/keys#access-policies)
+  // CEO Profile Modal visibility
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Central Store State
+  const [store, setStore] = useState<AdminStoreState>(() => loadAdminStore());
+
+  // Save to persistent localStorage on store changes
+  useEffect(() => {
+    saveAdminStore(store);
+  }, [store]);
+
+  // Stripe & Policy Verification states (Module 06: Paiements STARTBILL)
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
   const [policyAuditResult, setPolicyAuditResult] = useState<StripePolicyVerificationResult | null>(null);
   const [isAuditingPolicies, setIsAuditingPolicies] = useState<boolean>(false);
-  const [isTestingDemoCheckout, setIsTestingDemoCheckout] = useState<boolean>(false);
   const [showKeySecrets, setShowKeySecrets] = useState<boolean>(false);
-  const [copiedSpec, setCopiedSpec] = useState<boolean>(false);
   const [stripeKeyForm, setStripeKeyForm] = useState<{
     restrictedKey: string;
     publishableKey: string;
@@ -108,152 +86,37 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
   }>({
     restrictedKey: '',
     publishableKey: '',
-    webhookSecret: ''
+    webhookSecret: '',
   });
 
-  // State collections
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [subscriptions, setSubscriptions] = useState<AdminSubscription[]>([]);
-  const [payments, setPayments] = useState<AdminPayment[]>([]);
-  const [articles, setArticles] = useState<LearningArticle[]>([]);
-  const [alerts, setAlerts] = useState<GlobalAlert[]>([]);
-  const [regionalConfigs, setRegionalConfigs] = useState<RegionalSettingConfig[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-
-  // Filters and Modals
-  const [userSearch, setUserSearch] = useState('');
-  const [invoiceSearch, setInvoiceSearch] = useState('');
-  const [paymentSearch, setPaymentSearch] = useState('');
-  const [articleSearch, setArticleSearch] = useState('');
-
-  // Edit Modals
-  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
-  const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [newUser, setNewUser] = useState<Partial<AdminUser>>({
-    email: '',
-    fullName: '',
-    role: 'user',
-    plan: 'free',
-    region: 'canada',
-    status: 'active'
-  });
-
-  // Article Modal
-  const [editingArticle, setEditingArticle] = useState<LearningArticle | null>(null);
-  const [showArticleModal, setShowArticleModal] = useState(false);
-  const [articleForm, setArticleForm] = useState<Partial<LearningArticle>>({
-    title: '',
-    category: 'Fiscalité',
-    excerpt: '',
-    content: '',
-    author: 'Équipe StartBill',
-    readTime: '5 min',
-    published: true,
-    targetRegion: 'all'
-  });
-
-  // Broadcast Alert Modal
-  const [showAlertModal, setShowAlertModal] = useState(false);
-
-  // System Settings State
-  const [systemSettings, setSystemSettings] = useState({
-    appName: 'StartBill Canada',
-    maintenanceMode: false,
-    enforce2FA: true,
-    sessionTimeoutMinutes: 60,
-    maxFailedAttempts: 5,
-    emailAlertsEnabled: true,
-    adminEmailNotifications: 'admin@startbill.com',
-    backupFrequency: 'daily',
-    allowPublicSignups: true,
-    stripeWebhookActive: true
-  });
-  const [alertForm, setAlertForm] = useState<Partial<GlobalAlert>>({
-    title: '',
-    message: '',
-    severity: 'info',
-    isGlobal: true,
-    targetRegion: 'all'
-  });
-
-  // Payment Modal
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [newPayment, setNewPayment] = useState<Partial<AdminPayment>>({
-    userEmail: '',
-    amount: 0,
-    currency: 'CAD',
-    method: 'Interac e-Transfer',
-    status: 'success',
-    date: new Date().toISOString().split('T')[0]
-  });
-
-  // Load all admin data from Firestore (Guarded by Super Admin authorization)
-  const loadData = async () => {
-    if (!isAuthorized) {
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const [uList, sList, pList, aList, alList, rList] = await Promise.all([
-        getAllAdminUsers(),
-        getAllAdminSubscriptions(),
-        getAllAdminPayments(),
-        getAllLearningArticles(),
-        getAllAdminAlerts(),
-        getAllAdminRegionalSettings()
-      ]);
-      setUsers(uList);
-      setSubscriptions(sList);
-      setPayments(pList);
-      setArticles(aList);
-      setAlerts(alList);
-      setRegionalConfigs(rList);
-    } catch (err) {
-      console.error('Error loading admin dashboard data:', err);
-      triggerToast('Erreur lors du chargement des données d\'administration.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadStripeStatus = async () => {
+  // Load Stripe configuration
+  const fetchStripeStatus = async () => {
     try {
       const cfg = await getStripeConfig();
       setStripeConfig(cfg);
-      setStripeKeyForm(prev => ({
-        ...prev,
-        publishableKey: cfg.publishableKey || prev.publishableKey,
-      }));
     } catch (e) {
-      console.warn('Error loading Stripe config in Admin:', e);
+      console.error('Failed to load Stripe config:', e);
     }
   };
 
   useEffect(() => {
-    if (isAuthorized) {
-      loadData();
-      loadStripeStatus();
-    } else {
-      setIsLoading(false);
-    }
-  }, [isAuthorized]);
+    fetchStripeStatus();
+  }, []);
 
-  // Stripe & Access Policy Handlers (docs.stripe.com/keys#access-policies)
-  const handleRunPolicyAudit = async () => {
+  const handleAuditPolicies = async () => {
     setIsAuditingPolicies(true);
     try {
-      const result = await verifyStripeAccessPolicies(stripeKeyForm.restrictedKey || undefined);
+      const result = await verifyStripeAccessPolicies();
       setPolicyAuditResult(result);
-      if (result.success) {
-        triggerToast(`Audit terminé ! Score de conformité : ${result.complianceScore}%`);
+      await fetchStripeStatus();
+      if (result.accessPolicyCompliant) {
+        triggerToast('Politiques d’accès Stripe validées à 100% avec succès.');
       } else {
-        triggerToast(result.message || 'Audit des politiques d’accès incomplet.');
+        triggerToast('Vérification effectuée. Des permissions excessives ou manquantes ont été détectées.');
       }
-      await loadStripeStatus();
-    } catch (err: any) {
-      triggerToast(`Erreur d’audit : ${err.message}`);
+    } catch (e) {
+      console.error(e);
+      triggerToast('Erreur lors de l’audit des politiques d’accès.');
     } finally {
       setIsAuditingPolicies(false);
     }
@@ -262,1863 +125,311 @@ export default function AdminDashboard({ setScreen, triggerToast, invoices = [] 
   const handleSaveStripeKeys = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await updateStripeAdminKeys({
-        restrictedKey: stripeKeyForm.restrictedKey,
-        publishableKey: stripeKeyForm.publishableKey,
-        webhookSecret: stripeKeyForm.webhookSecret,
-      });
-      if (res.success) {
-        triggerToast('Clés Stripe enregistrées avec succès !');
-        if (res.config) setStripeConfig(res.config);
-        // Automatically run an audit after updating keys
-        handleRunPolicyAudit();
-      } else {
-        triggerToast(res.message || 'Erreur lors de la mise à jour des clés.');
-      }
-    } catch (err: any) {
-      triggerToast(`Erreur : ${err.message}`);
+      await updateStripeAdminKeys(stripeKeyForm);
+      triggerToast('Clés Stripe enregistrées. Audit automatique en cours...');
+      await handleAuditPolicies();
+    } catch (e: any) {
+      triggerToast(e.message || 'Échec de l’enregistrement des clés Stripe.');
     }
   };
 
-  const handleTestDemoPayment = async () => {
-    setIsTestingDemoCheckout(true);
-    try {
-      const res = await testCreateDemoCheckout();
-      if (res.success && res.url) {
-        triggerToast('Session Stripe créée avec succès ! Ouverture du paiement...');
-        window.open(res.url, '_blank');
-      } else {
-        triggerToast(res.error || 'Échec de génération de la session test Stripe.');
-      }
-    } catch (err: any) {
-      triggerToast(`Erreur lors du test : ${err.message}`);
-    } finally {
-      setIsTestingDemoCheckout(false);
-    }
+  // Updaters for modules
+  const handleUpdateCandidate = (id: string, updates: Partial<Founding100Candidate>) => {
+    setStore(prev => ({
+      ...prev,
+      foundingCandidates: prev.foundingCandidates.map(c => (c.id === id ? { ...c, ...updates } : c)),
+    }));
   };
 
-  const handleCopyPolicySpec = () => {
-    const specSummary = STRIPE_ACCESS_POLICY_SPEC.map(
-      s => `• ${s.resource} (${s.apiEndpoint}) : ${s.recommended}\n  Raison: ${s.description}`
-    ).join('\n\n');
-    const fullText = `=== MATRICE DE POLITIQUES D'ACCÈS STRIPE POUR STARTBILL SAAS ===\nDocumentation : https://docs.stripe.com/keys#access-policies\n\n${specSummary}\n\nRègle d'or : Restreindre la clé (rk_...) et bloquer les virements bancaires/payouts pour respecter le principe du moindre privilège.`;
-    navigator.clipboard.writeText(fullText);
-    setCopiedSpec(true);
-    triggerToast('Spécification des politiques d\'accès copiée dans le presse-papier !');
-    setTimeout(() => setCopiedSpec(false), 3000);
+  const handleAddCandidate = (candidate: Founding100Candidate) => {
+    setStore(prev => ({
+      ...prev,
+      foundingCandidates: [candidate, ...prev.foundingCandidates],
+    }));
   };
 
-  // Handlers for User actions
-  const handleSaveUserRole = async (userToUpdate: AdminUser, newRole: 'admin' | 'user') => {
-    try {
-      const updated = { ...userToUpdate, role: newRole };
-      await updateAdminUser(updated);
-      setUsers(prev => prev.map(u => u.uid === updated.uid ? updated : u));
-      triggerToast(`Rôle de ${userToUpdate.email} mis à jour : ${newRole.toUpperCase()}`);
-    } catch (err) {
-      triggerToast('Erreur lors de la modification du rôle.');
-    }
+  const handleUpdateObjective = (id: string, updates: Partial<StrategicObjective>) => {
+    setStore(prev => ({
+      ...prev,
+      objectives: prev.objectives.map(o => (o.id === id ? { ...o, ...updates } : o)),
+    }));
   };
 
-  const handleSaveUserPlan = async (userToUpdate: AdminUser, newPlan: 'free' | 'pro' | 'enterprise') => {
-    try {
-      const updated = { ...userToUpdate, plan: newPlan };
-      await updateAdminUser(updated);
-      setUsers(prev => prev.map(u => u.uid === updated.uid ? updated : u));
-      triggerToast(`Plan de ${userToUpdate.email} modifié pour ${newPlan.toUpperCase()}`);
-    } catch (err) {
-      triggerToast('Erreur lors de la mise à jour du plan.');
-    }
+  const handleAddObjective = (obj: StrategicObjective) => {
+    setStore(prev => ({
+      ...prev,
+      objectives: [obj, ...prev.objectives],
+    }));
   };
 
-  const handleToggleUserStatus = async (userToUpdate: AdminUser) => {
-    try {
-      const nextStatus: 'active' | 'suspended' = userToUpdate.status === 'suspended' ? 'active' : 'suspended';
-      const updated: AdminUser = { ...userToUpdate, status: nextStatus };
-      await updateAdminUser(updated);
-      setUsers(prev => prev.map(u => u.uid === updated.uid ? updated : u));
-      triggerToast(`Statut du compte ${userToUpdate.email} : ${nextStatus.toUpperCase()}`);
-    } catch (err) {
-      triggerToast('Erreur lors du changement de statut.');
-    }
+  const handleUpdateBusiness = (id: string, updates: Partial<AdminBusiness>) => {
+    setStore(prev => ({
+      ...prev,
+      businesses: prev.businesses.map(b => (b.id === id ? { ...b, ...updates } : b)),
+    }));
   };
 
-  const handleCreateNewUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUser.email) return;
-    try {
-      const generatedUid = 'usr_' + Date.now();
-      const userObj: AdminUser = {
-        uid: generatedUid,
-        email: newUser.email,
-        fullName: newUser.fullName || 'Nouvel Utilisateur',
-        role: newUser.role || 'user',
-        plan: newUser.plan || 'free',
-        region: newUser.region || 'canada',
-        status: newUser.status || 'active',
-        createdAt: new Date().toISOString()
-      };
-      await updateAdminUser(userObj);
-      setUsers(prev => [userObj, ...prev]);
-      setShowAddUserModal(false);
-      setNewUser({ email: '', fullName: '', role: 'user', plan: 'free', region: 'canada', status: 'active' });
-      triggerToast(`Compte utilisateur créé avec succès : ${userObj.email}`);
-    } catch (err) {
-      triggerToast('Erreur lors de la création de l\'utilisateur.');
-    }
+  const handleUpdateUsers = (updatedUsers: AdminUserAccount[]) => {
+    setStore(prev => ({ ...prev, users: updatedUsers }));
   };
 
-  // Article handlers
-  const handleSaveArticle = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!articleForm.title || !articleForm.content) return;
-    try {
-      const articleId = editingArticle ? editingArticle.id : 'art_' + Date.now();
-      const articleObj: LearningArticle = {
-        id: articleId,
-        title: articleForm.title || '',
-        slug: articleForm.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'article',
-        category: (articleForm.category as any) || 'Fiscalité',
-        excerpt: articleForm.excerpt || '',
-        content: articleForm.content || '',
-        author: articleForm.author || 'Équipe StartBill',
-        readTime: articleForm.readTime || '5 min',
-        published: articleForm.published ?? true,
-        targetRegion: articleForm.targetRegion || 'all',
-        createdAt: editingArticle ? editingArticle.createdAt : new Date().toISOString(),
-        viewsCount: editingArticle ? editingArticle.viewsCount : 0
-      };
-      await saveLearningArticle(articleObj);
-      if (editingArticle) {
-        setArticles(prev => prev.map(a => a.id === articleId ? articleObj : a));
-      } else {
-        setArticles(prev => [articleObj, ...prev]);
-      }
-      setShowArticleModal(false);
-      setEditingArticle(null);
-      triggerToast(`Article enregistré : ${articleObj.title}`);
-    } catch (err) {
-      triggerToast('Erreur lors de l\'enregistrement de l\'article.');
-    }
+  const handleUpdateFlags = (updatedFlags: FeatureFlagItem[]) => {
+    setStore(prev => ({ ...prev, featureFlags: updatedFlags }));
   };
 
-  const handleDeleteArticle = async (id: string) => {
-    try {
-      await deleteLearningArticle(id);
-      setArticles(prev => prev.filter(a => a.id !== id));
-      triggerToast('Article supprimé du centre d\'apprentissage.');
-    } catch (err) {
-      triggerToast('Erreur lors de la suppression de l\'article.');
-    }
+  const handleUpdateAi = (updatedAi: AiSupervisionState) => {
+    setStore(prev => ({ ...prev, aiSupervision: updatedAi }));
   };
 
-  // Broadcast Alert handler
-  const handleBroadcastAlert = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!alertForm.title || !alertForm.message) return;
-    try {
-      const alertObj: GlobalAlert = {
-        id: 'alert_' + Date.now(),
-        title: alertForm.title || '',
-        message: alertForm.message || '',
-        severity: alertForm.severity || 'info',
-        isGlobal: true,
-        targetRegion: alertForm.targetRegion || 'all',
-        createdAt: new Date().toISOString()
-      };
-      await saveAdminAlert(alertObj);
-      setAlerts(prev => [alertObj, ...prev]);
-      setShowAlertModal(false);
-      setAlertForm({ title: '', message: '', severity: 'info', isGlobal: true, targetRegion: 'all' });
-      triggerToast('Alerte globale diffusée à l\'ensemble des utilisateurs.');
-    } catch (err) {
-      triggerToast('Erreur lors de la diffusion de l\'alerte.');
-    }
+  const handleUpdateTickets = (updatedTickets: AdminSupportTicket[]) => {
+    setStore(prev => ({ ...prev, tickets: updatedTickets }));
   };
 
-  const handleDeleteAlert = async (id: string) => {
-    try {
-      await deleteAdminAlert(id);
-      setAlerts(prev => prev.filter(a => a.id !== id));
-      triggerToast('Alerte retirée du système.');
-    } catch (err) {
-      triggerToast('Erreur lors de la suppression.');
-    }
+  const handleUpdatePlatformConfig = (updatedCfg: PlatformGeneralConfig) => {
+    setStore(prev => ({ ...prev, platformConfig: updatedCfg }));
   };
 
-  // Regional Settings handler
-  const handleSaveRegional = async (config: RegionalSettingConfig) => {
-    try {
-      await saveAdminRegionalSetting(config);
-      setRegionalConfigs(prev => prev.map(r => r.id === config.id ? config : r));
-      triggerToast(`Paramètres régionaux pour ${config.name} sauvegardés.`);
-    } catch (err) {
-      triggerToast('Erreur lors de la sauvegarde des paramètres régionales.');
-    }
+  const handleUpdateProfile = (updatedProfile: Partial<AdminProfile>) => {
+    setStore(prev => ({
+      ...prev,
+      ceoProfile: { ...prev.ceoProfile, ...updatedProfile },
+    }));
   };
-
-  // Payment Handler
-  const handleAddPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPayment.userEmail || !newPayment.amount) return;
-    try {
-      const paymentObj: AdminPayment = {
-        id: 'pay_' + Date.now(),
-        userId: 'usr_manual',
-        userEmail: newPayment.userEmail || '',
-        amount: Number(newPayment.amount),
-        currency: newPayment.currency || 'CAD',
-        method: newPayment.method || 'Interac e-Transfer',
-        status: newPayment.status || 'success',
-        date: newPayment.date || new Date().toISOString().split('T')[0],
-        transactionRef: 'MAN-' + Math.floor(100000 + Math.random() * 900000)
-      };
-      await saveAdminPayment(paymentObj);
-      setPayments(prev => [paymentObj, ...prev]);
-      setShowPaymentModal(false);
-      setNewPayment({ userEmail: '', amount: 0, currency: 'CAD', method: 'Interac e-Transfer', status: 'success', date: new Date().toISOString().split('T')[0] });
-      triggerToast('Transaction enregistrée avec succès.');
-    } catch (err) {
-      triggerToast('Erreur lors de l\'enregistrement du paiement.');
-    }
-  };
-
-  // Calculations for Stats
-  const totalUsersCount = users.length;
-  const adminUsersCount = users.filter(u => u.role === 'admin').length;
-  const activeProCount = users.filter(u => u.plan === 'pro' || u.plan === 'enterprise').length;
-  const totalVolumeInvoices = invoices.reduce((acc, inv) => acc + (inv.total || 0), 0);
-  const totalPaymentsSuccess = payments.filter(p => p.status === 'success').reduce((acc, p) => acc + p.amount, 0);
-  const totalArticlesCount = articles.length;
-
-  // STRICT ACCESS CONTROL GUARD: Only contact.startbill@gmail.com is allowed
-  if (!isAuthorized) {
-    return (
-      <div className="w-full min-h-[550px] flex items-center justify-center p-6 bg-slate-50">
-        <div className="max-w-md w-full bg-white border border-rose-200 rounded-3xl p-8 shadow-xl shadow-rose-500/5 text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto shadow-inner">
-            <ShieldAlert className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-800 text-[10px] font-black uppercase tracking-wider">
-              Accès strictement restreint
-            </div>
-            <h2 className="text-xl font-black text-slate-900">
-              Espace Administrateur Protégé
-            </h2>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Cet espace d'administration est strictement réservé aux comptes administrateurs autorisés (ex: <strong className="text-slate-800">admin.canada@startbill.com</strong> ou <strong className="text-slate-800">{SUPER_ADMIN_EMAIL}</strong>).
-            </p>
-          </div>
-
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-left space-y-1.5 text-xs">
-            <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
-              <span>Compte connecté :</span>
-              <span className="font-mono text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
-                {currentEmail || 'Non connecté'}
-              </span>
-            </div>
-            <div className="text-[11px] text-rose-600 font-semibold pt-1 border-t border-slate-200/60 flex items-center gap-1">
-              <Lock className="w-3.5 h-3.5 shrink-0" />
-              <span>Privilèges administrateur non accordés.</span>
-            </div>
-          </div>
-
-          <div className="pt-2 space-y-2">
-            <button
-              type="button"
-              onClick={() => setScreen('dashboard')}
-              className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-            >
-              Retourner au Tableau de bord
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setScreen('login')}
-              className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
-            >
-              Se connecter avec le compte administrateur
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-6 md:px-8 md:py-10 space-y-8 pb-32">
-      
-      {/* Admin Banner Header */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <StartBillLogo variant="horizontal" size="sm" theme="dark" showTagline={false} />
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider">
-                <ShieldCheck className="w-4 h-4 text-blue-400" />
-                <span>Console Administrateur</span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>{currentEmail || SUPER_ADMIN_EMAIL}</span>
-              </div>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-              Tableau de Bord Administrateur
-            </h1>
-            <p className="text-xs md:text-sm text-slate-300 font-medium max-w-2xl">
-              Supervision globale et gestion centralisée des utilisateurs, abonnements, factures, passerelles de paiement et configurations multi-régionales (Canada 🇨🇦, Afrique 🌍, Haïti 🇭🇹).
-            </p>
-          </div>
+    <div className="flex h-screen bg-[#070e1b] text-slate-100 font-sans overflow-hidden">
+      {/* 24-Module Navigation Sidebar */}
+      <AdminSidebar
+        activeModule={activeModule}
+        setActiveModule={setActiveModule}
+        onSwitchToClientApp={() => setScreen('dashboard')}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
+        ceoName={store.ceoProfile.name}
+      />
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={loadData}
-              disabled={isLoading}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 transition flex items-center gap-2 cursor-pointer shadow-md"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-blue-400' : ''}`} />
-              <span>Actualiser</span>
-            </button>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#070e1b]">
+        {/* Top Header */}
+        <AdminHeader
+          activeModule={activeModule}
+          ceoProfile={store.ceoProfile}
+          onOpenProfile={() => setIsProfileModalOpen(true)}
+          onSwitchToClientApp={() => setScreen('dashboard')}
+          unreadAlertsCount={2}
+        />
 
-            <button
-              onClick={() => setScreen('dashboard')}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md"
-            >
-              <span>Vue Application Client</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
+        {/* Scrollable Viewport */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6">
+          {/* Module 01: Tableau de bord CEO */}
+          {activeModule === 'ceo_dashboard' && (
+            <CeoDashboardView
+              metrics={store.metrics}
+              businesses={store.businesses}
+              foundingCandidates={store.foundingCandidates}
+              onNavigateToModule={setActiveModule}
+              triggerToast={triggerToast}
+            />
+          )}
 
-      {/* Navigation Tabs for the 8 Admin Sections */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none border-b border-slate-200">
-        {[
-          { id: 'stats', label: 'Statistiques Globales', icon: TrendingUp },
-          { id: 'users', label: 'Utilisateurs', icon: Users, badge: totalUsersCount },
-          { id: 'subscriptions', label: 'Abonnements', icon: CreditCard, badge: activeProCount },
-          { id: 'invoices', label: 'Factures Système', icon: FileText, badge: invoices.length },
-          { id: 'payments', label: 'Paiements', icon: DollarSign, badge: payments.length },
-          { id: 'articles', label: 'Centre d\'Apprentissage', icon: BookOpen, badge: totalArticlesCount },
-          { id: 'alerts', label: 'Alertes & Diffusion', icon: Bell, badge: alerts.length },
-          { id: 'regional', label: 'Paramètres Régionaux', icon: Globe, badge: regionalConfigs.length },
-          { id: 'settings', label: 'Paramètres Système', icon: Settings },
-          { 
-            id: 'stripe_policies', 
-            label: 'Stripe & Politiques d\'Accès', 
-            icon: KeyRound, 
-            badge: stripeConfig?.accessPolicyCompliant ? '100% Conforme' : (stripeConfig?.isConfigured ? 'Audit Requis' : 'À Configurer') 
-          }
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap flex items-center gap-2 cursor-pointer ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-md font-extrabold'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              {tab.badge !== undefined && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+          {/* Module 02: Pilotage stratégique */}
+          {activeModule === 'strategic_steering' && (
+            <StrategicSteeringView
+              objectives={store.objectives}
+              onUpdateObjective={handleUpdateObjective}
+              onAddObjective={handleAddObjective}
+              triggerToast={triggerToast}
+            />
+          )}
 
-      {/* SECTION 1: STATISTIQUES GLOBALES */}
-      {activeTab === 'stats' && (
-        <div className="space-y-8">
-          {/* Executive KPI Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Utilisateurs</span>
-                <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Users className="w-5 h-5" />
+          {/* Module 03: Entreprises */}
+          {activeModule === 'businesses' && (
+            <BusinessesModule
+              businesses={store.businesses}
+              onUpdateBusiness={handleUpdateBusiness}
+              triggerToast={triggerToast}
+            />
+          )}
+
+          {/* Module 06: Paiements STARTBILL & Stripe Restricted Keys Policies */}
+          {activeModule === 'payments' && (
+            <div className="space-y-6">
+              <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                    MODULE 06 • PAIEMENTS STARTBILL
+                  </span>
+                  <h2 className="text-xl font-black text-white mt-1">Encaissements & Passerelles Sécurisées</h2>
+                  <p className="text-xs text-slate-300">
+                    Gestion des abonnements STARTBILL. Intégration conforme aux politiques de clés restreintes Stripe et passerelles régionales.
+                  </p>
                 </div>
               </div>
-              <div>
-                <span className="text-2xl font-black text-slate-900">{totalUsersCount}</span>
-                <span className="text-xs text-emerald-600 font-bold ml-2">({adminUsersCount} admins)</span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium">Inscrits sur les 3 régions StartBill</p>
-            </div>
 
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Abonnés Payants</span>
-                <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <Zap className="w-5 h-5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-2xl font-black text-slate-900">{activeProCount}</span>
-                <span className="text-xs text-emerald-600 font-bold ml-2">Plans Pro / Enterprise</span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium">Taux de conversion ~{Math.round((activeProCount/Math.max(1, totalUsersCount))*100)}%</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Volume Factures</span>
-                <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <FileText className="w-5 h-5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-2xl font-black text-slate-900">${totalVolumeInvoices.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium">{invoices.length} factures générées dans l'application</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Paiements Traités</span>
-                <div className="w-9 h-9 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                  <DollarSign className="w-5 h-5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-2xl font-black text-slate-900">${totalPaymentsSuccess.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium">Flux Interac, Stripe & Mobile Money</p>
-            </div>
-          </div>
-
-          {/* Regional Performance Distribution */}
-          <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-6">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <Globe className="w-4 h-4 text-blue-600" />
-              <span>Répartition Régionale de la Plateforme</span>
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                { name: 'Canada (CAD $)', flag: '🇨🇦', count: users.filter(u => u.region === 'canada').length, color: 'bg-blue-600' },
-                { name: 'Haïti (HTG G)', flag: '🇭🇹', count: users.filter(u => u.region === 'haiti').length, color: 'bg-amber-600' },
-                { name: 'Afrique de l\'Ouest (FCFA)', flag: '🌍', count: users.filter(u => u.region === 'afrique').length, color: 'bg-emerald-600' }
-              ].map((r) => {
-                const percent = Math.round((r.count / Math.max(1, totalUsersCount)) * 100);
-                return (
-                  <div key={r.name} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800">{r.flag} {r.name}</span>
-                      <span className="text-xs font-extrabold text-slate-900">{r.count} utilis. ({percent}%)</span>
-                    </div>
-                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                      <div className={`h-full ${r.color} rounded-full`} style={{ width: `${percent}%` }}></div>
+              {/* Stripe Restricted Keys & Access Policies Card */}
+              <div className="bg-[#0B1528] border border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-5 h-5 text-indigo-400" />
+                    <div>
+                      <h3 className="font-bold text-white text-sm">
+                        Contrôle des Politiques d'Accès Stripe (Restricted API Keys)
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Protection stricte : principe du moindre privilège sans clé secrète globale (Secret Key)
+                      </p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* SECTION 2: GESTION DES UTILISATEURS */}
-      {activeTab === 'users' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-200/90">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Rechercher par nom, email..."
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <button
-              onClick={() => setShowAddUserModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2.5 rounded-2xl transition flex items-center gap-2 cursor-pointer shadow-sm"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Créer un Administrateur / Utilisateur</span>
-            </button>
-          </div>
-
-          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-extrabold border-b border-slate-200">
-                  <tr>
-                    <th className="p-4">Utilisateur</th>
-                    <th className="p-4">Rôle</th>
-                    <th className="p-4">Plan Abonnement</th>
-                    <th className="p-4">Région</th>
-                    <th className="p-4">Statut</th>
-                    <th className="p-4">Date création</th>
-                    <th className="p-4 text-right">Actions Admin</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {users
-                    .filter(u => u.email?.toLowerCase().includes(userSearch.toLowerCase()) || u.fullName?.toLowerCase().includes(userSearch.toLowerCase()))
-                    .map((u, uIdx) => (
-                      <tr key={u.uid || `user-${uIdx}`} className="hover:bg-slate-50/80 transition">
-                        <td className="p-4">
-                          <div className="font-bold text-slate-900">{u.fullName || 'Sans Nom'}</div>
-                          <div className="text-[11px] text-slate-500">{u.email}</div>
-                          <div className="text-[10px] font-mono text-slate-400">UID: {u.uid}</div>
-                        </td>
-                        <td className="p-4">
-                          <select
-                            value={u.role || 'user'}
-                            onChange={(e) => handleSaveUserRole(u, e.target.value as any)}
-                            className={`text-xs font-bold px-2.5 py-1 rounded-xl border cursor-pointer ${
-                              u.role === 'admin'
-                                ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                : 'bg-slate-50 text-slate-700 border-slate-200'
-                            }`}
-                          >
-                            <option value="user">Utilisateur (user)</option>
-                            <option value="admin">Administrateur (admin)</option>
-                          </select>
-                        </td>
-                        <td className="p-4">
-                          <select
-                            value={u.plan || 'free'}
-                            onChange={(e) => handleSaveUserPlan(u, e.target.value as any)}
-                            className="text-xs font-bold px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer"
-                          >
-                            <option value="free">Gratuit (Free)</option>
-                            <option value="pro">Pro ($19.99/m)</option>
-                            <option value="enterprise">Entreprise ($99/m)</option>
-                          </select>
-                        </td>
-                        <td className="p-4">
-                          <span className="uppercase font-bold text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                            {u.region || 'canada'}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <span className={`inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full ${
-                            u.status === 'suspended'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'suspended' ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
-                            {u.status === 'suspended' ? 'Suspendu' : 'Actif'}
-                          </span>
-                        </td>
-                        <td className="p-4 text-slate-500 text-[11px]">
-                          {u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-CA') : 'ND'}
-                        </td>
-                        <td className="p-4 text-right space-x-2">
-                          <button
-                            onClick={() => handleToggleUserStatus(u)}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-amber-50 hover:text-amber-700 transition border border-slate-200 cursor-pointer"
-                          >
-                            {u.status === 'suspended' ? 'Activer' : 'Suspendre'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 3: LES ABONNEMENTS */}
-      {activeTab === 'subscriptions' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 space-y-4">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-emerald-600" />
-              <span>Gestion des Abonnements StartBill</span>
-            </h3>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-extrabold border-b border-slate-200">
-                  <tr>
-                    <th className="p-4">ID Abonnement</th>
-                    <th className="p-4">Utilisateur</th>
-                    <th className="p-4">Formule</th>
-                    <th className="p-4">Prix / Fréquence</th>
-                    <th className="p-4">Statut</th>
-                    <th className="p-4">Prochain Renouvellement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {subscriptions.map((s, sIdx) => (
-                    <tr key={s.id || `sub-${sIdx}`} className="hover:bg-slate-50 transition">
-                      <td className="p-4 font-mono font-bold text-slate-900">{s.id}</td>
-                      <td className="p-4 text-slate-700">{s.userEmail}</td>
-                      <td className="p-4">
-                        <span className="font-extrabold uppercase text-[10px] px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {s.plan}
-                        </span>
-                      </td>
-                      <td className="p-4 font-bold text-slate-900">
-                        {s.amount} {s.currency} / {s.interval === 'monthly' ? 'mois' : 'an'}
-                      </td>
-                      <td className="p-4">
-                        <span className="inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                          {s.status}
-                        </span>
-                      </td>
-                      <td className="p-4 text-slate-500">{s.nextBillingDate}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 4: LES FACTURES SYSTEME */}
-      {activeTab === 'invoices' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-600" />
-                <span>Toutes les Factures du Système ({invoices.length})</span>
-              </h3>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-extrabold border-b border-slate-200">
-                  <tr>
-                    <th className="p-4">ID Facture</th>
-                    <th className="p-4">Client</th>
-                    <th className="p-4">Date</th>
-                    <th className="p-4">Montant Total</th>
-                    <th className="p-4">Statut</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {invoices.map((inv, invIdx) => (
-                    <tr key={inv.id || `inv-${invIdx}`} className="hover:bg-slate-50 transition">
-                      <td className="p-4 font-bold text-blue-600">{inv.id}</td>
-                      <td className="p-4 font-bold text-slate-900">{inv.clientName}</td>
-                      <td className="p-4 text-slate-500">{inv.date}</td>
-                      <td className="p-4 font-extrabold text-slate-900">
-                        ${inv.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} {inv.currency || 'CAD'}
-                      </td>
-                      <td className="p-4">
-                        <span className={`font-extrabold text-[10px] px-2.5 py-1 rounded-xl ${
-                          inv.status === 'Payée' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {inv.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 5: LES PAIEMENTS */}
-      {activeTab === 'payments' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-slate-200">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-emerald-600" />
-              <span>Historique Global des Paiements</span>
-            </h3>
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Enregistrer un Paiement Manuel</span>
-            </button>
-          </div>
-
-          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-extrabold border-b border-slate-200">
-                <tr>
-                  <th className="p-4">ID Transaction</th>
-                  <th className="p-4">Utilisateur</th>
-                  <th className="p-4">Méthode de Paiement</th>
-                  <th className="p-4">Montant</th>
-                  <th className="p-4">Statut</th>
-                  <th className="p-4">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {payments.map((p, pIdx) => (
-                  <tr key={p.id || `pay-${pIdx}`} className="hover:bg-slate-50 transition">
-                    <td className="p-4 font-mono font-bold text-slate-900">{p.id} ({p.transactionRef})</td>
-                    <td className="p-4 text-slate-700">{p.userEmail}</td>
-                    <td className="p-4 font-bold text-slate-800">{p.method}</td>
-                    <td className="p-4 font-black text-slate-900">{p.amount} {p.currency}</td>
-                    <td className="p-4">
-                      <span className={`font-bold text-[10px] px-2 py-0.5 rounded-full ${
-                        p.status === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-slate-500">{p.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 6: ARTICLES CENTRE D'APPRENTISSAGE */}
-      {activeTab === 'articles' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-slate-200">
-            <div>
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-blue-600" />
-                <span>Centre d'Apprentissage & Formation StartBill</span>
-              </h3>
-              <p className="text-xs text-slate-500 font-medium">Gestion des guides fiscaux et articles explicatifs pour entrepreneurs.</p>
-            </div>
-            <button
-              onClick={() => {
-                setEditingArticle(null);
-                setArticleForm({ title: '', category: 'Fiscalité', excerpt: '', content: '', author: 'Équipe StartBill', readTime: '5 min', published: true, targetRegion: 'all' });
-                setShowArticleModal(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2.5 rounded-2xl transition flex items-center gap-2 cursor-pointer shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Créer un Article</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {articles.map((art, aIdx) => (
-              <div key={art.id || `art-${aIdx}`} className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-sm space-y-3 flex flex-col justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                      {art.category}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-bold">{art.readTime}</span>
-                  </div>
-                  <h4 className="text-sm font-black text-slate-900 leading-snug">{art.title}</h4>
-                  <p className="text-xs text-slate-600 line-clamp-2">{art.excerpt}</p>
-                </div>
-
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400 font-medium">Auteur: {art.author}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setEditingArticle(art);
-                        setArticleForm(art);
-                        setShowArticleModal(true);
-                      }}
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteArticle(art.id)}
-                      className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 7: ALERTES & DIFFUSION GLOBALE */}
-      {activeTab === 'alerts' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-slate-200">
-            <div>
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <Bell className="w-4 h-4 text-amber-600" />
-                <span>Alertes Systèmes & Notifications Diffusées</span>
-              </h3>
-            </div>
-            <button
-              onClick={() => setShowAlertModal(true)}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2.5 rounded-2xl transition flex items-center gap-2 cursor-pointer shadow-sm"
-            >
-              <Bell className="w-4 h-4" />
-              <span>Diffuser une Alerte Globale</span>
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {alerts.map((al, alIdx) => (
-              <div key={al.id || `alert-${alIdx}`} className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs flex items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
-                      al.severity === 'danger' ? 'bg-red-100 text-red-800' :
-                      al.severity === 'warning' ? 'bg-amber-100 text-amber-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}>
-                      {al.severity}
-                    </span>
-                    <h4 className="text-xs font-black text-slate-900">{al.title}</h4>
-                  </div>
-                  <p className="text-xs text-slate-600">{al.message}</p>
-                </div>
-                <button
-                  onClick={() => handleDeleteAlert(al.id)}
-                  className="text-red-500 hover:text-red-700 text-xs font-bold p-2 cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 8: PARAMETRES REGIONAUX */}
-      {activeTab === 'regional' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {regionalConfigs.map((cfg, cfgIdx) => (
-              <div key={cfg.id || `reg-${cfgIdx}`} className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-black text-slate-900 text-sm">{cfg.name}</h4>
-                  <span className="font-extrabold text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg">
-                    {cfg.currency} ({cfg.currencySymbol})
-                  </span>
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase text-slate-500 block">Taux TPS / GST par défaut</label>
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      value={cfg.defaultGst}
-                      onChange={(e) => {
-                        const raw = parseFloat(e.target.value);
-                        const updated = { ...cfg, defaultGst: isNaN(raw) ? 0 : Math.max(0, raw) };
-                        handleSaveRegional(updated);
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase text-slate-500 block">Taux TVQ / QST / PST par défaut</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      min="0"
-                      value={cfg.defaultQst || cfg.defaultPst}
-                      onChange={(e) => {
-                        const raw = parseFloat(e.target.value);
-                        const updated = { ...cfg, defaultQst: isNaN(raw) ? 0 : Math.max(0, raw) };
-                        handleSaveRegional(updated);
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold"
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                    <span className="font-bold text-slate-700">Canal Régional Actif</span>
-                    <input
-                      type="checkbox"
-                      checked={cfg.isChannelActive}
-                      onChange={(e) => {
-                        const updated = { ...cfg, isChannelActive: e.target.checked };
-                        handleSaveRegional(updated);
-                      }}
-                      className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 9: PARAMÈTRES SYSTÈME (Sécurité, Notifications, App) */}
-      {activeTab === 'settings' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm">
-            <div>
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-blue-600" />
-                <span>Paramètres de Sécurité, Notifications & Application</span>
-              </h3>
-              <p className="text-xs text-slate-500 font-medium mt-1">
-                Gérez la configuration globale de la plateforme StartBill, la sécurité 2FA et la distribution des alertes.
-              </p>
-            </div>
-            <button
-              onClick={() => triggerToast('Paramètres mis à jour avec succès !')}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold px-4 py-2.5 rounded-xl shadow-md transition cursor-pointer flex items-center gap-2"
-            >
-              <Check className="w-4 h-4" /> Enregistrer les modifications
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* 1. Sécurité */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-                  <Lock className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Sécurité & Authentification</h4>
-                  <span className="text-[10px] text-slate-400 font-medium">Contrôle d'accès et 2FA</span>
-                </div>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50">
-                  <div>
-                    <span className="font-bold text-slate-800 block">Exiger 2FA Administrateurs</span>
-                    <span className="text-[10px] text-slate-400">Authentification à deux facteurs</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={systemSettings.enforce2FA}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, enforce2FA: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Inactivité maximale session (min)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={systemSettings.sessionTimeoutMinutes}
-                    onChange={(e) => {
-                      const raw = parseInt(e.target.value);
-                      setSystemSettings({ ...systemSettings, sessionTimeoutMinutes: isNaN(raw) ? 30 : Math.max(1, raw) });
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Max tentatives de connexion avant blocage</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={systemSettings.maxFailedAttempts}
-                    onChange={(e) => {
-                      const raw = parseInt(e.target.value);
-                      setSystemSettings({ ...systemSettings, maxFailedAttempts: isNaN(raw) ? 5 : Math.max(1, raw) });
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Notifications */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                  <Bell className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Notifications & Alertes</h4>
-                  <span className="text-[10px] text-slate-400 font-medium">Flux courriel et webhooks</span>
-                </div>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50">
-                  <div>
-                    <span className="font-bold text-slate-800 block">Notifications Courriels Système</span>
-                    <span className="text-[10px] text-slate-400">Emails transactionnels Firebase</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={systemSettings.emailAlertsEnabled}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, emailAlertsEnabled: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Adresse de réception des alertes admin</label>
-                  <input
-                    type="email"
-                    value={systemSettings.adminEmailNotifications}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, adminEmailNotifications: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50">
-                  <div>
-                    <span className="font-bold text-slate-800 block">Webhook Stripe & Paiement Sync</span>
-                    <span className="text-[10px] text-slate-400">Synchronisation automatique</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={systemSettings.stripeWebhookActive}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, stripeWebhookActive: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Application */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <Building2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Application & Plateforme</h4>
-                  <span className="text-[10px] text-slate-400 font-medium">Informations et maintenance</span>
-                </div>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Nom Public de l'Application</label>
-                  <input
-                    type="text"
-                    value={systemSettings.appName}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, appName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-bold"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50">
-                  <div>
-                    <span className="font-bold text-slate-800 block">Autoriser les Inscriptions Publiques</span>
-                    <span className="text-[10px] text-slate-400">Création de compte autonome</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={systemSettings.allowPublicSignups}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, allowPublicSignups: e.target.checked })}
-                    className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-900">
-                  <div>
-                    <span className="font-extrabold text-rose-900 block">Mode Maintenance</span>
-                    <span className="text-[10px] text-rose-600">Bloque l'accès aux non-admins</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={systemSettings.maintenanceMode}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, maintenanceMode: e.target.checked })}
-                    className="w-4 h-4 text-rose-600 rounded cursor-pointer"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 10: STRIPE & POLITIQUES D'ACCÈS (https://docs.stripe.com/keys#access-policies) */}
-      {activeTab === 'stripe_policies' && (
-        <div className="space-y-6">
-          {/* 1. Header Banner */}
-          <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-[#635BFF]/15 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#635BFF]/25 border border-[#635BFF]/40 text-indigo-300 text-xs font-black uppercase tracking-wider">
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Stripe Access Policies</span>
-                  </div>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                    stripeConfig?.keyType === 'restricted'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : (stripeConfig?.isConfigured ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40')
-                  }`}>
-                    {stripeConfig?.keyType === 'restricted'
-                      ? 'Clé Restreinte Active (PoLP)'
-                      : (stripeConfig?.isConfigured ? 'Clé Standard Détectée' : 'Clé Non Définie')}
-                  </span>
-                </div>
-                <h2 className="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-                  <span>Centre de Contrôle des Politiques d'Accès Stripe</span>
-                </h2>
-                <p className="text-xs md:text-sm text-slate-300 font-medium max-w-2xl leading-relaxed">
-                  Conformité stricte au principe du moindre privilège (Principle of Least Privilege). Les clés restreintes (<code className="text-indigo-300 bg-indigo-950/60 px-1 py-0.5 rounded">rk_live_...</code>) limitent les permissions du SaaS aux stricts besoins d'encaissement et protègent vos fonds contre tout risque de virement frauduleux.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
-                <button
-                  type="button"
-                  onClick={handleRunPolicyAudit}
-                  disabled={isAuditingPolicies}
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black transition flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isAuditingPolicies ? 'animate-spin' : ''}`} />
-                  <span>{isAuditingPolicies ? 'Audit en cours...' : 'Auditer en Direct'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleTestDemoPayment}
-                  disabled={isTestingDemoCheckout}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-black transition flex items-center gap-2 cursor-pointer shadow-md border border-indigo-400/30 disabled:opacity-50"
-                >
-                  <Zap className={`w-4 h-4 ${isTestingDemoCheckout ? 'animate-spin' : ''}`} />
-                  <span>{isTestingDemoCheckout ? 'Création session...' : 'Tester Paiement'}</span>
-                </button>
-
-                <a
-                  href="https://docs.stripe.com/keys#access-policies"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3.5 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700"
-                >
-                  <span>Doc Stripe</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* 2. Security Status Overview Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Card 1: Key Type */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Type de Clé API</span>
-                <div className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold ${
-                  stripeConfig?.keyType === 'restricted' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                }`}>
-                  <KeyRound className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-sm font-black text-slate-900">
-                {stripeConfig?.keyType === 'restricted'
-                  ? 'Clé Restreinte (rk_...)'
-                  : (stripeConfig?.isConfigured ? 'Clé Standard (sk_...)' : 'Aucune Clé')}
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                {stripeConfig?.keyPrefix ? `Empreinte : ${stripeConfig.keyPrefix}` : 'Clé non initialisée sur le serveur'}
-              </p>
-              <div className="pt-1">
-                <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                  stripeConfig?.isLive ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  {stripeConfig?.isLive ? 'Environnement LIVE (Production)' : 'Environnement TEST (Sandbox)'}
-                </span>
-              </div>
-            </div>
-
-            {/* Card 2: Compliance Score */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Score de Conformité</span>
-                <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-xl font-black text-slate-900">
-                {policyAuditResult ? `${policyAuditResult.complianceScore}%` : (stripeConfig?.accessPolicyCompliant ? '100%' : 'Non audité')}
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                {policyAuditResult?.accessPolicyCompliant || stripeConfig?.accessPolicyCompliant
-                  ? 'Principe du moindre privilège respecté'
-                  : 'Lancer un audit pour valider les permissions'}
-              </p>
-              <div className="pt-1">
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-500 ${
-                      (policyAuditResult?.complianceScore || 0) >= 80 ? 'bg-emerald-500' : 'bg-amber-500'
-                    }`}
-                    style={{ width: `${policyAuditResult?.complianceScore || (stripeConfig?.accessPolicyCompliant ? 100 : 30)}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 3: Funds / Payouts Protection */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Sécurité des Comptes Bancaires</span>
-                <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                  <Lock className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-sm font-black text-slate-900">
-                Virements & Payouts : Bloqués
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Les clés restreintes n’ont aucun accès aux comptes bancaires de l’entreprise ni aux virements sortants.
-              </p>
-              <div className="pt-1">
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                  <Check className="w-3 h-3" /> Zéro risque d’exfiltration
-                </span>
-              </div>
-            </div>
-
-            {/* Card 4: Webhook Signature */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Synchronisation Webhook</span>
-                <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                  <Radio className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-sm font-black text-slate-900">
-                {stripeConfig?.hasWebhookSecret ? 'Signature Cryptographique Active' : 'Secret Webhook Non Configuré'}
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Permet la validation instantanée des abonnements payés et le marquage automatique des factures.
-              </p>
-              <div className="pt-1">
-                <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                  stripeConfig?.hasWebhookSecret ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {stripeConfig?.hasWebhookSecret ? 'whsec_... vérifié' : 'À configurer dans le formulaire'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. Detailed Diagnostic Matrix */}
-          <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-blue-600" />
-                  <span>Matrice d'Audit des Ressources & Permissions (Access Policies)</span>
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Vérification en temps réel de chaque point de terminaison de l'API Stripe selon les directives de la documentation.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCopyPolicySpec}
-                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  {copiedSpec ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedSpec ? 'Copié !' : 'Copier la Matrice'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Audit Diagnostic Alerts if any */}
-            {policyAuditResult && policyAuditResult.recommendations.length > 0 && (
-              <div className={`p-4 rounded-2xl border text-xs font-medium space-y-2 ${
-                policyAuditResult.accessPolicyCompliant
-                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-                  : 'bg-amber-50/80 border-amber-200 text-amber-900'
-              }`}>
-                <div className="font-extrabold flex items-center gap-2">
-                  {policyAuditResult.accessPolicyCompliant ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  )}
-                  <span>{policyAuditResult.message}</span>
-                </div>
-                <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
-                  {policyAuditResult.recommendations.map((rec, idx) => (
-                    <li key={idx}>{rec}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Table of Specifications */}
-            <div className="overflow-x-auto rounded-2xl border border-slate-100">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase font-black tracking-wider text-[10px]">
-                    <th className="py-3.5 px-4">Ressource Stripe</th>
-                    <th className="py-3.5 px-4">Endpoint API</th>
-                    <th className="py-3.5 px-4">Politique Recommandée</th>
-                    <th className="py-3.5 px-4">Statut Diagnostic</th>
-                    <th className="py-3.5 px-4">Utilité dans StartBill SaaS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {STRIPE_ACCESS_POLICY_SPEC.map((spec, idx) => {
-                    // Match with live diagnostic if available
-                    const liveDiag = policyAuditResult?.diagnostics.find(
-                      d => d.resource.toLowerCase().includes(spec.resource.toLowerCase().split(' ')[0])
-                    );
-
-                    const isNoneResource = spec.recommended.includes('None') || spec.recommended.includes('Aucun');
-
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/60 transition">
-                        <td className="py-3.5 px-4">
-                          <span className="font-bold text-slate-900 block">{spec.resource}</span>
-                          <span className="text-[10px] text-slate-400">{spec.riskIfOmitted}</span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <code className="text-[11px] bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono">
-                            {spec.apiEndpoint}
-                          </code>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            isNoneResource
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                          }`}>
-                            {spec.recommended}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {isNoneResource ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <Shield className="w-3 h-3" /> Bloqué (Protégé)
-                            </span>
-                          ) : liveDiag ? (
-                            liveDiag.status === 'granted' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle2 className="w-3 h-3" /> Accordée & Active
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
-                                <AlertTriangle className="w-3 h-3" /> Refusée
-                              </span>
-                            )
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold bg-slate-100 text-slate-500">
-                              {stripeConfig?.isConfigured ? 'Prêt à auditer' : 'Clé requise'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-600 text-[11px] max-w-xs">
-                          {spec.description}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* 4. Configuration Form for Stripe Keys */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-[#635BFF] flex items-center justify-center font-bold">
-                    <KeyRound className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-                      Configuration des Clés Stripe
-                    </h3>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      Mise à jour à chaud de l'instance Stripe du serveur
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowKeySecrets(!showKeySecrets)}
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
-                >
-                  {showKeySecrets ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{showKeySecrets ? 'Masquer' : 'Afficher'}</span>
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveStripeKeys} className="space-y-4 text-xs">
-                <div>
-                  <label className="font-extrabold text-slate-800 block mb-1 flex items-center justify-between">
-                    <span>Clé Restreinte Stripe (STRIPE_RESTRICTED_KEY) *</span>
-                    <span className="text-[10px] text-indigo-600 font-bold">Recommandé : rk_live_... ou rk_test_...</span>
-                  </label>
-                  <input
-                    type={showKeySecrets ? 'text' : 'password'}
-                    value={stripeKeyForm.restrictedKey}
-                    onChange={(e) => setStripeKeyForm({ ...stripeKeyForm, restrictedKey: e.target.value })}
-                    placeholder="rk_live_51P... ou rk_test_51P..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    Générez cette clé avec les permissions indiquées dans la matrice ci-dessus.
-                  </span>
-                </div>
-
-                <div>
-                  <label className="font-extrabold text-slate-800 block mb-1 flex items-center justify-between">
-                    <span>Clé Publique Client (VITE_STRIPE_PUBLISHABLE_KEY)</span>
-                    <span className="text-[10px] text-slate-400 font-semibold">pk_live_... ou pk_test_...</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={stripeKeyForm.publishableKey}
-                    onChange={(e) => setStripeKeyForm({ ...stripeKeyForm, publishableKey: e.target.value })}
-                    placeholder="pk_live_51P... ou pk_test_51P..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    Utilisée par le SDK frontend pour afficher les composants Stripe Elements.
-                  </span>
-                </div>
-
-                <div>
-                  <label className="font-extrabold text-slate-800 block mb-1 flex items-center justify-between">
-                    <span>Secret de Signature Webhook (STRIPE_WEBHOOK_SECRET)</span>
-                    <span className="text-[10px] text-slate-400 font-semibold">whsec_...</span>
-                  </label>
-                  <input
-                    type={showKeySecrets ? 'text' : 'password'}
-                    value={stripeKeyForm.webhookSecret}
-                    onChange={(e) => setStripeKeyForm({ ...stripeKeyForm, webhookSecret: e.target.value })}
-                    placeholder="whsec_..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-mono text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    Trouvé dans Développeurs &gt; Webhooks &gt; Point de terminaison &gt; Clé secrète de signature.
-                  </span>
-                </div>
-
-                <div className="pt-2 flex items-center justify-end gap-3">
                   <button
                     type="button"
-                    onClick={handleRunPolicyAudit}
+                    onClick={handleAuditPolicies}
                     disabled={isAuditingPolicies}
-                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition disabled:opacity-50"
                   >
-                    Tester la Clé
-                  </button>
-
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold transition shadow-md cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Enregistrer & Appliquer</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isAuditingPolicies ? 'animate-spin' : ''}`} />
+                    <span>Lancer l'audit de conformité</span>
                   </button>
                 </div>
-              </form>
-            </div>
 
-            {/* Step-by-Step Configuration Guide */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
-              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                    <BookOpen className="w-4 h-4" />
+                {/* Audit Result Display */}
+                {policyAuditResult && (
+                  <div
+                    className={`p-4 rounded-xl border text-xs space-y-2 ${
+                      policyAuditResult.accessPolicyCompliant
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                        : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold">
+                      {policyAuditResult.accessPolicyCompliant ? (
+                        <>
+                          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                          <span>Politique 100% Conforme aux Recommandations Stripe</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-amber-400" />
+                          <span>Audit : Des ajustements sont recommandés sur la clé restreinte</span>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-300">{policyAuditResult.message}</p>
                   </div>
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-                    Guide de Configuration (5 minutes)
-                  </h3>
-                </div>
-                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                  Officiel Stripe
-                </span>
-              </div>
+                )}
 
-              <div className="space-y-3 text-xs text-slate-600">
-                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">1</span>
-                  <div className="space-y-1">
-                    <div className="font-extrabold text-slate-900">Accédez au Stripe Dashboard</div>
-                    <p className="text-[11px] text-slate-500">
-                      Rendez-vous dans <strong>Développeurs &gt; Clés API</strong> et cliquez sur le bouton <strong>"Créer une clé restreinte"</strong>.
-                    </p>
+                {/* Form to update keys if needed */}
+                <form onSubmit={handleSaveStripeKeys} className="space-y-3 text-xs pt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">
+                        Clé Restreinte (rk_live_... ou rk_test_...)
+                      </label>
+                      <input
+                        type={showKeySecrets ? 'text' : 'password'}
+                        value={stripeKeyForm.restrictedKey}
+                        onChange={e => setStripeKeyForm({ ...stripeKeyForm, restrictedKey: e.target.value })}
+                        placeholder="rk_live_51P..."
+                        className="w-full bg-slate-900 border border-slate-750 rounded-xl p-2.5 text-white font-mono text-[11px] focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1">
+                        Clé Publique (pk_live_... ou pk_test_...)
+                      </label>
+                      <input
+                        type="text"
+                        value={stripeKeyForm.publishableKey}
+                        onChange={e => setStripeKeyForm({ ...stripeKeyForm, publishableKey: e.target.value })}
+                        placeholder="pk_live_51P..."
+                        className="w-full bg-slate-900 border border-slate-750 rounded-xl p-2.5 text-white font-mono text-[11px] focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">2</span>
-                  <div className="space-y-1">
-                    <div className="font-extrabold text-slate-900">Nommez la Clé et Appliquez les Politiques</div>
-                    <p className="text-[11px] text-slate-500">
-                      Nommez la clé <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">StartBill SaaS</code>. Pour chaque ressource, sélectionnez <strong>Écriture</strong> ou <strong>Lecture</strong> tel qu’indiqué dans le tableau d’audit. Laissez toutes les autres ressources sur <strong>Aucun</strong>.
-                    </p>
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowKeySecrets(!showKeySecrets)}
+                      className="text-slate-400 hover:text-white text-xs flex items-center gap-1 cursor-pointer"
+                    >
+                      {showKeySecrets ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{showKeySecrets ? 'Masquer les clés' : 'Afficher les clés'}</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl cursor-pointer shadow-md"
+                    >
+                      Sauvegarder et auditer
+                    </button>
                   </div>
-                </div>
-
-                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">3</span>
-                  <div className="space-y-1">
-                    <div className="font-extrabold text-slate-900">(Optionnel) Restreindre par Adresses IP</div>
-                    <p className="text-[11px] text-slate-500">
-                      Sous "Politique d’accès IP", vous pouvez renseigner les adresses IP sortantes de votre serveur pour interdire tout usage hors de votre hébergement.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 items-start p-3 rounded-2xl bg-slate-50 border border-slate-100">
-                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">4</span>
-                  <div className="space-y-1">
-                    <div className="font-extrabold text-slate-900">Enregistrez et Auditez</div>
-                    <p className="text-[11px] text-slate-500">
-                      Copiez la clé débutant par <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">rk_live_...</code> dans le formulaire ci-contre et cliquez sur <strong>Auditer en Direct</strong> pour obtenir votre score de 100%.
-                    </p>
-                  </div>
-                </div>
+                </form>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* MODAL: Add User */}
-      {showAddUserModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900">Créer un Compte Administrateur / Utilisateur</h3>
-              <button onClick={() => setShowAddUserModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+          {/* Module 07: STARTBILL FOUNDING 100 */}
+          {activeModule === 'founding100' && (
+            <Founding100View
+              candidates={store.foundingCandidates}
+              onUpdateCandidate={handleUpdateCandidate}
+              onAddCandidate={handleAddCandidate}
+              triggerToast={triggerToast}
+            />
+          )}
 
-            <form onSubmit={handleCreateNewUser} className="space-y-3 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Nom Complet</label>
-                <input
-                  type="text"
-                  required
-                  value={newUser.fullName}
-                  onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
-                  placeholder="Ex: Admin StartBill"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium"
-                />
-              </div>
+          {/* Module 20: Rôles & Permissions (RBAC) */}
+          {activeModule === 'rbac_permissions' && (
+            <RbacPermissionsView
+              matrix={INITIAL_RBAC_MATRIX}
+              triggerToast={triggerToast}
+            />
+          )}
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Adresse Courriel *</label>
-                <input
-                  type="email"
-                  required
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  placeholder="admin@startbill.com"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium"
-                />
-              </div>
+          {/* All Other Specialized Modules (04, 05, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24) */}
+          {activeModule !== 'ceo_dashboard' &&
+            activeModule !== 'strategic_steering' &&
+            activeModule !== 'businesses' &&
+            activeModule !== 'payments' &&
+            activeModule !== 'founding100' &&
+            activeModule !== 'rbac_permissions' && (
+              <ComprehensiveModulesView
+                activeModule={activeModule}
+                users={store.users}
+                plans={store.plans}
+                prospects={store.prospects}
+                markets={store.markets}
+                featureFlags={store.featureFlags}
+                aiSupervision={store.aiSupervision}
+                fiscalSources={store.fiscalSources}
+                tickets={store.tickets}
+                partners={store.partners}
+                team={store.team}
+                securityEvents={store.securityEvents}
+                auditLogs={store.auditLogs}
+                healthMetrics={store.healthMetrics}
+                roadmap={store.roadmap}
+                platformConfig={store.platformConfig}
+                onUpdateUsers={handleUpdateUsers}
+                onUpdateFlags={handleUpdateFlags}
+                onUpdateAiState={handleUpdateAi}
+                onUpdateTickets={handleUpdateTickets}
+                onUpdatePlatformConfig={handleUpdatePlatformConfig}
+                triggerToast={triggerToast}
+              />
+            )}
+        </main>
+      </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Rôle dans Firebase</label>
-                  <select
-                    value={newUser.role}
-                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="user">Utilisateur (user)</option>
-                    <option value="admin">Administrateur (admin)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Plan Initial</label>
-                  <select
-                    value={newUser.plan}
-                    onChange={(e) => setNewUser({ ...newUser, plan: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="free">Free</option>
-                    <option value="pro">Pro</option>
-                    <option value="enterprise">Enterprise</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-md transition cursor-pointer mt-2"
-              >
-                Enregistrer l'utilisateur
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Article */}
-      {showArticleModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-lg w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900">
-                {editingArticle ? 'Modifier l\'Article' : 'Nouveau Guide / Article de Formation'}
-              </h3>
-              <button onClick={() => setShowArticleModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveArticle} className="space-y-3 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Titre de l'Article *</label>
-                <input
-                  type="text"
-                  required
-                  value={articleForm.title}
-                  onChange={(e) => setArticleForm({ ...articleForm, title: e.target.value })}
-                  placeholder="Ex: Guide des déductions fiscales au Canada 2026"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Catégorie</label>
-                  <select
-                    value={articleForm.category}
-                    onChange={(e) => setArticleForm({ ...articleForm, category: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="Fiscalité">Fiscalité</option>
-                    <option value="Facturation">Facturation</option>
-                    <option value="Trésorerie">Trésorerie</option>
-                    <option value="Légal">Légal</option>
-                    <option value="Conseils">Conseils</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Région Cible</label>
-                  <select
-                    value={articleForm.targetRegion}
-                    onChange={(e) => setArticleForm({ ...articleForm, targetRegion: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="all">Toutes les Régions</option>
-                    <option value="canada">Canada uniquement</option>
-                    <option value="afrique">Afrique uniquement</option>
-                    <option value="haiti">Haïti uniquement</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Extrait (Résumé rapide)</label>
-                <input
-                  type="text"
-                  value={articleForm.excerpt}
-                  onChange={(e) => setArticleForm({ ...articleForm, excerpt: e.target.value })}
-                  placeholder="Court résumé en 1-2 phrases"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Contenu de l'Article *</label>
-                <textarea
-                  required
-                  rows={6}
-                  value={articleForm.content}
-                  onChange={(e) => setArticleForm({ ...articleForm, content: e.target.value })}
-                  placeholder="Rédigez le contenu explicatif..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 font-mono text-xs"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-md transition cursor-pointer mt-2"
-              >
-                Enregistrer l'article
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Broadcast Alert */}
-      {showAlertModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900">Diffuser une Alerte Globale</h3>
-              <button onClick={() => setShowAlertModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleBroadcastAlert} className="space-y-3 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Titre de l'Alerte *</label>
-                <input
-                  type="text"
-                  required
-                  value={alertForm.title}
-                  onChange={(e) => setAlertForm({ ...alertForm, title: e.target.value })}
-                  placeholder="Ex: Rappel Déclaration TPS/TVQ"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Message d'Information *</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={alertForm.message}
-                  onChange={(e) => setAlertForm({ ...alertForm, message: e.target.value })}
-                  placeholder="Message diffusé aux utilisateurs..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Sévérité</label>
-                  <select
-                    value={alertForm.severity}
-                    onChange={(e) => setAlertForm({ ...alertForm, severity: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="info">Information (Bleu)</option>
-                    <option value="warning">Avertissement (Jaune)</option>
-                    <option value="danger">Urgent / Danger (Rouge)</option>
-                    <option value="success">Succès (Vert)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Cible</label>
-                  <select
-                    value={alertForm.targetRegion}
-                    onChange={(e) => setAlertForm({ ...alertForm, targetRegion: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="all">Tous les pays</option>
-                    <option value="canada">Canada</option>
-                    <option value="afrique">Afrique</option>
-                    <option value="haiti">Haïti</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-md transition cursor-pointer mt-2"
-              >
-                Envoyer la notification
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Manual Payment */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900">Saisir un Paiement Manuel</h3>
-              <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddPayment} className="space-y-3 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Email Client / Utilisateur *</label>
-                <input
-                  type="email"
-                  required
-                  value={newPayment.userEmail}
-                  onChange={(e) => setNewPayment({ ...newPayment, userEmail: e.target.value })}
-                  placeholder="client@entreprise.com"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Montant *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={newPayment.amount}
-                    onChange={(e) => setNewPayment({ ...newPayment, amount: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Devise</label>
-                  <select
-                    value={newPayment.currency}
-                    onChange={(e) => setNewPayment({ ...newPayment, currency: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="CAD">CAD ($)</option>
-                    <option value="HTG">HTG (G)</option>
-                    <option value="XOF">XOF (FCFA)</option>
-                    <option value="USD">USD ($)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Méthode de Paiement</label>
-                <select
-                  value={newPayment.method}
-                  onChange={(e) => setNewPayment({ ...newPayment, method: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                >
-                  <option value="Interac e-Transfer">Interac e-Transfer</option>
-                  <option value="Carte bancaire / Stripe">Carte bancaire / Stripe</option>
-                  <option value="MonCash Mobile Money">MonCash Mobile Money</option>
-                  <option value="Orange Money / Wave">Orange Money / Wave</option>
-                  <option value="Virement bancaire">Virement bancaire</option>
-                  <option value="Chèque / Espèces">Chèque / Espèces</option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-md transition cursor-pointer mt-2"
-              >
-                Enregistrer la transaction
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {/* Profile Modal: "Mon profil administrateur" */}
+      <AdminProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        profile={store.ceoProfile}
+        onUpdateProfile={handleUpdateProfile}
+        triggerToast={triggerToast}
+      />
     </div>
   );
 }

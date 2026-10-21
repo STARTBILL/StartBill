@@ -481,8 +481,15 @@ export default function ProductsPage({
                     required
                     placeholder="0.00"
                     value={formData.unitPrice}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                        e.preventDefault();
+                      }
+                    }}
                     onChange={(e) => {
-                      const raw = parseFloat(e.target.value);
+                      const valStr = e.target.value;
+                      if (valStr.includes('-')) return;
+                      const raw = parseFloat(valStr);
                       setFormData({ ...formData, unitPrice: isNaN(raw) ? '' : Math.max(0, raw).toString() });
                     }}
                     className="w-full bg-secondary-50 border border-secondary-200 rounded-xl px-3 py-2 text-secondary-900 font-bold focus:bg-white focus:border-primary-500 outline-none transition"
