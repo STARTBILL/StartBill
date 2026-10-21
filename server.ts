@@ -6,7 +6,7 @@ import Stripe from 'stripe';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import fs from 'fs';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { createRegionIsolationMiddleware } from './src/middleware/regionSecurity';
 
 dotenv.config();
@@ -612,7 +612,10 @@ app.post('/api/scan-receipt', async (req: Request, res: Response): Promise<void>
     const { image, mimeType = 'image/jpeg', filename = '' } = req.body;
 
     if (!image) {
-      res.status(400).json({ error: 'Image data is required (base64 string or data URL)' });
+      res.status(400).json({ 
+        success: false, 
+        error: "Données d'image manquantes (chaîne Base64 requise)." 
+      });
       return;
     }
 
@@ -626,200 +629,247 @@ app.post('/api/scan-receipt', async (req: Request, res: Response): Promise<void>
       cleanMime = 'image/jpeg';
     }
 
-    // Default neutral fallback extractor when AI is not accessible or image lacks text
-    const getFallbackData = (name: string) => {
-      const lower = (name || '').toLowerCase();
-      let provider = 'Commerce / Marchand à vérifier';
-      let amountHt = 0;
-      let category = 'Autre';
-      let notes = 'Reçu numérisé - vérifiez les montants';
-
-      if (lower.includes('essence') || lower.includes('shell') || lower.includes('petro') || lower.includes('esso')) {
-        provider = lower.includes('petro') ? 'Petro-Canada' : lower.includes('esso') ? 'Esso' : 'Shell Canada';
-        amountHt = 0;
-        category = 'Transport';
-        notes = 'Carburant pour déplacements professionnels';
-      } else if (lower.includes('bureau') || lower.includes('staples')) {
-        provider = 'Bureau en Gros';
-        amountHt = 0;
-        category = 'Fournitures de bureau';
-        notes = 'Fournitures de bureau';
-      } else if (lower.includes('resto') || lower.includes('tim') || lower.includes('repas') || lower.includes('cafe')) {
-        provider = lower.includes('tim') ? 'Tim Hortons' : 'Restaurant';
-        amountHt = 0;
-        category = "Repas d'affaires";
-        notes = 'Repas de travail';
-      } else if (lower.includes('bell') || lower.includes('video') || lower.includes('internet') || lower.includes('tel')) {
-        provider = lower.includes('video') ? 'Vidéotron' : 'Bell Canada';
-        amountHt = 0;
-        category = 'Téléphone / Internet';
-        notes = 'Télécommunications';
-      } else if (lower.includes('hydro')) {
-        provider = 'Hydro-Québec';
-        amountHt = 0;
-        category = 'Loyer / Bureau';
-        notes = 'Électricité bureau';
-      } else if (lower.includes('costco') || lower.includes('walmart')) {
-        provider = lower.includes('costco') ? 'Costco' : 'Walmart';
-        amountHt = 0;
-        category = 'Fournitures de bureau';
+    // Initialize or refresh Gemini AI client dynamically
+    let activeAi = geminiAi;
+    if (!activeAi && process.env.GEMINI_API_KEY) {
+      try {
+        activeAi = new GoogleGenAI({
+          apiKey: process.env.GEMINI_API_KEY,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            },
+          },
+        });
+        geminiAi = activeAi;
+      } catch (initErr: any) {
+        console.warn('[Gemini OCR] Client init error:', initErr.message);
       }
+    }
 
-      return {
-        provider,
-        amountHt: 0,
-        tps: 0,
-        tvq: 0,
-        total: 0,
-        date: new Date().toISOString().split('T')[0],
-        category,
-        paymentMethod: 'Carte bancaire',
-        notes
-      };
-    };
-
-    // If Gemini client is not initialized, return the clean structured extractor
-    if (!geminiAi) {
-      console.log('[Gemini OCR] No Gemini AI client available, using neutral fallback extractor');
-      res.json({
-        success: true,
-        extracted: getFallbackData(filename),
-        source: 'structured_fallback'
+    if (!activeAi) {
+      console.warn('[Gemini OCR] No GEMINI_API_KEY available on server.');
+      res.status(503).json({
+        success: false,
+        isReceipt: false,
+        montant: 0,
+        error: "Le service d'analyse par IA (Google Gemini Vision) n'est pas disponible. Veuillez configurer la clé API ou saisir le montant manuellement."
       });
       return;
     }
 
-    try {
-      const prompt = `Tu es un expert comptable spécialisé dans la lecture et l'extraction OCR de reçus, facturettes et justificatifs d'achat canadiens et internationaux.
-Analyse très précisément cette image de reçu ou facture.
-Extrais les données réelles et exactes imprimées sur le document :
-1. "provider" : nom commercial exact du marchand ou fournisseur (ex: nom du magasin, station-service, restaurant, entreprise).
-2. "amountHt" : sous-total hors taxes (avant taxes). Ne renvoie JAMAIS de valeur négative.
-3. "tps" : taxe TPS / GST (généralement 5% au Canada) imprimée sur le reçu (0 si non spécifiée ou non applicable).
-4. "tvq" : taxe TVQ / QST (9.975% au Québec) ou TVH/PST (13%-15% en Ontario/Maritimes) imprimée (0 si non spécifiée).
-5. "total" : montant total final TTC réellement payé.
-6. "date" : date de la transaction au format YYYY-MM-DD. Si l'année n'est pas imprimée, utilise l'année en cours (2026).
-7. "category" : catégorie la plus appropriée ('Transport', 'Repas d\\'affaires', 'Fournitures de bureau', 'Logiciels', 'Téléphone / Internet', 'Loyer / Bureau', 'Publicité & Marketing', 'Services professionnels', 'Équipement', 'Autre').
-8. "paymentMethod" : mode de paiement utilisé ('Carte bancaire', 'Carte de crédit', 'Espèces', 'Virement Interac', 'Autre').
-9. "notes" : description succincte des articles ou du reçu.
+    // Precise Vision Prompt for Receipt / Invoice OCR Analysis
+    const prompt = `Tu es un système expert de Vision par Ordinateur et d'OCR de justificatifs comptables pour l'application "StartBill".
+Ta mission est d'analyser très rigoureusement l'image fournie.
 
-Consignes strictes :
-- Réponds UNIQUEMENT avec un objet JSON valide, sans balises markdown, sans texte explicatif supplémentaire.
-{
-  "provider": string,
-  "amountHt": number,
-  "tps": number,
-  "tvq": number,
-  "total": number,
-  "date": string,
-  "category": string,
-  "paymentMethod": string,
-  "notes": string
-}`;
+RÈGLE D'OR 1 : DÉTECTION ET VALIDATION STRICTE DU DOCUMENT
+- Vérifie si l'image est RÉELLEMENT un reçu de caisse, un ticket de magasin, une facturette, un reçu de station-service, un ticket de restaurant ou une facture commerciale d'achat.
+- Si l'image représente un animal (chat, chien, etc.), un paysage, un selfie/visage, un objet quelconque, une page vierge ou une image totalement sans rapport :
+  -> "isReceipt" DOIT être strictement FALSE.
+  -> "success" DOIT être strictement FALSE.
+  -> "montant" DOIT être 0.
+  -> "devise" DOIT être "CAD".
+  -> "marchand" DOIT être "".
+  -> "date" DOIT être "".
+  -> "error" DOIT être "Aucune facture détectée. Veuillez réessayer avec une image claire."
 
-      // Call Gemini 3.8 Flash with generous 25s safety timeout
-      const aiPromise = geminiAi.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: cleanMime,
-                  data: base64Data
-                }
-              },
-              {
-                text: prompt
+RÈGLE D'OR 2 : EXTRACTION RATIONNELLE ET EXACTE DU REÇU (UNIQUEMENT SI isReceipt = TRUE)
+- Ne devine JAMAIS et n'invente JAMAIS de montant fictif.
+- "montant" : Le montant TOTAL final TTC réellement payé et imprimé sur le document (ex: 12.50 pour 12,50 $ ou 45.50 pour 45,50 $).
+- "devise" : La devise réelle figurant sur le document : 'CAD', 'USD', 'HTG', 'FCFA', 'XOF' ou 'EUR' (par défaut 'CAD' pour les symboles $ au Canada).
+- "marchand" : Le nom exact du commerçant ou magasin imprimé sur l'en-tête (ex: 'IGA', 'Metro', 'Shell', 'Tim Hortons', 'Costco', etc.).
+- "date" : La date de la transaction au format YYYY-MM-DD. Si l'année manque, utilise l'année en cours (2026).
+- "tps" : Montant exact de la TPS / GST si imprimé, sinon 0.
+- "tvq" : Montant exact de la TVQ / QST / PST si imprimé, sinon 0.
+- "categorie" : Catégorie comptable ('Transport', 'Repas d\\'affaires', 'Fournitures de bureau', 'Logiciels', 'Téléphone / Internet', 'Loyer / Bureau', 'Publicité & Marketing', 'Services professionnels', 'Équipement', 'Autre').
+- "notes" : Brève description des articles achetés.
+
+RÈGLE D'OR 3 : GESTION DES REÇUS FLOUES OU ILLISIBLES
+- Si l'image est un reçu mais que le texte ou le montant total est totalement flou, coupé ou illisible :
+  -> "isReceipt": true, "success": false, "montant": 0, "error": "Image floue ou montant illisible. Veuillez réessayer avec une prise de vue plus nette ou saisir le montant manuellement."`;
+
+    const aiResponse = await activeAi.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: cleanMime,
+                data: base64Data
               }
-            ]
-          }
-        ],
-        config: {
-          responseMimeType: 'application/json'
+            },
+            {
+              text: prompt
+            }
+          ]
         }
-      });
-
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('AI OCR request timeout')), 25000)
-      );
-
-      const aiResponse: any = await Promise.race([aiPromise, timeoutPromise]);
-      const rawText = aiResponse?.text || '';
-
-      let parsed: any = null;
-      try {
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        const cleaned = jsonMatch ? jsonMatch[0] : rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleaned);
-      } catch (parseErr) {
-        console.warn('[Gemini OCR] JSON parse warning:', parseErr, 'Raw:', rawText);
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            isReceipt: {
+              type: Type.BOOLEAN,
+              description: "True if and only if the image contains an authentic receipt or commercial invoice. False for pets, animals, landscapes, objects, selfies, or blank surfaces."
+            },
+            success: {
+              type: Type.BOOLEAN,
+              description: "True if isReceipt is true AND a valid legible total amount was extracted. False otherwise."
+            },
+            montant: {
+              type: Type.NUMBER,
+              description: "The exact numerical total amount paid found on the receipt (e.g. 12.50). 0 if not a receipt."
+            },
+            devise: {
+              type: Type.STRING,
+              description: "Currency code: 'CAD', 'USD', 'HTG', 'FCFA', 'XOF', or 'EUR'."
+            },
+            marchand: {
+              type: Type.STRING,
+              description: "Exact commercial trade name of the merchant/store."
+            },
+            date: {
+              type: Type.STRING,
+              description: "Transaction date formatted as YYYY-MM-DD."
+            },
+            tps: {
+              type: Type.NUMBER,
+              description: "GST/TPS tax amount (Canada 5%) if found, 0 otherwise."
+            },
+            tvq: {
+              type: Type.NUMBER,
+              description: "QST/TVQ/PST/TVH tax amount if found, 0 otherwise."
+            },
+            categorie: {
+              type: Type.STRING,
+              description: "Expense category."
+            },
+            notes: {
+              type: Type.STRING,
+              description: "Short description of items or receipt summary."
+            },
+            error: {
+              type: Type.STRING,
+              description: "Error message if isReceipt is false or image is blurry."
+            }
+          },
+          required: ["isReceipt", "success", "montant", "devise", "marchand", "date"]
+        }
       }
+    });
 
-      if (parsed) {
-        const rawTot = parseFloat(String(parsed.total ?? 0));
-        let tot = isNaN(rawTot) ? 0 : Math.max(0, rawTot);
-
-        const rawHt = parseFloat(String(parsed.amountHt ?? 0));
-        let ht = isNaN(rawHt) ? 0 : Math.max(0, rawHt);
-
-        const rawTps = parseFloat(String(parsed.tps ?? 0));
-        let tps = isNaN(rawTps) ? 0 : Math.max(0, rawTps);
-
-        const rawTvq = parseFloat(String(parsed.tvq ?? 0));
-        let tvq = isNaN(rawTvq) ? 0 : Math.max(0, rawTvq);
-
-        // If total is present but HT is missing or 0, calculate HT from total & taxes
-        if (ht <= 0 && tot > 0) {
-          if (tps > 0 || tvq > 0) {
-            ht = parseFloat(Math.max(0, tot - tps - tvq).toFixed(2));
-          } else {
-            // Assume standard Québec tax rate or keep total
-            ht = parseFloat((tot / 1.14975).toFixed(2));
-            tps = parseFloat((ht * 0.05).toFixed(2));
-            tvq = parseFloat((ht * 0.09975).toFixed(2));
-          }
-        }
-
-        // If HT is present but total is 0 or less than HT
-        if (tot <= 0 && ht > 0) {
-          tot = parseFloat((ht + tps + tvq).toFixed(2));
-        }
-
-        const cleanResult = {
-          provider: (parsed.provider && parsed.provider !== 'Commerce / Marchand' ? parsed.provider : 'Fournisseur détecté').trim(),
-          amountHt: parseFloat(Math.max(0, ht).toFixed(2)),
-          tps: parseFloat(Math.max(0, tps).toFixed(2)),
-          tvq: parseFloat(Math.max(0, tvq).toFixed(2)),
-          total: parseFloat(Math.max(0, tot).toFixed(2)),
-          date: parsed.date && parsed.date.match(/^\d{4}-\d{2}-\d{2}$/) ? parsed.date : new Date().toISOString().split('T')[0],
-          category: parsed.category || 'Autre',
-          paymentMethod: parsed.paymentMethod || 'Carte bancaire',
-          notes: parsed.notes || 'Reçu numérisé par IA'
-        };
-
-        console.log('[Gemini OCR] Successfully extracted receipt data:', cleanResult.provider, `${cleanResult.total} CAD`);
-        res.json({
-          success: true,
-          extracted: cleanResult,
-          source: 'gemini_vision'
-        });
-        return;
+    const rawText = aiResponse.text || '{}';
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.warn('[Gemini OCR] JSON parse warning:', parseErr, 'Raw:', rawText);
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
       }
-    } catch (aiErr: any) {
-      console.warn('[Gemini OCR] AI execution error/timeout:', aiErr.message);
     }
 
-    // Neutral fallback if AI was unavailable
+    if (!parsed) {
+      res.status(422).json({
+        success: false,
+        isReceipt: false,
+        montant: 0,
+        error: "Impossible d'analyser l'image transmise. Veuillez réessayer avec une image nette."
+      });
+      return;
+    }
+
+    // ÉTAPE 1 : Si ce n'est pas un reçu (ex: chat, paysage, objet ordinaire)
+    if (!parsed.isReceipt) {
+      const rejectMsg = parsed.error || "Aucune facture détectée. Veuillez réessayer avec une image claire.";
+      console.log('[Gemini OCR] Rejection: Not a receipt ->', rejectMsg);
+      res.status(422).json({
+        success: false,
+        isReceipt: false,
+        montant: 0,
+        devise: parsed.devise || 'CAD',
+        marchand: '',
+        date: '',
+        error: rejectMsg
+      });
+      return;
+    }
+
+    // ÉTAPE 2 : Si c'est un reçu mais illisible / montant introuvable
+    const finalAmount = parseFloat(Number(parsed.montant ?? 0).toFixed(2));
+    if (!parsed.success || isNaN(finalAmount) || finalAmount <= 0) {
+      const blurryMsg = parsed.error || "Image floue ou montant illisible. Veuillez réessayer avec une prise de vue plus nette ou saisir le montant manuellement.";
+      console.log('[Gemini OCR] Rejection: Blurry or missing amount ->', blurryMsg);
+      res.status(422).json({
+        success: false,
+        isReceipt: true,
+        montant: 0,
+        devise: parsed.devise || 'CAD',
+        marchand: parsed.marchand || '',
+        date: parsed.date || '',
+        error: blurryMsg
+      });
+      return;
+    }
+
+    // ÉTAPE 3 : Succès complet - Reçu authentique et montant exact validé
+    const rawTps = parseFloat(Number(parsed.tps ?? 0).toFixed(2));
+    const rawTvq = parseFloat(Number(parsed.tvq ?? 0).toFixed(2));
+    const tps = isNaN(rawTps) ? 0 : Math.max(0, rawTps);
+    const tvq = isNaN(rawTvq) ? 0 : Math.max(0, rawTvq);
+
+    let amountHt = parseFloat((finalAmount - tps - tvq).toFixed(2));
+    if (amountHt <= 0) {
+      amountHt = finalAmount;
+    }
+
+    const detectedMerchant = (parsed.marchand || 'Commerce').trim();
+    const detectedDate = parsed.date && parsed.date.match(/^\d{4}-\d{2}-\d{2}$/) 
+      ? parsed.date 
+      : new Date().toISOString().split('T')[0];
+    const detectedCurrency = (parsed.devise || 'CAD').toUpperCase().trim();
+    const detectedCategory = parsed.categorie || 'Autre';
+
+    console.log(`[Gemini OCR] Success: "${detectedMerchant}" | Montant: ${finalAmount} ${detectedCurrency}`);
+
+    // Structure de réponse conforme aux spécifications exactes de l'utilisateur
     res.json({
       success: true,
-      extracted: getFallbackData(filename),
-      source: 'smart_fallback'
+      isReceipt: true,
+      montant: finalAmount,
+      devise: detectedCurrency,
+      marchand: detectedMerchant,
+      date: detectedDate,
+      taxes: {
+        tps,
+        tvq
+      },
+      extracted: {
+        provider: detectedMerchant,
+        amountHt,
+        tps,
+        tvq,
+        total: finalAmount,
+        devise: detectedCurrency,
+        date: detectedDate,
+        category: detectedCategory,
+        paymentMethod: 'Carte bancaire',
+        notes: parsed.notes || `Reçu analysé par IA (${detectedMerchant})`
+      }
     });
+
   } catch (globalErr: any) {
     console.error('[Scan Receipt Handler Error]:', globalErr);
-    res.status(500).json({ error: globalErr.message || 'Erreur lors du traitement du reçu' });
+    res.status(500).json({ 
+      success: false,
+      isReceipt: false,
+      montant: 0,
+      error: globalErr.message || 'Erreur lors du traitement du reçu par IA' 
+    });
   }
 });
 

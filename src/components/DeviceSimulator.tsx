@@ -848,24 +848,37 @@ export default function DeviceSimulator({
             })
           });
 
-          if (res.ok) {
-            const data = await res.json();
-            if (data.extracted) {
-              const ext = data.extracted;
-              if (ext.provider) setNewExpenseProvider(ext.provider);
-              if (ext.amountHt > 0) {
-                const htStr = ext.amountHt.toFixed(2);
-                setNewExpenseAmountHt(htStr);
-                recalculateExpenseTaxes(htStr, newExpenseProvince);
-              }
-              if (ext.date) setNewExpenseDate(ext.date);
-              if (ext.category) setNewExpenseCategory(ext.category);
-              if (ext.notes) setNewExpenseNotes(ext.notes);
-              triggerToast(`Reçu analysé par IA : ${ext.provider} (${(ext.total || 0).toFixed(2)} CAD)`);
+          const data = await res.json().catch(() => ({}));
+
+          if (res.ok && data.success && (data.montant > 0 || data.extracted?.total > 0)) {
+            const ext = data.extracted || {};
+            const merchant = data.marchand || ext.provider || 'Commerce';
+            const total = Number(data.montant || ext.total || 0);
+            const currency = data.devise || ext.devise || 'CAD';
+            const ht = Number(ext.amountHt || total);
+
+            if (merchant) setNewExpenseProvider(merchant);
+            if (ht > 0) {
+              const htStr = ht.toFixed(2);
+              setNewExpenseAmountHt(htStr);
+              recalculateExpenseTaxes(htStr, newExpenseProvince);
             }
+            if (data.date || ext.date) setNewExpenseDate(data.date || ext.date);
+            if (data.categorie || ext.category) setNewExpenseCategory(data.categorie || ext.category);
+            if (ext.notes) setNewExpenseNotes(ext.notes);
+            triggerToast(`Reçu analysé par IA : ${merchant} (${total.toFixed(2)} ${currency})`);
+          } else {
+            // Rejet : Pas une facture / chat / image floue
+            setReceiptImg(null);
+            const errReason = data.error || (data.isReceipt === false 
+              ? "Aucune facture détectée. Veuillez réessayer avec une image claire." 
+              : "Image floue ou montant illisible. Veuillez saisir le montant manuellement.");
+            triggerToast(errReason);
           }
-        } catch (ocrErr) {
+        } catch (ocrErr: any) {
           console.warn('[Mobile OCR Receipt Notice]:', ocrErr);
+          setReceiptImg(null);
+          triggerToast(ocrErr.message || "Erreur de connexion lors du scan. Veuillez réessayer.");
         } finally {
           setIsScanningMobileReceipt(false);
         }
