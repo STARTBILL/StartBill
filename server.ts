@@ -753,6 +753,8 @@ app.post('/api/scan-receipt', async (req: Request, res: Response): Promise<void>
 
     // Precise Vision Prompt for Receipt / Invoice OCR Analysis (Strict OCR Specification)
     const prompt = `Tu es un OCR spécialisé dans les factures et reçus. Analyse l'image fournie.
+Note importante : Le document peut être un reçu papier, un ticket de caisse, une facture imprimée, un reçu numérique ou une facture affichée sur un écran (tablette, smartphone, ordinateur). Même s'il y a des bordures d'écran, de table ou d'arrière-plan, analyse le document comptable visible.
+
 Extrais UNIQUEMENT les informations suivantes :
 - montant_total : le montant total TTC (numérique, sans symbole de devise).
 - devise : la devise détectée (CAD, USD, HTG, XOF, etc.).
@@ -763,30 +765,52 @@ Extrais UNIQUEMENT les informations suivantes :
 RÈGLES STRICTES :
 - Ne devine pas. Si une information est absente ou illisible, renvoie null.
 - Ne renvoie que du JSON valide. Aucun texte avant ou après le JSON.
-- Si l'image n'est pas une facture, renvoie {"erreur": "Ceci n'est pas une facture"}.`;
+- Si l'image ne contient aucun document commercial ou comptable (par exemple : paysage pur, selfie, animal sans document), renvoie {"erreur": "Ceci n'est pas une facture"}.`;
 
-    const aiResponse = await activeAi.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
+    // Cascade: try gemini-3.1-flash-lite (fast, resilient, zero 503) then gemini-3.8-flash as fallback
+    const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    let aiResponse: any = null;
+    let lastError: any = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        console.log(`[Gemini OCR] Tentative avec le modèle : ${modelName}...`);
+        aiResponse = await activeAi.models.generateContent({
+          model: modelName,
+          contents: [
             {
-              inlineData: {
-                mimeType: cleanMime,
-                data: base64Data
-              }
-            },
-            {
-              text: prompt
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: cleanMime,
+                    data: base64Data
+                  }
+                },
+                {
+                  text: prompt
+                }
+              ]
             }
-          ]
+          ],
+          config: {
+            responseMimeType: 'application/json',
+          }
+        });
+
+        if (aiResponse?.text) {
+          console.log(`[Gemini OCR] Succès avec ${modelName}`);
+          break;
         }
-      ],
-      config: {
-        responseMimeType: 'application/json',
+      } catch (callErr: any) {
+        lastError = callErr;
+        console.warn(`[Gemini OCR] Avertissement modèle ${modelName}:`, callErr.message || callErr);
       }
-    });
+    }
+
+    if (!aiResponse?.text) {
+      throw lastError || new Error("Impossible d'obtenir une réponse de l'OCR IA. Veuillez réessayer.");
+    }
 
     const rawText = (aiResponse.text || '').trim();
     if (!rawText) {
@@ -815,8 +839,9 @@ RÈGLES STRICTES :
     }
 
     // Vérification du cas d'erreur explicite : "Ceci n'est pas une facture"
-    if (parsed.erreur || (parsed.error && !parsed.montant_total)) {
-      const errorMsg = parsed.erreur || parsed.error || "Ceci n'est pas une facture";
+    // Uniquement si l'IA a explicitement rejeté le document comme n'étant pas une facture
+    if (parsed.erreur && !parsed.montant_total && !parsed.marchand) {
+      const errorMsg = parsed.erreur || "Ceci n'est pas une facture";
       console.log('[Gemini OCR] Document non reconnu comme facture :', errorMsg);
       res.status(422).json({
         success: false,

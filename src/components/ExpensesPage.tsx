@@ -149,95 +149,162 @@ export default function ExpensesPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Start real OCR Scanning process on an uploaded or captured image file via Gemini Vision API
-  const processOcrImage = async (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const imgDataUrl = reader.result as string;
-      setOcrPreviewImage(imgDataUrl);
-      setIsOcrScanning(true);
-      setOcrScanError(null);
-      setOcrDetectedData(null);
-      setOcrProgress(15);
-      setShowOcrModal(true);
+  // Client-side image compression: converts heavy 10-25MB mobile photos to fast, crystal-clear 1600px JPEGs (~250KB)
+  const compressImageForOcr = async (file: File): Promise<{ dataUrl: string; mimeType: string }> => {
+    return new Promise((resolve) => {
+      if (file.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ dataUrl: reader.result as string, mimeType: 'application/pdf' });
+        reader.onerror = () => resolve({ dataUrl: '', mimeType: 'application/pdf' });
+        reader.readAsDataURL(file);
+        return;
+      }
 
-      const progressInterval = setInterval(() => {
-        setOcrProgress(prev => {
-          if (prev >= 85) return prev;
-          return prev + 10;
-        });
-      }, 350);
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const maxDim = 1600;
+        let w = img.width;
+        let h = img.height;
 
-      try {
-        const response = await fetch('/api/scan-receipt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image: imgDataUrl,
-            filename: file.name,
-            mimeType: file.type || 'image/jpeg'
-          })
-        });
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
 
-        clearInterval(progressInterval);
-        setOcrProgress(100);
-
-        const data = await response.json().catch(() => ({}));
-
-        // Si l'image n'est pas une facture ou s'il y a une erreur explicite renvoyée par le backend
-        if (!response.ok || !data.success) {
-          const errorMsg = data.error || "Aucune facture détectée. Veuillez réessayer avec une image claire.";
-          setOcrScanError(errorMsg);
-          setOcrDetectedData(null);
-          triggerToast(errorMsg);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, w);
+        canvas.height = Math.max(1, h);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          const fallbackReader = new FileReader();
+          fallbackReader.onload = () => resolve({ dataUrl: fallbackReader.result as string, mimeType: file.type || 'image/jpeg' });
+          fallbackReader.readAsDataURL(file);
           return;
         }
 
-        // Extraction stricte : si montant_total est null, marquer pour saisie manuelle sans inventer de valeur
-        const isManualAmount = Boolean(data.requiresManualAmount || data.montant_total === null || data.montant_total === undefined);
-        const finalTotal: number | null = isManualAmount ? null : Number(data.montant_total);
-        const finalMerchant = data.marchand || '';
-        const finalDevise = data.devise || 'CAD';
-        const finalDate = data.date || new Date().toISOString().split('T')[0];
-        const finalCategory = data.categorie || 'Autre';
-        const finalTps = Number(data.taxes?.tps ?? 0);
-        const finalTvq = Number(data.taxes?.tvq ?? 0);
-        const finalHt = finalTotal !== null ? Math.max(0, Number(data.extracted?.amountHt || (finalTotal - finalTps - finalTvq))) : null;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
 
-        setOcrDetectedData({
-          provider: finalMerchant,
-          amountHt: finalHt,
-          tps: finalTps,
-          tvq: finalTvq,
-          total: finalTotal,
-          devise: finalDevise,
-          date: finalDate,
-          category: finalCategory,
-          paymentMethod: 'Carte bancaire',
-          notes: finalMerchant ? `Facture ${finalMerchant}` : 'Facture scannée',
-          requiresManualAmount: isManualAmount
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        resolve({ dataUrl: compressedBase64, mimeType: 'image/jpeg' });
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        const fallbackReader = new FileReader();
+        fallbackReader.onload = () => resolve({ dataUrl: fallbackReader.result as string, mimeType: file.type || 'image/jpeg' });
+        fallbackReader.readAsDataURL(file);
+      };
+
+      img.src = objectUrl;
+    });
+  };
+
+  // Start real OCR Scanning process on an uploaded or captured image file via Gemini Vision API
+  const processOcrImage = async (file: File) => {
+    setIsOcrScanning(true);
+    setOcrScanError(null);
+    setOcrDetectedData(null);
+    setOcrProgress(15);
+    setShowOcrModal(true);
+
+    try {
+      // 1. Compress image client-side to ensure instant mobile upload & bypass web proxy body limits
+      const { dataUrl: imgDataUrl, mimeType: cleanMime } = await compressImageForOcr(file);
+      setOcrPreviewImage(imgDataUrl);
+      setOcrProgress(35);
+
+      const progressInterval = setInterval(() => {
+        setOcrProgress(prev => {
+          if (prev >= 88) return prev;
+          return prev + 8;
         });
+      }, 300);
 
-        setOcrScanError(null);
+      // 2. Call backend OCR endpoint
+      const response = await fetch('/api/scan-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: imgDataUrl,
+          filename: file.name,
+          mimeType: cleanMime
+        })
+      });
 
-        if (isManualAmount) {
-          triggerToast("Facture détectée : Montant non lisible, veuillez le saisir manuellement.");
-        } else {
-          triggerToast(`Facture analysée : ${finalMerchant || 'Document'} (${finalTotal?.toFixed(2)} ${finalDevise})`);
+      clearInterval(progressInterval);
+      setOcrProgress(100);
+
+      const data = await response.json().catch(() => ({}));
+
+      // 3. Handle explicit rejection vs network/server error
+      if (!response.ok || !data.success) {
+        let errorMsg = data.error;
+        if (!errorMsg) {
+          if (response.status === 413) {
+            errorMsg = "L'image est trop volumineuse pour être transmise. Veuillez réessayer.";
+          } else if (response.status === 503 || response.status === 504) {
+            errorMsg = "Le service d'analyse IA est temporairement indisponible. Veuillez réessayer dans quelques instants ou saisir le montant manuellement.";
+          } else {
+            errorMsg = "Aucune facture détectée. Veuillez réessayer avec une image claire.";
+          }
         }
-      } catch (err: any) {
-        clearInterval(progressInterval);
-        console.warn('[OCR Scan Notice]:', err);
-        setOcrProgress(100);
-        const fallbackMsg = err.message || "Erreur de connexion lors de l'analyse du reçu. Veuillez réessayer ou saisir le montant manuellement.";
-        setOcrScanError(fallbackMsg);
+        setOcrScanError(errorMsg);
         setOcrDetectedData(null);
-        triggerToast(fallbackMsg);
-      } finally {
-        setIsOcrScanning(false);
+        triggerToast(errorMsg);
+        return;
       }
-    };
-    reader.readAsDataURL(file);
+
+      // 4. Extraction stricte : si montant_total est null, marquer pour saisie manuelle sans inventer de valeur
+      const isManualAmount = Boolean(data.requiresManualAmount || data.montant_total === null || data.montant_total === undefined);
+      const finalTotal: number | null = isManualAmount ? null : Number(data.montant_total);
+      const finalMerchant = data.marchand || '';
+      const finalDevise = data.devise || 'CAD';
+      const finalDate = data.date || new Date().toISOString().split('T')[0];
+      const finalCategory = data.categorie || 'Autre';
+      const finalTps = Number(data.taxes?.tps ?? 0);
+      const finalTvq = Number(data.taxes?.tvq ?? 0);
+      const finalHt = finalTotal !== null ? Math.max(0, Number(data.extracted?.amountHt || (finalTotal - finalTps - finalTvq))) : null;
+
+      setOcrDetectedData({
+        provider: finalMerchant,
+        amountHt: finalHt,
+        tps: finalTps,
+        tvq: finalTvq,
+        total: finalTotal,
+        devise: finalDevise,
+        date: finalDate,
+        category: finalCategory,
+        paymentMethod: 'Carte bancaire',
+        notes: finalMerchant ? `Facture ${finalMerchant}` : 'Facture scannée',
+        requiresManualAmount: isManualAmount
+      });
+
+      setOcrScanError(null);
+
+      if (isManualAmount) {
+        triggerToast("Facture détectée : Montant non lisible, veuillez le saisir dans le formulaire de vérification.");
+      } else {
+        triggerToast(`Facture analysée : ${finalMerchant || 'Document'} (${finalTotal?.toFixed(2)} ${finalDevise})`);
+      }
+    } catch (err: any) {
+      console.warn('[OCR Scan Notice]:', err);
+      setOcrProgress(100);
+      const fallbackMsg = err.message || "Erreur de connexion lors de l'analyse du reçu. Veuillez réessayer ou saisir le montant manuellement.";
+      setOcrScanError(fallbackMsg);
+      setOcrDetectedData(null);
+      triggerToast(fallbackMsg);
+    } finally {
+      setIsOcrScanning(false);
+    }
   };
 
   const handleOpenManualEntry = () => {
