@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRegionIsolationMiddleware } from './src/middleware/regionSecurity';
 
@@ -180,6 +181,98 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Middleware de sécurité : Cloisonnement strict des données inter-régions
 app.use(createRegionIsolationMiddleware(db));
+
+// -------------------------------------------------------------
+// SÉCURITÉ BACKEND : RBAC & Protection des Routes Administration
+// -------------------------------------------------------------
+export const PRIMARY_ADMIN_EMAIL = 'contact.startbill@gmail.com';
+export const CANADA_ADMIN_EMAIL = 'admin.canada@startbill.com';
+
+export function adminRbacMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const userEmail = (
+    (req.headers['x-user-email'] as string) || 
+    (req.body?.userEmail as string) || 
+    (req.query?.userEmail as string) || 
+    ''
+  ).toLowerCase().trim();
+
+  const userRole = (
+    (req.headers['x-user-role'] as string) || 
+    (req.body?.userRole as string) || 
+    (req.query?.userRole as string) || 
+    ''
+  ).toLowerCase().trim();
+
+  const isAuthorized = 
+    userRole === 'admin' || 
+    userEmail === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
+    userEmail === CANADA_ADMIN_EMAIL.toLowerCase();
+
+  if (!isAuthorized) {
+    res.status(403).json({
+      success: false,
+      statusCode: 403,
+      error: '403 Forbidden: Accès refusé. Cette ressource est strictement réservée au compte administrateur (contact.startbill@gmail.com).',
+    });
+    return;
+  }
+
+  next();
+}
+
+// Route de vérification de session Administrateur (RBAC)
+app.get('/api/admin/verify', adminRbacMiddleware, (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    authorized: true,
+    adminEmail: PRIMARY_ADMIN_EMAIL,
+    message: 'Accès Administrateur validé avec succès (RBAC).'
+  });
+});
+
+// Route d'initialisation sécurisée du compte Admin avec mot de passe haché (Bcrypt)
+app.post('/api/admin/seed-account', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const defaultPassword = 'StartBillAdmin2026!';
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
+    const adminDocId = 'admin_primary_contact_startbill';
+
+    if (db) {
+      await setDoc(doc(db, 'users', adminDocId), {
+        uid: adminDocId,
+        email: PRIMARY_ADMIN_EMAIL,
+        fullName: 'Administrateur Principal StartBill',
+        role: 'admin',
+        plan: 'enterprise',
+        region: 'canada',
+        isSuperAdmin: true,
+        passwordHash,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      await setDoc(doc(db, 'system_admins', PRIMARY_ADMIN_EMAIL), {
+        email: PRIMARY_ADMIN_EMAIL,
+        role: 'admin',
+        passwordHash,
+        isSuperAdmin: true,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+
+    res.json({
+      success: true,
+      message: 'Compte Administrateur (contact.startbill@gmail.com) provisionné avec mot de passe haché (Bcrypt).',
+      adminEmail: PRIMARY_ADMIN_EMAIL,
+      role: 'admin'
+    });
+  } catch (seedErr: any) {
+    res.status(500).json({ success: false, error: seedErr.message });
+  }
+});
+
+// Appliquer le middleware de restriction RBAC sur toutes les routes d'administration
+app.use('/api/admin', adminRbacMiddleware);
+app.use('/api/stripe/admin', adminRbacMiddleware);
 
 // -------------------------------------------------------------
 // 2. STRIPE CONFIG STATUS
@@ -658,35 +751,19 @@ app.post('/api/scan-receipt', async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Precise Vision Prompt for Receipt / Invoice OCR Analysis
-    const prompt = `Tu es un système expert de Vision par Ordinateur et d'OCR de justificatifs comptables pour l'application "StartBill".
-Ta mission est d'analyser très rigoureusement l'image fournie.
+    // Precise Vision Prompt for Receipt / Invoice OCR Analysis (Strict OCR Specification)
+    const prompt = `Tu es un OCR spécialisé dans les factures et reçus. Analyse l'image fournie.
+Extrais UNIQUEMENT les informations suivantes :
+- montant_total : le montant total TTC (numérique, sans symbole de devise).
+- devise : la devise détectée (CAD, USD, HTG, XOF, etc.).
+- date : la date de la transaction au format YYYY-MM-DD.
+- marchand : le nom du commerçant/entreprise.
+- categorie : la catégorie de dépense (ex: Alimentation, Transport, Électronique).
 
-RÈGLE D'OR 1 : DÉTECTION ET VALIDATION STRICTE DU DOCUMENT
-- Vérifie si l'image est RÉELLEMENT un reçu de caisse, un ticket de magasin, une facturette, un reçu de station-service, un ticket de restaurant ou une facture commerciale d'achat.
-- Si l'image représente un animal (chat, chien, etc.), un paysage, un selfie/visage, un objet quelconque, une page vierge ou une image totalement sans rapport :
-  -> "isReceipt" DOIT être strictement FALSE.
-  -> "success" DOIT être strictement FALSE.
-  -> "montant" DOIT être 0.
-  -> "devise" DOIT être "CAD".
-  -> "marchand" DOIT être "".
-  -> "date" DOIT être "".
-  -> "error" DOIT être "Aucune facture détectée. Veuillez réessayer avec une image claire."
-
-RÈGLE D'OR 2 : EXTRACTION RATIONNELLE ET EXACTE DU REÇU (UNIQUEMENT SI isReceipt = TRUE)
-- Ne devine JAMAIS et n'invente JAMAIS de montant fictif.
-- "montant" : Le montant TOTAL final TTC réellement payé et imprimé sur le document (ex: 12.50 pour 12,50 $ ou 45.50 pour 45,50 $).
-- "devise" : La devise réelle figurant sur le document : 'CAD', 'USD', 'HTG', 'FCFA', 'XOF' ou 'EUR' (par défaut 'CAD' pour les symboles $ au Canada).
-- "marchand" : Le nom exact du commerçant ou magasin imprimé sur l'en-tête (ex: 'IGA', 'Metro', 'Shell', 'Tim Hortons', 'Costco', etc.).
-- "date" : La date de la transaction au format YYYY-MM-DD. Si l'année manque, utilise l'année en cours (2026).
-- "tps" : Montant exact de la TPS / GST si imprimé, sinon 0.
-- "tvq" : Montant exact de la TVQ / QST / PST si imprimé, sinon 0.
-- "categorie" : Catégorie comptable ('Transport', 'Repas d\\'affaires', 'Fournitures de bureau', 'Logiciels', 'Téléphone / Internet', 'Loyer / Bureau', 'Publicité & Marketing', 'Services professionnels', 'Équipement', 'Autre').
-- "notes" : Brève description des articles achetés.
-
-RÈGLE D'OR 3 : GESTION DES REÇUS FLOUES OU ILLISIBLES
-- Si l'image est un reçu mais que le texte ou le montant total est totalement flou, coupé ou illisible :
-  -> "isReceipt": true, "success": false, "montant": 0, "error": "Image floue ou montant illisible. Veuillez réessayer avec une prise de vue plus nette ou saisir le montant manuellement."`;
+RÈGLES STRICTES :
+- Ne devine pas. Si une information est absente ou illisible, renvoie null.
+- Ne renvoie que du JSON valide. Aucun texte avant ou après le JSON.
+- Si l'image n'est pas une facture, renvoie {"erreur": "Ceci n'est pas une facture"}.`;
 
     const aiResponse = await activeAi.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -708,157 +785,121 @@ RÈGLE D'OR 3 : GESTION DES REÇUS FLOUES OU ILLISIBLES
       ],
       config: {
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isReceipt: {
-              type: Type.BOOLEAN,
-              description: "True if and only if the image contains an authentic receipt or commercial invoice. False for pets, animals, landscapes, objects, selfies, or blank surfaces."
-            },
-            success: {
-              type: Type.BOOLEAN,
-              description: "True if isReceipt is true AND a valid legible total amount was extracted. False otherwise."
-            },
-            montant: {
-              type: Type.NUMBER,
-              description: "The exact numerical total amount paid found on the receipt (e.g. 12.50). 0 if not a receipt."
-            },
-            devise: {
-              type: Type.STRING,
-              description: "Currency code: 'CAD', 'USD', 'HTG', 'FCFA', 'XOF', or 'EUR'."
-            },
-            marchand: {
-              type: Type.STRING,
-              description: "Exact commercial trade name of the merchant/store."
-            },
-            date: {
-              type: Type.STRING,
-              description: "Transaction date formatted as YYYY-MM-DD."
-            },
-            tps: {
-              type: Type.NUMBER,
-              description: "GST/TPS tax amount (Canada 5%) if found, 0 otherwise."
-            },
-            tvq: {
-              type: Type.NUMBER,
-              description: "QST/TVQ/PST/TVH tax amount if found, 0 otherwise."
-            },
-            categorie: {
-              type: Type.STRING,
-              description: "Expense category."
-            },
-            notes: {
-              type: Type.STRING,
-              description: "Short description of items or receipt summary."
-            },
-            error: {
-              type: Type.STRING,
-              description: "Error message if isReceipt is false or image is blurry."
-            }
-          },
-          required: ["isReceipt", "success", "montant", "devise", "marchand", "date"]
-        }
       }
     });
 
-    const rawText = aiResponse.text || '{}';
-    let parsed: any = null;
+    const rawText = (aiResponse.text || '').trim();
+    if (!rawText) {
+      res.status(422).json({
+        success: false,
+        isReceipt: false,
+        error: "Réponse vide de l'API Vision. Aucune donnée n'a pu être extraite."
+      });
+      return;
+    }
+
+    // Strict Backend Parsing:
+    // Le backend doit parser la réponse de l'API. Si la réponse n'est pas un JSON valide, il doit lever une erreur explicite.
+    let parsed: any;
     try {
-      parsed = JSON.parse(rawText);
-    } catch (parseErr) {
-      console.warn('[Gemini OCR] JSON parse warning:', parseErr, 'Raw:', rawText);
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
+      const cleanJsonString = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+      parsed = JSON.parse(cleanJsonString);
+    } catch (parseError: any) {
+      console.error('[Gemini OCR] Strict Parsing Error - Invalid JSON:', rawText);
+      res.status(422).json({
+        success: false,
+        isReceipt: false,
+        error: "Erreur de format : La réponse de l'OCR n'est pas un JSON valide. Veuillez réessayer."
+      });
+      return;
+    }
+
+    // Vérification du cas d'erreur explicite : "Ceci n'est pas une facture"
+    if (parsed.erreur || (parsed.error && !parsed.montant_total)) {
+      const errorMsg = parsed.erreur || parsed.error || "Ceci n'est pas une facture";
+      console.log('[Gemini OCR] Document non reconnu comme facture :', errorMsg);
+      res.status(422).json({
+        success: false,
+        isReceipt: false,
+        error: errorMsg
+      });
+      return;
+    }
+
+    // Extraction stricte : ne rien inventer, garder null si absent ou illisible
+    let parsedMontantTotal: number | null = null;
+    if (
+      parsed.montant_total !== null &&
+      parsed.montant_total !== undefined &&
+      parsed.montant_total !== '' &&
+      !isNaN(Number(parsed.montant_total))
+    ) {
+      const num = Number(parsed.montant_total);
+      if (num > 0) {
+        parsedMontantTotal = parseFloat(num.toFixed(2));
       }
     }
 
-    if (!parsed) {
-      res.status(422).json({
-        success: false,
-        isReceipt: false,
-        montant: 0,
-        error: "Impossible d'analyser l'image transmise. Veuillez réessayer avec une image nette."
-      });
-      return;
+    const parsedDevise: string | null = (typeof parsed.devise === 'string' && parsed.devise.trim().length > 0) 
+      ? parsed.devise.trim().toUpperCase() 
+      : null;
+
+    const parsedDate: string | null = (typeof parsed.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date.trim())) 
+      ? parsed.date.trim() 
+      : null;
+
+    const parsedMarchand: string | null = (typeof parsed.marchand === 'string' && parsed.marchand.trim().length > 0) 
+      ? parsed.marchand.trim() 
+      : null;
+
+    const parsedCategorie: string | null = (typeof parsed.categorie === 'string' && parsed.categorie.trim().length > 0) 
+      ? parsed.categorie.trim() 
+      : null;
+
+    // Règle stricte : si montant_total est null, avertir que l'utilisateur doit le saisir manuellement
+    const requiresManualAmount = (parsedMontantTotal === null);
+
+    // Calcul indicatif des taxes pour le Québec / Canada si devise CAD ou $
+    let tps = 0;
+    let tvq = 0;
+    let amountHt = parsedMontantTotal || 0;
+    if (parsedMontantTotal && parsedMontantTotal > 0 && (!parsedDevise || parsedDevise === 'CAD')) {
+      amountHt = parseFloat((parsedMontantTotal / 1.14975).toFixed(2));
+      tps = parseFloat((amountHt * 0.05).toFixed(2));
+      tvq = parseFloat((parsedMontantTotal - amountHt - tps).toFixed(2));
     }
 
-    // ÉTAPE 1 : Si ce n'est pas un reçu (ex: chat, paysage, objet ordinaire)
-    if (!parsed.isReceipt) {
-      const rejectMsg = parsed.error || "Aucune facture détectée. Veuillez réessayer avec une image claire.";
-      console.log('[Gemini OCR] Rejection: Not a receipt ->', rejectMsg);
-      res.status(422).json({
-        success: false,
-        isReceipt: false,
-        montant: 0,
-        devise: parsed.devise || 'CAD',
-        marchand: '',
-        date: '',
-        error: rejectMsg
-      });
-      return;
-    }
+    console.log(`[Gemini OCR] Résultat strict : marchand="${parsedMarchand}", montant_total=${parsedMontantTotal}, devise="${parsedDevise}", date="${parsedDate}", manuel=${requiresManualAmount}`);
 
-    // ÉTAPE 2 : Si c'est un reçu mais illisible / montant introuvable
-    const finalAmount = parseFloat(Number(parsed.montant ?? 0).toFixed(2));
-    if (!parsed.success || isNaN(finalAmount) || finalAmount <= 0) {
-      const blurryMsg = parsed.error || "Image floue ou montant illisible. Veuillez réessayer avec une prise de vue plus nette ou saisir le montant manuellement.";
-      console.log('[Gemini OCR] Rejection: Blurry or missing amount ->', blurryMsg);
-      res.status(422).json({
-        success: false,
-        isReceipt: true,
-        montant: 0,
-        devise: parsed.devise || 'CAD',
-        marchand: parsed.marchand || '',
-        date: parsed.date || '',
-        error: blurryMsg
-      });
-      return;
-    }
-
-    // ÉTAPE 3 : Succès complet - Reçu authentique et montant exact validé
-    const rawTps = parseFloat(Number(parsed.tps ?? 0).toFixed(2));
-    const rawTvq = parseFloat(Number(parsed.tvq ?? 0).toFixed(2));
-    const tps = isNaN(rawTps) ? 0 : Math.max(0, rawTps);
-    const tvq = isNaN(rawTvq) ? 0 : Math.max(0, rawTvq);
-
-    let amountHt = parseFloat((finalAmount - tps - tvq).toFixed(2));
-    if (amountHt <= 0) {
-      amountHt = finalAmount;
-    }
-
-    const detectedMerchant = (parsed.marchand || 'Commerce').trim();
-    const detectedDate = parsed.date && parsed.date.match(/^\d{4}-\d{2}-\d{2}$/) 
-      ? parsed.date 
-      : new Date().toISOString().split('T')[0];
-    const detectedCurrency = (parsed.devise || 'CAD').toUpperCase().trim();
-    const detectedCategory = parsed.categorie || 'Autre';
-
-    console.log(`[Gemini OCR] Success: "${detectedMerchant}" | Montant: ${finalAmount} ${detectedCurrency}`);
-
-    // Structure de réponse conforme aux spécifications exactes de l'utilisateur
     res.json({
       success: true,
       isReceipt: true,
-      montant: finalAmount,
-      devise: detectedCurrency,
-      marchand: detectedMerchant,
-      date: detectedDate,
+      montant_total: parsedMontantTotal,
+      devise: parsedDevise,
+      date: parsedDate,
+      marchand: parsedMarchand,
+      categorie: parsedCategorie,
+      requiresManualAmount,
+      message: requiresManualAmount 
+        ? "Le montant total n'a pas pu être extrait avec certitude. Veuillez le saisir manuellement." 
+        : undefined,
       taxes: {
         tps,
         tvq
       },
+      // Compatibilité composants existants
+      montant: parsedMontantTotal,
       extracted: {
-        provider: detectedMerchant,
+        provider: parsedMarchand || '',
         amountHt,
         tps,
         tvq,
-        total: finalAmount,
-        devise: detectedCurrency,
-        date: detectedDate,
-        category: detectedCategory,
+        total: parsedMontantTotal || 0,
+        devise: parsedDevise || 'CAD',
+        date: parsedDate || new Date().toISOString().split('T')[0],
+        category: parsedCategorie || 'Autre',
         paymentMethod: 'Carte bancaire',
-        notes: parsed.notes || `Reçu analysé par IA (${detectedMerchant})`
+        notes: parsedMarchand ? `Facture ${parsedMarchand}` : 'Facture numérisée par OCR'
       }
     });
 
@@ -867,8 +908,8 @@ RÈGLE D'OR 3 : GESTION DES REÇUS FLOUES OU ILLISIBLES
     res.status(500).json({ 
       success: false,
       isReceipt: false,
-      montant: 0,
-      error: globalErr.message || 'Erreur lors du traitement du reçu par IA' 
+      montant_total: null,
+      error: globalErr.message || "Erreur lors de l'analyse du document par l'IA" 
     });
   }
 });

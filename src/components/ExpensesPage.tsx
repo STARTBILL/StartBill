@@ -127,15 +127,16 @@ export default function ExpensesPage({
   const [ocrScanError, setOcrScanError] = useState<string | null>(null);
   const [ocrDetectedData, setOcrDetectedData] = useState<{
     provider?: string;
-    amountHt?: number;
+    amountHt?: number | null;
     tps?: number;
     tvq?: number;
-    total?: number;
+    total?: number | null;
     devise?: string;
     date?: string;
     category?: string;
     paymentMethod?: string;
     notes?: string;
+    requiresManualAmount?: boolean;
   } | null>(null);
 
   // Speech Recognition States
@@ -183,38 +184,47 @@ export default function ExpensesPage({
 
         const data = await response.json().catch(() => ({}));
 
-        if (!response.ok || !data.success || (!data.montant && !data.extracted?.total)) {
-          const errorMsg = data.error || (data.isReceipt === false
-            ? "Aucune facture détectée. Veuillez réessayer avec une image claire."
-            : "Image floue ou montant illisible. Veuillez réessayer avec une prise de vue plus nette ou saisir le montant manuellement.");
+        // Si l'image n'est pas une facture ou s'il y a une erreur explicite renvoyée par le backend
+        if (!response.ok || !data.success) {
+          const errorMsg = data.error || "Aucune facture détectée. Veuillez réessayer avec une image claire.";
           setOcrScanError(errorMsg);
           setOcrDetectedData(null);
           triggerToast(errorMsg);
           return;
         }
 
-        const ext = data.extracted || {};
-        const finalTotal = Number(data.montant || ext.total || 0);
-        const finalMerchant = data.marchand || ext.provider || 'Commerce';
-        const finalDevise = data.devise || ext.devise || 'CAD';
-        const finalTps = Number(data.taxes?.tps ?? ext.tps ?? 0);
-        const finalTvq = Number(data.taxes?.tvq ?? ext.tvq ?? 0);
-        const finalHt = Number(ext.amountHt || (finalTotal - finalTps - finalTvq));
+        // Extraction stricte : si montant_total est null, marquer pour saisie manuelle sans inventer de valeur
+        const isManualAmount = Boolean(data.requiresManualAmount || data.montant_total === null || data.montant_total === undefined);
+        const finalTotal: number | null = isManualAmount ? null : Number(data.montant_total);
+        const finalMerchant = data.marchand || '';
+        const finalDevise = data.devise || 'CAD';
+        const finalDate = data.date || new Date().toISOString().split('T')[0];
+        const finalCategory = data.categorie || 'Autre';
+        const finalTps = Number(data.taxes?.tps ?? 0);
+        const finalTvq = Number(data.taxes?.tvq ?? 0);
+        const finalHt = finalTotal !== null ? Math.max(0, Number(data.extracted?.amountHt || (finalTotal - finalTps - finalTvq))) : null;
 
         setOcrDetectedData({
           provider: finalMerchant,
-          amountHt: Math.max(0, finalHt),
-          tps: Math.max(0, finalTps),
-          tvq: Math.max(0, finalTvq),
-          total: Math.max(0, finalTotal),
+          amountHt: finalHt,
+          tps: finalTps,
+          tvq: finalTvq,
+          total: finalTotal,
           devise: finalDevise,
-          date: data.date || ext.date || new Date().toISOString().split('T')[0],
-          category: data.categorie || ext.category || 'Autre',
-          paymentMethod: ext.paymentMethod || 'Carte bancaire',
-          notes: ext.notes || ''
+          date: finalDate,
+          category: finalCategory,
+          paymentMethod: 'Carte bancaire',
+          notes: finalMerchant ? `Facture ${finalMerchant}` : 'Facture scannée',
+          requiresManualAmount: isManualAmount
         });
+
         setOcrScanError(null);
-        triggerToast(`Facture analysée : ${finalMerchant} (${finalTotal.toFixed(2)} ${finalDevise})`);
+
+        if (isManualAmount) {
+          triggerToast("Facture détectée : Montant non lisible, veuillez le saisir manuellement.");
+        } else {
+          triggerToast(`Facture analysée : ${finalMerchant || 'Document'} (${finalTotal?.toFixed(2)} ${finalDevise})`);
+        }
       } catch (err: any) {
         clearInterval(progressInterval);
         console.warn('[OCR Scan Notice]:', err);
@@ -250,12 +260,60 @@ export default function ExpensesPage({
     triggerToast("Saisie manuelle : veuillez renseigner les informations de la dépense.");
   };
 
+  const handleDirectSaveFromOcr = () => {
+    if (!ocrDetectedData) return;
+    const finalAmount = ocrDetectedData.total;
+    if (finalAmount === null || finalAmount === undefined || isNaN(finalAmount) || finalAmount <= 0) {
+      triggerToast("Veuillez renseigner un montant total valide pour cette dépense.");
+      return;
+    }
+
+    const tps = Math.max(0, ocrDetectedData.tps || 0);
+    const tvq = Math.max(0, ocrDetectedData.tvq || 0);
+    const amountHt = ocrDetectedData.amountHt !== null && ocrDetectedData.amountHt !== undefined 
+      ? Math.max(0, ocrDetectedData.amountHt) 
+      : Math.max(0, parseFloat((finalAmount - tps - tvq).toFixed(2)));
+
+    const newExpense: Expense = {
+      id: `exp_${Date.now()}`,
+      category: ocrDetectedData.category || 'Autre',
+      provider: ocrDetectedData.provider || 'Fournisseur inconnu',
+      date: ocrDetectedData.date || new Date().toISOString().split('T')[0],
+      amountHt,
+      tps,
+      tvq,
+      total: finalAmount,
+      currency: ocrDetectedData.devise || 'CAD',
+      isEligible: true,
+      paymentMethod: ocrDetectedData.paymentMethod || 'Carte bancaire',
+      notes: ocrDetectedData.notes || `Reçu scanné (${ocrDetectedData.provider || 'Commerce'})`,
+      receiptUrl: ocrPreviewImage || undefined,
+      createdAt: new Date().toISOString()
+    };
+
+    onAddExpense(newExpense);
+    setShowOcrModal(false);
+    triggerToast(`Dépense de ${finalAmount.toFixed(2)} ${ocrDetectedData.devise || 'CAD'} enregistrée avec succès !`);
+  };
+
   const handleApplyOcrData = () => {
     if (!ocrDetectedData) return;
+    const finalAmount = ocrDetectedData.total;
+    if (finalAmount === null || finalAmount === undefined || isNaN(finalAmount) || finalAmount <= 0) {
+      triggerToast("Veuillez saisir un montant total valide avant de continuer.");
+      return;
+    }
+
+    const tps = Math.max(0, ocrDetectedData.tps || 0);
+    const tvq = Math.max(0, ocrDetectedData.tvq || 0);
+    const amountHt = ocrDetectedData.amountHt !== null && ocrDetectedData.amountHt !== undefined
+      ? Math.max(0, ocrDetectedData.amountHt)
+      : Math.max(0, parseFloat((finalAmount - tps - tvq).toFixed(2)));
+
     setFormProvider(ocrDetectedData.provider || '');
-    setFormAmountHt(Math.max(0, ocrDetectedData.amountHt || 0).toString());
-    setFormTps(Math.max(0, ocrDetectedData.tps || 0).toString());
-    setFormTvq(Math.max(0, ocrDetectedData.tvq || 0).toString());
+    setFormAmountHt(amountHt.toString());
+    setFormTps(tps.toString());
+    setFormTvq(tvq.toString());
     setFormDate(ocrDetectedData.date || new Date().toISOString().split('T')[0]);
     if (ocrDetectedData.category) {
       setFormCategory(ocrDetectedData.category);
@@ -273,7 +331,7 @@ export default function ExpensesPage({
     if (!showModal) {
       setShowModal(true);
     }
-    triggerToast("Données vérifiées et appliquées à la dépense !");
+    triggerToast("Données vérifiées et appliquées au formulaire de dépense !");
   };
 
 
@@ -1393,103 +1451,193 @@ export default function ExpensesPage({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                {/* Warning banner if montant_total is null or required manually */}
+                {ocrDetectedData?.requiresManualAmount && (
+                  <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 flex items-start gap-3 text-amber-900 shadow-xs">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-xs space-y-0.5">
+                      <div className="font-extrabold text-amber-950">
+                        Montant non lisible sur le reçu
+                      </div>
+                      <p className="text-[11px] text-amber-800 leading-normal">
+                        L'IA n'a pas pu identifier le montant total avec une certitude absolue. Conformément aux règles strictes de comptabilité, aucune valeur fictive n'a été inventée. Veuillez renseigner le montant ci-dessous.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                   {/* Receipt Thumbnail */}
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 h-48 bg-slate-50 flex items-center justify-center p-2">
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 h-64 bg-slate-50 flex items-center justify-center p-2">
                     {ocrPreviewImage ? (
                       <img src={ocrPreviewImage} alt="Scanned receipt" className="max-h-full max-w-full object-contain rounded-lg" />
                     ) : (
                       <Receipt className="w-12 h-12 text-slate-300" />
                     )}
                     <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
-                      <CheckCircle2 className="w-3 h-3" /> Reçu Validé ({ocrDetectedData?.devise || 'CAD'})
+                      <CheckCircle2 className="w-3 h-3" /> Facture Détectée ({ocrDetectedData?.devise || 'CAD'})
                     </span>
                   </div>
 
-                  {/* Interactive Verified Fields */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5 text-xs">
+                  {/* Interactive Verified Fields (Pre-filled editable form) */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
-                        Données Extraites (Vérifiées)
+                        Vérification & Correction des Données
                       </span>
                       <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
-                        Gemini Vision OCR
+                        OCR Strict
                       </span>
                     </div>
 
-                    <div className="space-y-2 pt-1">
+                    <div className="space-y-2.5 pt-1">
+                      {/* Merchant */}
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Fournisseur</label>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                          Commerçant / Entreprise (Marchand)
+                        </label>
                         <input
                           type="text"
+                          placeholder="Nom du marchand"
                           value={ocrDetectedData?.provider || ''}
                           onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, provider: e.target.value } : null)}
                           className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Montant HT</label>
+                      {/* Montant Total TTC (Key focus field) */}
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase flex items-center justify-between mb-1">
+                          <span>Montant Total TTC *</span>
+                          {ocrDetectedData?.total === null && (
+                            <span className="text-[9px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-black">
+                              Saisie requise
+                            </span>
+                          )}
+                        </label>
+                        <div className="relative">
                           <input
                             type="number"
                             min="0"
                             step="0.01"
-                            value={ocrDetectedData?.amountHt ?? 0}
+                            placeholder="0.00 (Entrez le montant réel)"
+                            value={ocrDetectedData?.total !== null && ocrDetectedData?.total !== undefined ? ocrDetectedData.total : ''}
                             onChange={(e) => {
-                              const val = Math.max(0, parseFloat(e.target.value) || 0);
-                              const tps = parseFloat((val * 0.05).toFixed(2));
-                              const tvq = parseFloat((val * 0.09975).toFixed(2));
-                              const tot = parseFloat((val + tps + tvq).toFixed(2));
+                              const raw = e.target.value;
+                              const val = raw === '' ? null : Math.max(0, parseFloat(raw) || 0);
+                              let tps = 0;
+                              let tvq = 0;
+                              let ht = val;
+                              if (val && val > 0 && (!ocrDetectedData?.devise || ocrDetectedData.devise === 'CAD')) {
+                                ht = parseFloat((val / 1.14975).toFixed(2));
+                                tps = parseFloat((ht * 0.05).toFixed(2));
+                                tvq = parseFloat((val - ht - tps).toFixed(2));
+                              }
                               setOcrDetectedData(prev => prev ? {
                                 ...prev,
-                                amountHt: val,
+                                total: val,
+                                amountHt: ht,
                                 tps,
                                 tvq,
-                                total: tot
+                                requiresManualAmount: val === null || val <= 0
                               } : null);
                             }}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                            className={`w-full bg-white border rounded-lg px-2.5 py-1.5 font-black text-sm text-slate-900 focus:outline-none ${
+                              ocrDetectedData?.total === null || (ocrDetectedData?.total ?? 0) <= 0
+                                ? 'border-amber-400 ring-2 ring-amber-100 bg-amber-50/20'
+                                : 'border-slate-300 focus:border-blue-500'
+                            }`}
                           />
+                          <span className="absolute right-2.5 top-1.5 text-xs font-bold text-slate-400">
+                            {ocrDetectedData?.devise || 'CAD'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Devise */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Devise</label>
+                          <select
+                            value={ocrDetectedData?.devise || 'CAD'}
+                            onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, devise: e.target.value } : null)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="CAD">CAD ($ CA)</option>
+                            <option value="USD">USD ($ US)</option>
+                            <option value="HTG">HTG (Gourde)</option>
+                            <option value="XOF">XOF (FCFA)</option>
+                            <option value="EUR">EUR (€)</option>
+                          </select>
                         </div>
 
+                        {/* Date */}
                         <div>
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Date</label>
+                          <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Date</label>
                           <input
                             type="date"
                             value={ocrDetectedData?.date || ''}
                             onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, date: e.target.value } : null)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-medium text-slate-800 text-xs focus:outline-none focus:border-blue-500"
                           />
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200">
-                        <div className="flex justify-between">
-                          <span>TPS :</span>
-                          <span className="font-bold text-slate-800">${(ocrDetectedData?.tps ?? 0).toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>TVQ/Taxe :</span>
-                          <span className="font-bold text-slate-800">${(ocrDetectedData?.tvq ?? 0).toFixed(2)}</span>
-                        </div>
+                      {/* Category */}
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Catégorie</label>
+                        <select
+                          value={ocrDetectedData?.category || CATEGORIES[0]}
+                          onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, category: e.target.value } : null)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                        >
+                          {CATEGORIES.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
                       </div>
 
-                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-200 font-black text-sm text-blue-700">
-                        <span>Total Payé Réel :</span>
-                        <span className="text-base">${(ocrDetectedData?.total ?? 0).toFixed(2)} {ocrDetectedData?.devise || 'CAD'}</span>
-                      </div>
+                      {/* Taxes Breakdown if CAD */}
+                      {(!ocrDetectedData?.devise || ocrDetectedData.devise === 'CAD') && ocrDetectedData?.total && ocrDetectedData.total > 0 && (
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200">
+                          <div className="flex justify-between">
+                            <span>TPS (5%) :</span>
+                            <span className="font-bold text-slate-800">${(ocrDetectedData?.tps ?? 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>TVQ (9.975%) :</span>
+                            <span className="font-bold text-slate-800">${(ocrDetectedData?.tvq ?? 0).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-3 border-t border-slate-100">
                   <Button variant="outline" size="sm" onClick={() => setShowOcrModal(false)}>
                     Annuler
                   </Button>
-                  <Button variant="primary" size="sm" onClick={handleApplyOcrData}>
-                    <Sparkles className="w-4 h-4" /> Appliquer à la dépense
-                  </Button>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleApplyOcrData}
+                      disabled={ocrDetectedData?.total === null || (ocrDetectedData?.total ?? 0) <= 0}
+                      className="text-xs"
+                    >
+                      Éditeur détaillé
+                    </Button>
+                    <Button 
+                      variant="primary" 
+                      size="sm" 
+                      onClick={handleDirectSaveFromOcr}
+                      disabled={ocrDetectedData?.total === null || (ocrDetectedData?.total ?? 0) <= 0}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    >
+                      <Sparkles className="w-4 h-4 mr-1" /> Valider & Enregistrer
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

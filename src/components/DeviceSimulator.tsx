@@ -340,7 +340,7 @@ export default function DeviceSimulator({
     }
   };
 
-  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin, userPlan, canAccess, loginWithEmail } = useAuth();
+  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin, userPlan, userRole, canAccess, loginWithEmail } = useAuth();
 
   // Determine active email and Super Admin status (contact.startbill@gmail.com)
   const currentActiveEmail = (
@@ -349,7 +349,12 @@ export default function DeviceSimulator({
     firebaseUser?.email || 
     ''
   ).trim().toLowerCase();
-  const isSuperAdminUser = Boolean(isSuperAdmin || isSuperAdminEmail(currentActiveEmail));
+  const isSuperAdminUser = Boolean(
+    isSuperAdmin || 
+    userRole === 'admin' || 
+    authUser?.role === 'admin' || 
+    isSuperAdminEmail(currentActiveEmail)
+  );
 
   // Determine if there is an authenticated user session
   const isAuthenticated = Boolean(
@@ -961,7 +966,7 @@ export default function DeviceSimulator({
             )}
           </div>
 
-          {/* Nav Links */}
+          {/* Nav Links - Strict RBAC: Administration shield is NEVER rendered in DOM for standard users */}
           <nav className="space-y-1.5">
             {[
               { id: 'dashboard' as ScreenId, label: 'Dashboard', sublabel: "Vue d'ensemble", icon: Home, isPublic: false },
@@ -975,7 +980,9 @@ export default function DeviceSimulator({
               { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', sublabel: 'Assistant intelligent', icon: Sparkles, isPublic: false },
               { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false, badge: 'MOD 10' },
               { id: 'pricing' as ScreenId, label: 'Forfaits & Tarifs', sublabel: 'Gestion abonnement', icon: Zap, isPublic: false, badge: userPlan ? userPlan.toUpperCase() : 'PLAN' },
-              { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'CEO Command Center', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' },
+              ...(isSuperAdminUser ? [
+                { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'CEO Command Center', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
+              ] : [])
             ].map((item) => {
               const Icon = item.icon;
               const isSelected = currentScreen === item.id || 
@@ -2931,60 +2938,48 @@ export default function DeviceSimulator({
               />
             ) : (
               <div className="w-full min-h-[550px] flex items-center justify-center p-6 bg-slate-900">
-                <div className="max-w-md w-full bg-[#0B1528] border border-blue-500/30 rounded-3xl p-8 shadow-2xl text-center space-y-5 text-white">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 mx-auto shadow-inner">
-                    <ShieldCheck className="w-8 h-8" />
+                <div className="max-w-md w-full bg-[#0B1528] border border-rose-500/30 rounded-3xl p-8 shadow-2xl text-center space-y-5 text-white">
+                  <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mx-auto shadow-inner">
+                    <ShieldAlert className="w-8 h-8" />
                   </div>
                   <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-black uppercase tracking-wider border border-blue-500/30">
-                      STARTBILL ADMIN — CEO COMMAND CENTER
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-black uppercase tracking-wider border border-rose-500/30">
+                      ERREUR 403 — FORBIDDEN
                     </div>
                     <h2 className="text-xl font-black text-white">
-                      Espace Réservé à la Direction
+                      Accès Administrateur Refusé
                     </h2>
                     <p className="text-xs text-slate-300 leading-relaxed">
-                      Ce portail d'administration est réservé à la fondatrice <strong className="text-white">Ferline ZOGNI</strong> et aux administrateurs autorisés pour piloter les 24 modules de STARTBILL.
+                      Cette section est protégée par le contrôle d'accès basé sur les rôles (RBAC). Seul l'administrateur principal (<strong className="text-white">contact.startbill@gmail.com</strong>) ou un utilisateur avec le rôle <strong className="text-emerald-400">admin</strong> est autorisé à accéder au panneau d'administration.
                     </p>
                   </div>
 
                   <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 text-left space-y-1.5 text-xs">
                     <div className="flex justify-between items-center text-slate-400">
-                      <span>Compte Super Admin requis :</span>
-                      <span className="font-mono text-amber-300 font-semibold bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                        {SUPER_ADMIN_EMAIL}
+                      <span>Votre compte actuel :</span>
+                      <span className="font-mono text-slate-300 font-semibold bg-slate-800 px-2 py-0.5 rounded border border-slate-700 truncate max-w-[200px]">
+                        {currentActiveEmail || 'Non connecté'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-400">
+                      <span>Rôle détecté :</span>
+                      <span className="font-mono text-rose-400 font-semibold uppercase">
+                        {userRole || 'standard_user'}
                       </span>
                     </div>
                     <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex items-center gap-1">
-                      <Lock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      <span>Authentification Zero-Trust requise.</span>
+                      <Lock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>Requête bloquée avec code de sécurité 403.</span>
                     </div>
                   </div>
 
-                  <div className="pt-2 space-y-2.5">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await loginWithEmail(SUPER_ADMIN_EMAIL, 'StartbillAdmin2026!');
-                          triggerToast('Session Super Admin activée pour Ferline ZOGNI.');
-                          setScreen('admin');
-                        } catch (e: any) {
-                          triggerToast('Session Super Admin activée pour Ferline ZOGNI.');
-                          setScreen('admin');
-                        }
-                      }}
-                      className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black transition shadow-lg shadow-blue-500/25 cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      <span>Ouvrir en tant que Ferline ZOGNI (Super Admin)</span>
-                    </button>
-
+                  <div className="pt-2">
                     <button
                       type="button"
                       onClick={() => setScreen('dashboard')}
-                      className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+                      className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-lg cursor-pointer"
                     >
-                      Retourner au Tableau de Bord Client
+                      Retourner au Tableau de Bord
                     </button>
                   </div>
                 </div>

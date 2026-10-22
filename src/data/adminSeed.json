@@ -1,0 +1,25 @@
+{
+  "uid": "admin_contact_startbill",
+  "email": "contact.startbill@gmail.com",
+  "fullName": "Administrateur Principal StartBill",
+  "companyName": "StartBill Technologies Inc.",
+  "role": "admin",
+  "plan": "enterprise",
+  "region": "canada",
+  "isSuperAdmin": true,
+  "passwordHash": "$2b$10$RFwSxqaFQ8PDmbQNjhDd5.mpntN06sq.L18M4BZsvkHoQPlGFskLu",
+  "active": true,
+  "securityClearance": "RBAC_LEVEL_1_SUPER_ADMIN",
+  "permissions": [
+    "admin:read",
+    "admin:write",
+    "admin:delete",
+    "system:manage_keys",
+    "system:audit_logs",
+    "users:manage",
+    "subscriptions:manage",
+    "stripe:manage"
+  ],
+  "createdAt": "2026-10-22T00:42:00.873Z",
+  "updatedAt": "2026-10-22T00:42:00.873Z"
+}
