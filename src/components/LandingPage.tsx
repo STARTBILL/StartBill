@@ -402,9 +402,9 @@ export default function LandingPage({
               <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold mb-3.5">
                 <Receipt className="w-5 h-5" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900 mb-1">Dépenses & OCR IA</h3>
+              <h3 className="text-sm font-bold text-slate-900 mb-1">Dépenses & Justificatifs</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Photographiez vos reçus de dépenses avec votre téléphone. L'OCR extrait instantanément le montant, la taxe et la date.
+                Enregistrez vos dépenses, attachez vos reçus et suivez automatiquement vos déductions fiscales TPS/TVQ en temps réel.
               </p>
             </div>
 

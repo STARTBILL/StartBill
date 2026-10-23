@@ -7,7 +7,6 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { GoogleGenAI, Type } from '@google/genai';
 import { createRegionIsolationMiddleware } from './src/middleware/regionSecurity';
 
 dotenv.config();
@@ -17,24 +16,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-
-// Initialize Google Gemini AI for smart receipt OCR & document analysis
-let geminiAi: GoogleGenAI | null = null;
-if (process.env.GEMINI_API_KEY) {
-  try {
-    geminiAi = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-    console.log('[Gemini Server] AI client initialized for receipt scanning.');
-  } catch (err: any) {
-    console.warn('[Gemini Server] AI client init warning:', err.message);
-  }
-}
 
 // Initialize Firebase server connection for syncing Stripe subscriptions
 let db: any = null;
@@ -175,7 +156,7 @@ app.post(
   }
 );
 
-// Standard JSON parser for other API routes (allows photo uploads for OCR)
+// Standard JSON parser for API routes
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
@@ -697,247 +678,7 @@ app.post('/api/stripe/create-invoice-payment', async (req: Request, res: Respons
   }
 });
 
-// -------------------------------------------------------------
-// 5.1 MULTIMODAL RECEIPT SCANNER & OCR API (Gemini Vision)
-// -------------------------------------------------------------
-app.post('/api/scan-receipt', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { image, mimeType = 'image/jpeg', filename = '' } = req.body;
 
-    if (!image) {
-      res.status(400).json({ 
-        success: false, 
-        error: "Données d'image manquantes (chaîne Base64 requise)." 
-      });
-      return;
-    }
-
-    // Clean base64 data string and handle data URI scheme
-    const base64Data = image.replace(/^data:[^;]+;base64,/, '').trim();
-
-    // Normalize mime type
-    let cleanMime = (mimeType || 'image/jpeg').toLowerCase().split(';')[0].trim();
-    if (cleanMime === 'image/jpg') cleanMime = 'image/jpeg';
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'].includes(cleanMime)) {
-      cleanMime = 'image/jpeg';
-    }
-
-    // Initialize or refresh Gemini AI client dynamically
-    let activeAi = geminiAi;
-    if (!activeAi && process.env.GEMINI_API_KEY) {
-      try {
-        activeAi = new GoogleGenAI({
-          apiKey: process.env.GEMINI_API_KEY,
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
-            },
-          },
-        });
-        geminiAi = activeAi;
-      } catch (initErr: any) {
-        console.warn('[Gemini OCR] Client init error:', initErr.message);
-      }
-    }
-
-    if (!activeAi) {
-      console.warn('[Gemini OCR] No GEMINI_API_KEY available on server.');
-      res.status(503).json({
-        success: false,
-        isReceipt: false,
-        montant: 0,
-        error: "Le service d'analyse par IA (Google Gemini Vision) n'est pas disponible. Veuillez configurer la clé API ou saisir le montant manuellement."
-      });
-      return;
-    }
-
-    // Precise Vision Prompt for Receipt / Invoice OCR Analysis (Strict OCR Specification)
-    const prompt = `Tu es un OCR spécialisé dans les factures et reçus. Analyse l'image fournie.
-Note importante : Le document peut être un reçu papier, un ticket de caisse, une facture imprimée, un reçu numérique ou une facture affichée sur un écran (tablette, smartphone, ordinateur). Même s'il y a des bordures d'écran, de table ou d'arrière-plan, analyse le document comptable visible.
-
-Extrais UNIQUEMENT les informations suivantes :
-- montant_total : le montant total TTC (numérique, sans symbole de devise).
-- devise : la devise détectée (CAD, USD, HTG, XOF, etc.).
-- date : la date de la transaction au format YYYY-MM-DD.
-- marchand : le nom du commerçant/entreprise.
-- categorie : la catégorie de dépense (ex: Alimentation, Transport, Électronique).
-
-RÈGLES STRICTES :
-- Ne devine pas. Si une information est absente ou illisible, renvoie null.
-- Ne renvoie que du JSON valide. Aucun texte avant ou après le JSON.
-- Si l'image ne contient aucun document commercial ou comptable (par exemple : paysage pur, selfie, animal sans document), renvoie {"erreur": "Ceci n'est pas une facture"}.`;
-
-    // Cascade: try gemini-3.1-flash-lite (fast, resilient, zero 503) then gemini-3.8-flash as fallback
-    const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
-    let aiResponse: any = null;
-    let lastError: any = null;
-
-    for (const modelName of modelsToTry) {
-      try {
-        console.log(`[Gemini OCR] Tentative avec le modèle : ${modelName}...`);
-        aiResponse = await activeAi.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: cleanMime,
-                    data: base64Data
-                  }
-                },
-                {
-                  text: prompt
-                }
-              ]
-            }
-          ],
-          config: {
-            responseMimeType: 'application/json',
-          }
-        });
-
-        if (aiResponse?.text) {
-          console.log(`[Gemini OCR] Succès avec ${modelName}`);
-          break;
-        }
-      } catch (callErr: any) {
-        lastError = callErr;
-        console.warn(`[Gemini OCR] Avertissement modèle ${modelName}:`, callErr.message || callErr);
-      }
-    }
-
-    if (!aiResponse?.text) {
-      throw lastError || new Error("Impossible d'obtenir une réponse de l'OCR IA. Veuillez réessayer.");
-    }
-
-    const rawText = (aiResponse.text || '').trim();
-    if (!rawText) {
-      res.status(422).json({
-        success: false,
-        isReceipt: false,
-        error: "Réponse vide de l'API Vision. Aucune donnée n'a pu être extraite."
-      });
-      return;
-    }
-
-    // Strict Backend Parsing:
-    // Le backend doit parser la réponse de l'API. Si la réponse n'est pas un JSON valide, il doit lever une erreur explicite.
-    let parsed: any;
-    try {
-      const cleanJsonString = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      parsed = JSON.parse(cleanJsonString);
-    } catch (parseError: any) {
-      console.error('[Gemini OCR] Strict Parsing Error - Invalid JSON:', rawText);
-      res.status(422).json({
-        success: false,
-        isReceipt: false,
-        error: "Erreur de format : La réponse de l'OCR n'est pas un JSON valide. Veuillez réessayer."
-      });
-      return;
-    }
-
-    // Vérification du cas d'erreur explicite : "Ceci n'est pas une facture"
-    // Uniquement si l'IA a explicitement rejeté le document comme n'étant pas une facture
-    if (parsed.erreur && !parsed.montant_total && !parsed.marchand) {
-      const errorMsg = parsed.erreur || "Ceci n'est pas une facture";
-      console.log('[Gemini OCR] Document non reconnu comme facture :', errorMsg);
-      res.status(422).json({
-        success: false,
-        isReceipt: false,
-        error: errorMsg
-      });
-      return;
-    }
-
-    // Extraction stricte : ne rien inventer, garder null si absent ou illisible
-    let parsedMontantTotal: number | null = null;
-    if (
-      parsed.montant_total !== null &&
-      parsed.montant_total !== undefined &&
-      parsed.montant_total !== '' &&
-      !isNaN(Number(parsed.montant_total))
-    ) {
-      const num = Number(parsed.montant_total);
-      if (num > 0) {
-        parsedMontantTotal = parseFloat(num.toFixed(2));
-      }
-    }
-
-    const parsedDevise: string | null = (typeof parsed.devise === 'string' && parsed.devise.trim().length > 0) 
-      ? parsed.devise.trim().toUpperCase() 
-      : null;
-
-    const parsedDate: string | null = (typeof parsed.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date.trim())) 
-      ? parsed.date.trim() 
-      : null;
-
-    const parsedMarchand: string | null = (typeof parsed.marchand === 'string' && parsed.marchand.trim().length > 0) 
-      ? parsed.marchand.trim() 
-      : null;
-
-    const parsedCategorie: string | null = (typeof parsed.categorie === 'string' && parsed.categorie.trim().length > 0) 
-      ? parsed.categorie.trim() 
-      : null;
-
-    // Règle stricte : si montant_total est null, avertir que l'utilisateur doit le saisir manuellement
-    const requiresManualAmount = (parsedMontantTotal === null);
-
-    // Calcul indicatif des taxes pour le Québec / Canada si devise CAD ou $
-    let tps = 0;
-    let tvq = 0;
-    let amountHt = parsedMontantTotal || 0;
-    if (parsedMontantTotal && parsedMontantTotal > 0 && (!parsedDevise || parsedDevise === 'CAD')) {
-      amountHt = parseFloat((parsedMontantTotal / 1.14975).toFixed(2));
-      tps = parseFloat((amountHt * 0.05).toFixed(2));
-      tvq = parseFloat((parsedMontantTotal - amountHt - tps).toFixed(2));
-    }
-
-    console.log(`[Gemini OCR] Résultat strict : marchand="${parsedMarchand}", montant_total=${parsedMontantTotal}, devise="${parsedDevise}", date="${parsedDate}", manuel=${requiresManualAmount}`);
-
-    res.json({
-      success: true,
-      isReceipt: true,
-      montant_total: parsedMontantTotal,
-      devise: parsedDevise,
-      date: parsedDate,
-      marchand: parsedMarchand,
-      categorie: parsedCategorie,
-      requiresManualAmount,
-      message: requiresManualAmount 
-        ? "Le montant total n'a pas pu être extrait avec certitude. Veuillez le saisir manuellement." 
-        : undefined,
-      taxes: {
-        tps,
-        tvq
-      },
-      // Compatibilité composants existants
-      montant: parsedMontantTotal,
-      extracted: {
-        provider: parsedMarchand || '',
-        amountHt,
-        tps,
-        tvq,
-        total: parsedMontantTotal || 0,
-        devise: parsedDevise || 'CAD',
-        date: parsedDate || new Date().toISOString().split('T')[0],
-        category: parsedCategorie || 'Autre',
-        paymentMethod: 'Carte bancaire',
-        notes: parsedMarchand ? `Facture ${parsedMarchand}` : 'Facture numérisée par OCR'
-      }
-    });
-
-  } catch (globalErr: any) {
-    console.error('[Scan Receipt Handler Error]:', globalErr);
-    res.status(500).json({ 
-      success: false,
-      isReceipt: false,
-      montant_total: null,
-      error: globalErr.message || "Erreur lors de l'analyse du document par l'IA" 
-    });
-  }
-});
 
 // -------------------------------------------------------------
 // 6. FRONTEND SERVING (Vite Middleware in dev / Static in prod)

@@ -24,7 +24,6 @@ import {
   Sparkles,
   Upload,
   FileText,
-  Scan,
   CheckCircle2,
   AlertCircle,
   Download
@@ -119,287 +118,12 @@ export default function ExpensesPage({
     setFormTvq(tvqPst);
   };
 
-  // OCR & Voice Dictation States
-  const [showOcrModal, setShowOcrModal] = useState(false);
-  const [isOcrScanning, setIsOcrScanning] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState(0);
-  const [ocrPreviewImage, setOcrPreviewImage] = useState<string | null>(null);
-  const [ocrScanError, setOcrScanError] = useState<string | null>(null);
-  const [ocrDetectedData, setOcrDetectedData] = useState<{
-    provider?: string;
-    amountHt?: number | null;
-    tps?: number;
-    tvq?: number;
-    total?: number | null;
-    devise?: string;
-    date?: string;
-    category?: string;
-    paymentMethod?: string;
-    notes?: string;
-    requiresManualAmount?: boolean;
-  } | null>(null);
-
-  // Speech Recognition States
+  // Speech Recognition States (Voice Dictation)
   const [isListening, setIsListening] = useState(false);
   const [speechLang, setSpeechLang] = useState<'fr-CA' | 'en-CA'>('fr-CA');
   const [speechTargetField, setSpeechTargetField] = useState<'notes' | 'provider' | 'general'>('notes');
   const [liveTranscript, setLiveTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-
-  // Client-side image compression: converts heavy 10-25MB mobile photos to fast, crystal-clear 1600px JPEGs (~250KB)
-  const compressImageForOcr = async (file: File): Promise<{ dataUrl: string; mimeType: string }> => {
-    return new Promise((resolve) => {
-      if (file.type === 'application/pdf') {
-        const reader = new FileReader();
-        reader.onload = () => resolve({ dataUrl: reader.result as string, mimeType: 'application/pdf' });
-        reader.onerror = () => resolve({ dataUrl: '', mimeType: 'application/pdf' });
-        reader.readAsDataURL(file);
-        return;
-      }
-
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl);
-        const maxDim = 1600;
-        let w = img.width;
-        let h = img.height;
-
-        if (w > maxDim || h > maxDim) {
-          if (w > h) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          } else {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, w);
-        canvas.height = Math.max(1, h);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          const fallbackReader = new FileReader();
-          fallbackReader.onload = () => resolve({ dataUrl: fallbackReader.result as string, mimeType: file.type || 'image/jpeg' });
-          fallbackReader.readAsDataURL(file);
-          return;
-        }
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
-        resolve({ dataUrl: compressedBase64, mimeType: 'image/jpeg' });
-      };
-
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        const fallbackReader = new FileReader();
-        fallbackReader.onload = () => resolve({ dataUrl: fallbackReader.result as string, mimeType: file.type || 'image/jpeg' });
-        fallbackReader.readAsDataURL(file);
-      };
-
-      img.src = objectUrl;
-    });
-  };
-
-  // Start real OCR Scanning process on an uploaded or captured image file via Gemini Vision API
-  const processOcrImage = async (file: File) => {
-    setIsOcrScanning(true);
-    setOcrScanError(null);
-    setOcrDetectedData(null);
-    setOcrProgress(15);
-    setShowOcrModal(true);
-
-    try {
-      // 1. Compress image client-side to ensure instant mobile upload & bypass web proxy body limits
-      const { dataUrl: imgDataUrl, mimeType: cleanMime } = await compressImageForOcr(file);
-      setOcrPreviewImage(imgDataUrl);
-      setOcrProgress(35);
-
-      const progressInterval = setInterval(() => {
-        setOcrProgress(prev => {
-          if (prev >= 88) return prev;
-          return prev + 8;
-        });
-      }, 300);
-
-      // 2. Call backend OCR endpoint
-      const response = await fetch('/api/scan-receipt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: imgDataUrl,
-          filename: file.name,
-          mimeType: cleanMime
-        })
-      });
-
-      clearInterval(progressInterval);
-      setOcrProgress(100);
-
-      const data = await response.json().catch(() => ({}));
-
-      // 3. Handle explicit rejection vs network/server error
-      if (!response.ok || !data.success) {
-        let errorMsg = data.error;
-        if (!errorMsg) {
-          if (response.status === 413) {
-            errorMsg = "L'image est trop volumineuse pour être transmise. Veuillez réessayer.";
-          } else if (response.status === 503 || response.status === 504) {
-            errorMsg = "Le service d'analyse IA est temporairement indisponible. Veuillez réessayer dans quelques instants ou saisir le montant manuellement.";
-          } else {
-            errorMsg = "Aucune facture détectée. Veuillez réessayer avec une image claire.";
-          }
-        }
-        setOcrScanError(errorMsg);
-        setOcrDetectedData(null);
-        triggerToast(errorMsg);
-        return;
-      }
-
-      // 4. Extraction stricte : si montant_total est null, marquer pour saisie manuelle sans inventer de valeur
-      const isManualAmount = Boolean(data.requiresManualAmount || data.montant_total === null || data.montant_total === undefined);
-      const finalTotal: number | null = isManualAmount ? null : Number(data.montant_total);
-      const finalMerchant = data.marchand || '';
-      const finalDevise = data.devise || 'CAD';
-      const finalDate = data.date || new Date().toISOString().split('T')[0];
-      const finalCategory = data.categorie || 'Autre';
-      const finalTps = Number(data.taxes?.tps ?? 0);
-      const finalTvq = Number(data.taxes?.tvq ?? 0);
-      const finalHt = finalTotal !== null ? Math.max(0, Number(data.extracted?.amountHt || (finalTotal - finalTps - finalTvq))) : null;
-
-      setOcrDetectedData({
-        provider: finalMerchant,
-        amountHt: finalHt,
-        tps: finalTps,
-        tvq: finalTvq,
-        total: finalTotal,
-        devise: finalDevise,
-        date: finalDate,
-        category: finalCategory,
-        paymentMethod: 'Carte bancaire',
-        notes: finalMerchant ? `Facture ${finalMerchant}` : 'Facture scannée',
-        requiresManualAmount: isManualAmount
-      });
-
-      setOcrScanError(null);
-
-      if (isManualAmount) {
-        triggerToast("Facture détectée : Montant non lisible, veuillez le saisir dans le formulaire de vérification.");
-      } else {
-        triggerToast(`Facture analysée : ${finalMerchant || 'Document'} (${finalTotal?.toFixed(2)} ${finalDevise})`);
-      }
-    } catch (err: any) {
-      console.warn('[OCR Scan Notice]:', err);
-      setOcrProgress(100);
-      const fallbackMsg = err.message || "Erreur de connexion lors de l'analyse du reçu. Veuillez réessayer ou saisir le montant manuellement.";
-      setOcrScanError(fallbackMsg);
-      setOcrDetectedData(null);
-      triggerToast(fallbackMsg);
-    } finally {
-      setIsOcrScanning(false);
-    }
-  };
-
-  const handleOpenManualEntry = () => {
-    setShowOcrModal(false);
-    setEditingExpense(null);
-    setFormCategory(CATEGORIES[0]);
-    setFormProvider('');
-    setFormDate(new Date().toISOString().split('T')[0]);
-    setFormAmountHt('');
-    setFormTps('0.00');
-    setFormTvq('0.00');
-    setFormPaymentMethod('Carte bancaire');
-    setFormNotes('');
-    if (ocrPreviewImage) {
-      setFormReceiptUrl(ocrPreviewImage);
-    } else {
-      setFormReceiptUrl('');
-    }
-    setShowModal(true);
-    triggerToast("Saisie manuelle : veuillez renseigner les informations de la dépense.");
-  };
-
-  const handleDirectSaveFromOcr = () => {
-    if (!ocrDetectedData) return;
-    const finalAmount = ocrDetectedData.total;
-    if (finalAmount === null || finalAmount === undefined || isNaN(finalAmount) || finalAmount <= 0) {
-      triggerToast("Veuillez renseigner un montant total valide pour cette dépense.");
-      return;
-    }
-
-    const tps = Math.max(0, ocrDetectedData.tps || 0);
-    const tvq = Math.max(0, ocrDetectedData.tvq || 0);
-    const amountHt = ocrDetectedData.amountHt !== null && ocrDetectedData.amountHt !== undefined 
-      ? Math.max(0, ocrDetectedData.amountHt) 
-      : Math.max(0, parseFloat((finalAmount - tps - tvq).toFixed(2)));
-
-    const newExpense: Expense = {
-      id: `exp_${Date.now()}`,
-      category: ocrDetectedData.category || 'Autre',
-      provider: ocrDetectedData.provider || 'Fournisseur inconnu',
-      date: ocrDetectedData.date || new Date().toISOString().split('T')[0],
-      amountHt,
-      tps,
-      tvq,
-      total: finalAmount,
-      currency: ocrDetectedData.devise || 'CAD',
-      isEligible: true,
-      paymentMethod: ocrDetectedData.paymentMethod || 'Carte bancaire',
-      notes: ocrDetectedData.notes || `Reçu scanné (${ocrDetectedData.provider || 'Commerce'})`,
-      receiptUrl: ocrPreviewImage || undefined,
-      createdAt: new Date().toISOString()
-    };
-
-    onAddExpense(newExpense);
-    setShowOcrModal(false);
-    triggerToast(`Dépense de ${finalAmount.toFixed(2)} ${ocrDetectedData.devise || 'CAD'} enregistrée avec succès !`);
-  };
-
-  const handleApplyOcrData = () => {
-    if (!ocrDetectedData) return;
-    const finalAmount = ocrDetectedData.total;
-    if (finalAmount === null || finalAmount === undefined || isNaN(finalAmount) || finalAmount <= 0) {
-      triggerToast("Veuillez saisir un montant total valide avant de continuer.");
-      return;
-    }
-
-    const tps = Math.max(0, ocrDetectedData.tps || 0);
-    const tvq = Math.max(0, ocrDetectedData.tvq || 0);
-    const amountHt = ocrDetectedData.amountHt !== null && ocrDetectedData.amountHt !== undefined
-      ? Math.max(0, ocrDetectedData.amountHt)
-      : Math.max(0, parseFloat((finalAmount - tps - tvq).toFixed(2)));
-
-    setFormProvider(ocrDetectedData.provider || '');
-    setFormAmountHt(amountHt.toString());
-    setFormTps(tps.toString());
-    setFormTvq(tvq.toString());
-    setFormDate(ocrDetectedData.date || new Date().toISOString().split('T')[0]);
-    if (ocrDetectedData.category) {
-      setFormCategory(ocrDetectedData.category);
-    }
-    if (ocrDetectedData.paymentMethod) {
-      setFormPaymentMethod(ocrDetectedData.paymentMethod);
-    }
-    if (ocrDetectedData.notes) {
-      setFormNotes(ocrDetectedData.notes);
-    }
-    if (ocrPreviewImage) {
-      setFormReceiptUrl(ocrPreviewImage);
-    }
-    setShowOcrModal(false);
-    if (!showModal) {
-      setShowModal(true);
-    }
-    triggerToast("Données vérifiées et appliquées au formulaire de dépense !");
-  };
 
 
   // Toggle Voice Dictation using SpeechRecognition API with simulated voice dictation fallback
@@ -674,45 +398,14 @@ export default function ExpensesPage({
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto px-4 py-4 md:px-6 md:py-6 pb-20 max-w-6xl mx-auto w-full space-y-5">
-      {/* Hidden File Inputs for OCR Receipt Scanning & Camera Capture */}
-      <input 
-        ref={cameraInputRef} 
-        type="file" 
-        accept="image/*" 
-        capture="environment" 
-        className="hidden" 
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            processOcrImage(e.target.files[0]);
-          }
-        }} 
-      />
-      <input 
-        ref={fileInputRef} 
-        type="file" 
-        accept="image/*,.pdf" 
-        className="hidden" 
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            processOcrImage(e.target.files[0]);
-          }
-        }} 
-      />
-
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200/90 pb-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-              Module 6 — Dépenses
-            </span>
-            <span className="text-[11px] font-semibold text-slate-400">Achats & Déductions fiscales</span>
-          </div>
           <h1 className="text-xl md:text-2xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
             <Receipt className="w-6 h-6 text-blue-600" /> Dépenses & Justificatifs
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Suivi des charges d'entreprise, déductions fiscales TPS/TVQ et numérisation intelligente par OCR.
+            Suivi des charges d'entreprise, déductions fiscales TPS/TVQ et archivage des justificatifs.
           </p>
         </div>
 
@@ -726,16 +419,6 @@ export default function ExpensesPage({
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
             <span>Exporter (CSV)</span>
-          </button>
-
-          {/* Camera OCR Scanner Quick Button */}
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs py-2 px-3 rounded-xl border border-blue-200 transition shadow-2xs cursor-pointer"
-            title="Prendre en photo un reçu pour extraction automatique"
-          >
-            <Camera className="w-4 h-4 text-blue-600" />
-            <span>Numériser Reçu (OCR)</span>
           </button>
 
           {/* Voice Dictation Language Selector & Button */}
@@ -1354,17 +1037,17 @@ export default function ExpensesPage({
                 </div>
               </div>
 
-              {/* Receipt File Upload with Camera Trigger */}
+              {/* Receipt File Upload */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider block">
-                  Justificatif / Reçu (OCR Caméra ou PDF)
+                  Justificatif / Reçu (Photo ou document)
                 </label>
                 
                 {formReceiptUrl ? (
                   <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <ImageIcon className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span className="font-bold text-slate-800 truncate">Reçu numérisé attaché</span>
+                      <span className="font-bold text-slate-800 truncate">Reçu attaché</span>
                     </div>
                     <button
                       type="button"
@@ -1375,25 +1058,27 @@ export default function ExpensesPage({
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => cameraInputRef.current?.click()}
-                      className="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/40 rounded-xl p-3 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1"
-                    >
-                      <Camera className="w-5 h-5 text-blue-600" />
-                      <span className="text-xs font-bold text-blue-700">Prendre photo (Caméra)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-secondary-200 hover:border-primary-400 bg-secondary-50/50 rounded-xl p-3 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1"
-                    >
-                      <Upload className="w-5 h-5 text-secondary-500" />
-                      <span className="text-xs font-bold text-secondary-700">Importer fichier (OCR)</span>
-                    </button>
-                  </div>
+                  <label className="border-2 border-dashed border-secondary-200 hover:border-primary-400 bg-secondary-50/50 rounded-xl p-3.5 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1.5">
+                    <Upload className="w-5 h-5 text-secondary-500" />
+                    <span className="text-xs font-bold text-secondary-700">Joindre un reçu (Photo / Fichier)</span>
+                    <span className="text-[10px] text-slate-400">PNG, JPG, PDF</span>
+                    <input 
+                      type="file" 
+                      accept="image/*,.pdf" 
+                      className="hidden" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setFormReceiptUrl(reader.result as string);
+                            triggerToast("Justificatif attaché avec succès.");
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }} 
+                    />
+                  </label>
                 )}
               </div>
 
@@ -1410,307 +1095,7 @@ export default function ExpensesPage({
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* MODAL: OCR CAMERA RECEIPT SCANNER PREVIEW */}
-      {/* ========================================== */}
-      {showOcrModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-xl bg-white shadow-2xl rounded-3xl border-slate-200 p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <Scan className="w-4 h-4 animate-spin" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900">
-                    Numérisation OCR Intelligente du Reçu
-                  </h3>
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    Extraction des montants, taxes TPS/TVQ et fournisseurs.
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowOcrModal(false)} 
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Scanning Progress or Results */}
-            {isOcrScanning ? (
-              <div className="space-y-4 text-center py-6">
-                <div className="relative w-24 h-24 mx-auto rounded-2xl overflow-hidden border-2 border-blue-500 shadow-md">
-                  {ocrPreviewImage ? (
-                    <img src={ocrPreviewImage} alt="Scanning receipt" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                      <Camera className="w-8 h-8 text-slate-400" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-blue-500/20 animate-pulse border-b-2 border-blue-600" />
-                </div>
-
-                <div className="space-y-2 max-w-xs mx-auto">
-                  <div className="flex justify-between text-xs font-bold text-slate-700">
-                    <span>Analyse par IA vision...</span>
-                    <span className="text-blue-600">{ocrProgress}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-600 transition-all duration-300 rounded-full" 
-                      style={{ width: `${ocrProgress}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-medium">
-                    Lecture des lignes de taxes TPS (5%) & TVQ (9.975%)...
-                  </p>
-                </div>
-              </div>
-            ) : ocrScanError ? (
-              <div className="space-y-4 py-2">
-                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-center space-y-3">
-                  <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-                    <AlertCircle className="w-6 h-6 stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-rose-900">
-                      Échec de détection de facture
-                    </h4>
-                    <p className="text-xs text-rose-700 mt-1 max-w-sm mx-auto font-medium">
-                      {ocrScanError}
-                    </p>
-                  </div>
-
-                  {ocrPreviewImage && (
-                    <div className="w-24 h-24 mx-auto rounded-xl overflow-hidden border border-rose-200 bg-white p-1 shadow-2xs">
-                      <img src={ocrPreviewImage} alt="Reçu rejeté" className="w-full h-full object-cover rounded-lg opacity-80" />
-                    </div>
-                  )}
-
-                  <p className="text-[11px] text-slate-500 italic max-w-xs mx-auto">
-                    Le système n'accepte que les vrais reçus ou factures. Les photos d'animaux, de paysages ou d'images floues sont rejetées sans valeur fictive.
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-slate-100 justify-end">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => {
-                      if (fileInputRef.current) fileInputRef.current.value = '';
-                      fileInputRef.current?.click();
-                    }}
-                    className="flex items-center justify-center gap-1.5"
-                  >
-                    <Camera className="w-4 h-4" /> Prendre une autre photo
-                  </Button>
-                  <Button 
-                    variant="primary" 
-                    size="sm" 
-                    onClick={handleOpenManualEntry}
-                    className="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Pencil className="w-4 h-4" /> Saisir le montant manuellement
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Warning banner if montant_total is null or required manually */}
-                {ocrDetectedData?.requiresManualAmount && (
-                  <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 flex items-start gap-3 text-amber-900 shadow-xs">
-                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="text-xs space-y-0.5">
-                      <div className="font-extrabold text-amber-950">
-                        Montant non lisible sur le reçu
-                      </div>
-                      <p className="text-[11px] text-amber-800 leading-normal">
-                        L'IA n'a pas pu identifier le montant total avec une certitude absolue. Conformément aux règles strictes de comptabilité, aucune valeur fictive n'a été inventée. Veuillez renseigner le montant ci-dessous.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-                  {/* Receipt Thumbnail */}
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 h-64 bg-slate-50 flex items-center justify-center p-2">
-                    {ocrPreviewImage ? (
-                      <img src={ocrPreviewImage} alt="Scanned receipt" className="max-h-full max-w-full object-contain rounded-lg" />
-                    ) : (
-                      <Receipt className="w-12 h-12 text-slate-300" />
-                    )}
-                    <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
-                      <CheckCircle2 className="w-3 h-3" /> Facture Détectée ({ocrDetectedData?.devise || 'CAD'})
-                    </span>
-                  </div>
-
-                  {/* Interactive Verified Fields (Pre-filled editable form) */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">
-                        Vérification & Correction des Données
-                      </span>
-                      <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
-                        OCR Strict
-                      </span>
-                    </div>
-
-                    <div className="space-y-2.5 pt-1">
-                      {/* Merchant */}
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
-                          Commerçant / Entreprise (Marchand)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Nom du marchand"
-                          value={ocrDetectedData?.provider || ''}
-                          onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, provider: e.target.value } : null)}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* Montant Total TTC (Key focus field) */}
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-600 uppercase flex items-center justify-between mb-1">
-                          <span>Montant Total TTC *</span>
-                          {ocrDetectedData?.total === null && (
-                            <span className="text-[9px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-black">
-                              Saisie requise
-                            </span>
-                          )}
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00 (Entrez le montant réel)"
-                            value={ocrDetectedData?.total !== null && ocrDetectedData?.total !== undefined ? ocrDetectedData.total : ''}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const val = raw === '' ? null : Math.max(0, parseFloat(raw) || 0);
-                              let tps = 0;
-                              let tvq = 0;
-                              let ht = val;
-                              if (val && val > 0 && (!ocrDetectedData?.devise || ocrDetectedData.devise === 'CAD')) {
-                                ht = parseFloat((val / 1.14975).toFixed(2));
-                                tps = parseFloat((ht * 0.05).toFixed(2));
-                                tvq = parseFloat((val - ht - tps).toFixed(2));
-                              }
-                              setOcrDetectedData(prev => prev ? {
-                                ...prev,
-                                total: val,
-                                amountHt: ht,
-                                tps,
-                                tvq,
-                                requiresManualAmount: val === null || val <= 0
-                              } : null);
-                            }}
-                            className={`w-full bg-white border rounded-lg px-2.5 py-1.5 font-black text-sm text-slate-900 focus:outline-none ${
-                              ocrDetectedData?.total === null || (ocrDetectedData?.total ?? 0) <= 0
-                                ? 'border-amber-400 ring-2 ring-amber-100 bg-amber-50/20'
-                                : 'border-slate-300 focus:border-blue-500'
-                            }`}
-                          />
-                          <span className="absolute right-2.5 top-1.5 text-xs font-bold text-slate-400">
-                            {ocrDetectedData?.devise || 'CAD'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* Devise */}
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Devise</label>
-                          <select
-                            value={ocrDetectedData?.devise || 'CAD'}
-                            onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, devise: e.target.value } : null)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
-                          >
-                            <option value="CAD">CAD ($ CA)</option>
-                            <option value="USD">USD ($ US)</option>
-                            <option value="HTG">HTG (Gourde)</option>
-                            <option value="XOF">XOF (FCFA)</option>
-                            <option value="EUR">EUR (€)</option>
-                          </select>
-                        </div>
-
-                        {/* Date */}
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Date</label>
-                          <input
-                            type="date"
-                            value={ocrDetectedData?.date || ''}
-                            onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, date: e.target.value } : null)}
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-medium text-slate-800 text-xs focus:outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Category */}
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Catégorie</label>
-                        <select
-                          value={ocrDetectedData?.category || CATEGORIES[0]}
-                          onChange={(e) => setOcrDetectedData(prev => prev ? { ...prev, category: e.target.value } : null)}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
-                        >
-                          {CATEGORIES.map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Taxes Breakdown if CAD */}
-                      {(!ocrDetectedData?.devise || ocrDetectedData.devise === 'CAD') && ocrDetectedData?.total && ocrDetectedData.total > 0 && (
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200">
-                          <div className="flex justify-between">
-                            <span>TPS (5%) :</span>
-                            <span className="font-bold text-slate-800">${(ocrDetectedData?.tps ?? 0).toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>TVQ (9.975%) :</span>
-                            <span className="font-bold text-slate-800">${(ocrDetectedData?.tvq ?? 0).toFixed(2)}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-3 border-t border-slate-100">
-                  <Button variant="outline" size="sm" onClick={() => setShowOcrModal(false)}>
-                    Annuler
-                  </Button>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleApplyOcrData}
-                      disabled={ocrDetectedData?.total === null || (ocrDetectedData?.total ?? 0) <= 0}
-                      className="text-xs"
-                    >
-                      Éditeur détaillé
-                    </Button>
-                    <Button 
-                      variant="primary" 
-                      size="sm" 
-                      onClick={handleDirectSaveFromOcr}
-                      disabled={ocrDetectedData?.total === null || (ocrDetectedData?.total ?? 0) <= 0}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                    >
-                      <Sparkles className="w-4 h-4 mr-1" /> Valider & Enregistrer
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-      )}
 
       {/* Delete Expense Confirm Modal */}
       <ConfirmModal

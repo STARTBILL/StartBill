@@ -476,7 +476,6 @@ export default function DeviceSimulator({
   const [emailMessage, setEmailMessage] = useState('');
   const [whatsappRecipient, setWhatsappRecipient] = useState('');
   const [whatsappMessage, setWhatsappMessage] = useState('');
-  const [isScanningMobileReceipt, setIsScanningMobileReceipt] = useState(false);
 
   // Custom Confirm Modals
   const [showResetPaymentConfirm, setShowResetPaymentConfirm] = useState(false);
@@ -832,61 +831,14 @@ export default function DeviceSimulator({
     triggerToast(`Client "${newCli.name}" ajouté avec succès !`);
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = async () => {
+      reader.onloadend = () => {
         const imgData = reader.result as string;
         setReceiptImg(imgData);
-        setIsScanningMobileReceipt(true);
-        triggerToast("Analyse du reçu par IA en cours...");
-
-        try {
-          const res = await fetch('/api/scan-receipt', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              image: imgData,
-              filename: file.name,
-              mimeType: file.type || 'image/jpeg'
-            })
-          });
-
-          const data = await res.json().catch(() => ({}));
-
-          if (res.ok && data.success && (data.montant > 0 || data.extracted?.total > 0)) {
-            const ext = data.extracted || {};
-            const merchant = data.marchand || ext.provider || 'Commerce';
-            const total = Number(data.montant || ext.total || 0);
-            const currency = data.devise || ext.devise || 'CAD';
-            const ht = Number(ext.amountHt || total);
-
-            if (merchant) setNewExpenseProvider(merchant);
-            if (ht > 0) {
-              const htStr = ht.toFixed(2);
-              setNewExpenseAmountHt(htStr);
-              recalculateExpenseTaxes(htStr, newExpenseProvince);
-            }
-            if (data.date || ext.date) setNewExpenseDate(data.date || ext.date);
-            if (data.categorie || ext.category) setNewExpenseCategory(data.categorie || ext.category);
-            if (ext.notes) setNewExpenseNotes(ext.notes);
-            triggerToast(`Reçu analysé par IA : ${merchant} (${total.toFixed(2)} ${currency})`);
-          } else {
-            // Rejet : Pas une facture / chat / image floue
-            setReceiptImg(null);
-            const errReason = data.error || (data.isReceipt === false 
-              ? "Aucune facture détectée. Veuillez réessayer avec une image claire." 
-              : "Image floue ou montant illisible. Veuillez saisir le montant manuellement.");
-            triggerToast(errReason);
-          }
-        } catch (ocrErr: any) {
-          console.warn('[Mobile OCR Receipt Notice]:', ocrErr);
-          setReceiptImg(null);
-          triggerToast(ocrErr.message || "Erreur de connexion lors du scan. Veuillez réessayer.");
-        } finally {
-          setIsScanningMobileReceipt(false);
-        }
+        triggerToast("Justificatif / reçu attaché avec succès.");
       };
       reader.readAsDataURL(file);
     }
@@ -978,7 +930,7 @@ export default function DeviceSimulator({
               { id: 'reports' as ScreenId, label: 'Rapports & Analyses', sublabel: 'Rapports détaillés', icon: BarChart3, isPublic: false },
               { id: 'financial_health' as ScreenId, label: 'Santé financière', sublabel: 'Score et analyse', icon: TrendingUp, isPublic: false },
               { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', sublabel: 'Assistant intelligent', icon: Sparkles, isPublic: false },
-              { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false, badge: 'MOD 10' },
+              { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false },
               { id: 'pricing' as ScreenId, label: 'Forfaits & Tarifs', sublabel: 'Gestion abonnement', icon: Zap, isPublic: false, badge: userPlan ? userPlan.toUpperCase() : 'PLAN' },
               ...(isSuperAdminUser ? [
                 { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'CEO Command Center', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
@@ -1397,7 +1349,7 @@ export default function DeviceSimulator({
             setShowNewInvoiceModal={setShowNewInvoiceModal}
             setShowNewClientModal={setShowNewClientModal}
             setScreen={setScreen}
-            dbClients={clients && clients.length > 0 ? clients : dbClients}
+            dbClients={clients !== undefined ? clients : dbClients}
             totalRevenue={totalRevenue}
             paidInvoicesCount={paidInvoicesCount}
             totalTax={totalTax}
@@ -1418,7 +1370,7 @@ export default function DeviceSimulator({
         {currentScreen === 'invoices' && (
           <InvoicesPage
             invoices={activeInvoicesList}
-            clients={clients && clients.length > 0 ? clients : dbClients}
+            clients={clients !== undefined ? clients : dbClients}
             products={products}
             onAddProduct={handleAddProduct}
             dbLoading={dbLoading}
@@ -2093,25 +2045,19 @@ export default function DeviceSimulator({
                 </select>
               </div>
 
-              {/* Receipt File upload with AI OCR */}
+              {/* Receipt File upload */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Reçu (Scanner par IA)</label>
-                  <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold">OCR Auto</span>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Justificatif / Reçu (Photo ou document)</label>
+                  <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">Pièce jointe</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <label className={`flex-1 bg-white hover:bg-slate-50 border border-dashed rounded-lg px-3 py-2.5 text-center cursor-pointer flex flex-col items-center justify-center gap-1 transition ${
-                    isScanningMobileReceipt ? 'border-blue-500 bg-blue-50/50 animate-pulse' : 'border-slate-300 hover:border-blue-500'
-                  }`}>
-                    <Upload className={`w-4 h-4 ${isScanningMobileReceipt ? 'text-blue-600 animate-spin' : 'text-slate-400'}`} />
+                  <label className="flex-1 bg-white hover:bg-slate-50 border border-dashed border-slate-300 hover:border-blue-500 rounded-lg px-3 py-2.5 text-center cursor-pointer flex flex-col items-center justify-center gap-1 transition">
+                    <Upload className="w-4 h-4 text-slate-400" />
                     <span className="text-[10px] font-medium text-slate-600">
-                      {isScanningMobileReceipt
-                        ? "Analyse Gemini Vision en cours..."
-                        : receiptImg
-                        ? "Reçu scanné ✓ (Changer)"
-                        : "Prendre photo / Importer reçu"}
+                      {receiptImg ? "Reçu attaché ✓ (Changer)" : "Joindre un reçu (Photo / Fichier)"}
                     </span>
-                    <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" disabled={isScanningMobileReceipt} />
+                    <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
                   </label>
                   {receiptImg && (
                     <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden shadow-sm flex-shrink-0">
@@ -2700,14 +2646,17 @@ export default function DeviceSimulator({
         {/* ======================================= */}
         {currentScreen === 'clients' && (
           <ClientsPage
-            clients={clients && clients.length > 0 ? clients : dbClients}
+            clients={clients !== undefined ? clients : dbClients}
             invoices={invoices}
             dbLoading={dbLoading}
             dbError={dbError}
             fetchFirestoreData={() => currentUser?.uid && fetchFirestoreData(currentUser.uid)}
             onAddClient={onAddClient}
             onUpdateClient={onUpdateClient}
-            onDeleteClient={onDeleteClient}
+            onDeleteClient={(id) => {
+              onDeleteClient(id);
+              setDbClients(prev => prev.filter(c => c.id !== id));
+            }}
             triggerToast={triggerToast}
             setScreen={setScreen}
             setSelectedInvoiceId={setSelectedInvoiceId}

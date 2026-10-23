@@ -244,8 +244,17 @@ export default function App() {
   };
 
   const handleDeleteClient = async (id: string) => {
+    const existingClient = clients.find(c => c.id === id);
     setClients(prev => prev.filter(c => c.id !== id));
-    await deleteClientFromFirestore(id);
+    try {
+      await deleteClientFromFirestore(id);
+    } catch (err) {
+      console.error('Erreur lors de la suppression définitive du client:', err);
+      if (existingClient) {
+        setClients(prev => [...prev, existingClient]);
+      }
+      throw err;
+    }
   };
 
   const getInvoiceOutstanding = (inv: Invoice): number => {
@@ -362,20 +371,37 @@ export default function App() {
     if (inv && inv.status !== 'Payée') {
       setClients(prevCli => prevCli.map(c => {
         if (c.name === inv.clientName) {
-          const updated = { ...c, amountDue: Math.max(0, parseFloat((c.amountDue - inv.total).toFixed(2))) };
-          saveClientToFirestore(updated);
+          const updated = { ...c, amountDue: Math.max(0, parseFloat(((c.amountDue || 0) - (inv.total || 0)).toFixed(2))) };
+          saveClientToFirestore(updated, auth.currentUser?.uid, activeUserRegion);
           return updated;
         }
         return c;
       }));
     }
     setInvoices(prev => prev.filter(i => i.id !== id));
-    await deleteInvoiceFromFirestore(id);
+    try {
+      await deleteInvoiceFromFirestore(id);
+    } catch (err) {
+      console.error('Erreur lors de la suppression définitive de la facture:', err);
+      if (inv) {
+        setInvoices(prev => [inv, ...prev]);
+      }
+      throw err;
+    }
   };
 
   const handleDeleteExpense = async (id: string) => {
+    const exp = expenses.find(e => e.id === id);
     setExpenses(prev => prev.filter(e => e.id !== id));
-    await deleteExpenseFromFirestore(id);
+    try {
+      await deleteExpenseFromFirestore(id);
+    } catch (err) {
+      console.error('Erreur lors de la suppression définitive de la dépense:', err);
+      if (exp) {
+        setExpenses(prev => [exp, ...prev]);
+      }
+      throw err;
+    }
   };
 
   // Reset all to initial state in Firestore

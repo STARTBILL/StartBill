@@ -243,12 +243,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <Settings className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                Module 10 — Paramètres & Configuration
-              </span>
-              <span className="text-[11px] font-semibold text-slate-500">Entreprise & Facturation</span>
-            </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               Paramètres généraux
             </h1>

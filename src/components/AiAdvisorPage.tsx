@@ -105,12 +105,6 @@ export default function AiAdvisorPage({ setScreen, triggerToast }: AiAdvisorPage
             <Sparkles className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
-                Module 9 — Conseiller Financier IA
-              </span>
-              <span className="text-[11px] font-semibold text-slate-400">Recommandations & Analyses Prédictives</span>
-            </div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               Conseiller AI
             </h1>

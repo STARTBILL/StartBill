@@ -13,7 +13,7 @@ import {
   increment,
   deleteDoc 
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { 
   Business, 
   FinancialHealthMetrics, 
@@ -33,20 +33,18 @@ const BUSINESSES_COLLECTION = 'businesses';
  * Récupère l'entreprise active pour un utilisateur donné (par son UID)
  */
 export async function getBusinessByOwner(ownerUid: string, region?: string): Promise<Business | null> {
+  const currentUid = auth.currentUser?.uid;
+  if (!ownerUid || ownerUid === 'user-default' || !currentUid) {
+    return null;
+  }
+  const targetUid = ownerUid || currentUid;
+
   try {
-    let q = query(
+    const q = query(
       collection(db, BUSINESSES_COLLECTION),
-      where('ownerRef', '==', ownerUid),
+      where('ownerRef', '==', targetUid),
       limit(1)
     );
-    if (region) {
-      q = query(
-        collection(db, BUSINESSES_COLLECTION),
-        where('ownerRef', '==', ownerUid),
-        where('region', '==', region),
-        limit(1)
-      );
-    }
     const snapshot = await getDocs(q);
     if (snapshot.empty) {
       return null;

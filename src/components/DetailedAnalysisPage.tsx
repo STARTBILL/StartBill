@@ -287,15 +287,20 @@ export default function DetailedAnalysisPage({
   const [formCurrentLiabilities, setFormCurrentLiabilities] = useState<number>(12400);
   const [formTotalDebt, setFormTotalDebt] = useState<number>(5000);
 
-  const effectiveOwnerUid = currentUser?.uid || 'user-default';
+  const effectiveOwnerUid = currentUser?.uid;
 
   // Load from Firestore
   useEffect(() => {
     let isMounted = true;
+    if (!effectiveOwnerUid) {
+      setLoadingBusiness(false);
+      return;
+    }
+
     async function loadData() {
       setLoadingBusiness(true);
       try {
-        const found = await getBusinessByOwner(effectiveOwnerUid);
+        const found = await getBusinessByOwner(effectiveOwnerUid!);
         if (isMounted && found) {
           setBusiness(found);
           setFormBizName(found.businessName || 'Mon Entreprise');
@@ -447,17 +452,11 @@ export default function DetailedAnalysisPage({
       {setScreen && <FinancialNavTabs currentScreen="financial_health" setScreen={setScreen} />}
 
       {/* ======================================================== */}
-      {/* TOP HEADER: Module 8 — Santé Financière */}
+      {/* TOP HEADER: Santé Financière */}
       {/* ======================================================== */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
         {/* Title and info icon */}
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-              Module 8 — Santé Financière
-            </span>
-            <span className="text-[11px] font-semibold text-slate-400">Score & Diagnostic des Ratios</span>
-          </div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               Santé Financière & Ratios de Performance

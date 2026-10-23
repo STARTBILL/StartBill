@@ -81,24 +81,17 @@ export async function getInvoicesFromFirestore(userId?: string, region?: 'canada
   }
 
   try {
-    let qInvoices;
-    if (region) {
-      qInvoices = query(
-        collection(db, 'invoices'), 
-        where('userId', '==', targetUid),
-        where('region', '==', region)
-      );
-    } else {
-      qInvoices = query(collection(db, 'invoices'), where('userId', '==', targetUid));
-    }
-
+    const qInvoices = query(collection(db, 'invoices'), where('userId', '==', targetUid));
     const querySnapshot = await getDocs(qInvoices);
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as Invoice;
-      // Double barrière de sécurité : élimination stricte de toute facture hors de la région cible
-      if (!region || data.region === region) {
-        invoices.push(data);
+      // Afficher les factures de la région ou sans région assignée pour l'utilisateur
+      if (!region || !data.region || data.region === region) {
+        invoices.push({
+          ...data,
+          id: data.id || docSnap.id
+        });
       }
     });
     return invoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -120,14 +113,28 @@ export async function saveInvoiceToFirestore(invoice: Invoice, userId?: string, 
     await setDoc(doc(db, 'invoices', invoice.id), invoiceToSave, { merge: true });
   } catch (error) {
     console.error('Error saving invoice:', error);
+    handleFirestoreError(error, OperationType.WRITE, `invoices/${invoice.id}`);
   }
 }
 
 export async function deleteInvoiceFromFirestore(invoiceId: string): Promise<void> {
+  if (!invoiceId) return;
   try {
+    // 1. Suppression directe par ID de document
     await deleteDoc(doc(db, 'invoices', invoiceId));
+
+    // 2. Nettoyage de sécurité : si le document a été enregistré avec un identifiant interne 'id'
+    const q = query(collection(db, 'invoices'), where('id', '==', invoiceId));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    console.log(`[Firestore] Facture ${invoiceId} définitivement supprimée.`);
   } catch (error) {
-    console.error('Error deleting invoice:', error);
+    console.error(`[Firestore] Échec de la suppression de la facture ${invoiceId}:`, error);
+    handleFirestoreError(error, OperationType.DELETE, `invoices/${invoiceId}`);
   }
 }
 
@@ -139,23 +146,16 @@ export async function getExpensesFromFirestore(userId?: string, region?: 'canada
   }
 
   try {
-    let qExpenses;
-    if (region) {
-      qExpenses = query(
-        collection(db, 'expenses'), 
-        where('userId', '==', targetUid),
-        where('region', '==', region)
-      );
-    } else {
-      qExpenses = query(collection(db, 'expenses'), where('userId', '==', targetUid));
-    }
-
+    const qExpenses = query(collection(db, 'expenses'), where('userId', '==', targetUid));
     const querySnapshot = await getDocs(qExpenses);
     const expenses: Expense[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as Expense;
-      if (!region || data.region === region) {
-        expenses.push(data);
+      if (!region || !data.region || data.region === region) {
+        expenses.push({
+          ...data,
+          id: data.id || docSnap.id
+        });
       }
     });
     return expenses.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -177,14 +177,28 @@ export async function saveExpenseToFirestore(expense: Expense, userId?: string, 
     await setDoc(doc(db, 'expenses', expense.id), expenseToSave, { merge: true });
   } catch (error) {
     console.error('Error saving expense:', error);
+    handleFirestoreError(error, OperationType.WRITE, `expenses/${expense.id}`);
   }
 }
 
 export async function deleteExpenseFromFirestore(expenseId: string): Promise<void> {
+  if (!expenseId) return;
   try {
+    // 1. Suppression directe par ID de document
     await deleteDoc(doc(db, 'expenses', expenseId));
+
+    // 2. Nettoyage de sécurité : si le document a été enregistré avec un identifiant interne 'id'
+    const q = query(collection(db, 'expenses'), where('id', '==', expenseId));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    console.log(`[Firestore] Dépense ${expenseId} définitivement supprimée.`);
   } catch (error) {
-    console.error('Error deleting expense:', error);
+    console.error(`[Firestore] Échec de la suppression de la dépense ${expenseId}:`, error);
+    handleFirestoreError(error, OperationType.DELETE, `expenses/${expenseId}`);
   }
 }
 
@@ -196,23 +210,16 @@ export async function getClientsFromFirestore(userId?: string, region?: 'canada'
   }
 
   try {
-    let qClients;
-    if (region) {
-      qClients = query(
-        collection(db, 'clients'), 
-        where('userId', '==', targetUid),
-        where('region', '==', region)
-      );
-    } else {
-      qClients = query(collection(db, 'clients'), where('userId', '==', targetUid));
-    }
-
+    const qClients = query(collection(db, 'clients'), where('userId', '==', targetUid));
     const querySnapshot = await getDocs(qClients);
     const clients: Client[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as Client;
-      if (!region || data.region === region) {
-        clients.push(data);
+      if (!region || !data.region || data.region === region) {
+        clients.push({
+          ...data,
+          id: data.id || docSnap.id
+        });
       }
     });
     return clients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -234,14 +241,28 @@ export async function saveClientToFirestore(client: Client, userId?: string, reg
     await setDoc(doc(db, 'clients', client.id), clientToSave, { merge: true });
   } catch (error) {
     console.error('Error saving client:', error);
+    handleFirestoreError(error, OperationType.WRITE, `clients/${client.id}`);
   }
 }
 
 export async function deleteClientFromFirestore(clientId: string): Promise<void> {
+  if (!clientId) return;
   try {
+    // 1. Suppression directe par ID de document
     await deleteDoc(doc(db, 'clients', clientId));
+
+    // 2. Nettoyage de sécurité : si le document a été enregistré avec un identifiant interne 'id'
+    const q = query(collection(db, 'clients'), where('id', '==', clientId));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    console.log(`[Firestore] Client ${clientId} définitivement supprimé.`);
   } catch (error) {
-    console.error('Error deleting client:', error);
+    console.error(`[Firestore] Échec de la suppression du client ${clientId}:`, error);
+    handleFirestoreError(error, OperationType.DELETE, `clients/${clientId}`);
   }
 }
 

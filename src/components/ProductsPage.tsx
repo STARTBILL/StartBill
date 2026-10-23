@@ -190,18 +190,10 @@ export default function ProductsPage({
   return (
     <div className="flex-1 flex flex-col overflow-y-auto px-4 py-4 md:px-6 md:py-6 pb-20 max-w-6xl mx-auto w-full space-y-5">
       
-      {/* Header with Module 4 Badge */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-secondary-200 pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-primary-50 text-primary-700 border border-primary-200">
-              Module 4
-            </span>
-            <span className="text-xs font-semibold text-secondary-500">
-              Catalogue Commercial
-            </span>
-          </div>
-          <h1 className="text-xl md:text-2xl font-black text-secondary-900 flex items-center gap-2 tracking-tight mt-1">
+          <h1 className="text-xl md:text-2xl font-black text-secondary-900 flex items-center gap-2 tracking-tight">
             <Package className="w-6 h-6 text-primary-600" /> Produits et services
           </h1>
           <p className="text-xs text-secondary-500 font-medium mt-0.5">
