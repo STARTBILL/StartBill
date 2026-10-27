@@ -244,9 +244,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // System Config: Admin only
+    // System Config & Custom Domain: Publicly readable; Only Admins can write
     match /system_config/{configId} {
-      allow read, write: if isAdmin();
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Test connection collection

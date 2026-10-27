@@ -160,6 +160,63 @@ app.post(
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
+// CORS configuration to support the official domain startbill.ca (Hostinger) and dev environments
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://startbill.ca',
+    'https://www.startbill.ca',
+    'http://startbill.ca',
+    'http://www.startbill.ca',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+
+  if (origin) {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.startbill.ca') ||
+      origin.endsWith('.run.app')
+    ) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-user-email, x-user-role, x-user-id');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
+// Endpoint de statut et configuration de domaine (Hostinger startbill.ca)
+app.get('/api/domain-config', (_req: Request, res: Response) => {
+  res.json({
+    primaryDomain: 'startbill.ca',
+    canonicalUrl: 'https://startbill.ca',
+    hostingerConfigured: true,
+    dnsProvider: 'hostinger',
+    allowedOrigins: [
+      'https://startbill.ca',
+      'https://www.startbill.ca',
+      'http://localhost:3000',
+    ],
+    firebaseAuthDomain: 'startbill-dev.firebaseapp.com',
+    firebaseAuthAuthorizedDomains: [
+      'startbill.ca',
+      'www.startbill.ca',
+      'startbill-dev.firebaseapp.com',
+      'localhost',
+    ],
+    supportEmail: 'contact.startbill@gmail.com',
+    status: 'configured',
+  });
+});
+
 // Middleware de sécurité : Cloisonnement strict des données inter-régions
 app.use(createRegionIsolationMiddleware(db));
 
@@ -517,6 +574,17 @@ app.post('/api/stripe/admin/update-keys', async (req: Request, res: Response): P
   }
 });
 
+function getAppOrigin(req: Request, customReturnUrl?: string): string {
+  if (customReturnUrl) return customReturnUrl;
+  if (req.headers.origin) return req.headers.origin;
+  if (process.env.APP_URL) return process.env.APP_URL;
+  const host = req.headers.host;
+  if (host && host.includes('startbill.ca')) {
+    return `https://${host}`;
+  }
+  return process.env.NODE_ENV === 'production' ? 'https://startbill.ca' : `http://localhost:${PORT}`;
+}
+
 // -------------------------------------------------------------
 // 3. CREATE CHECKOUT SESSION (Subscription Plans)
 // -------------------------------------------------------------
@@ -543,7 +611,7 @@ app.post('/api/stripe/create-checkout-session', async (req: Request, res: Respon
       ? (planId === 'pro' ? 30000 : 15000) 
       : (region === 'afrique' ? (planId === 'pro' ? 1500000 : 750000) : amountCAD);
 
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = getAppOrigin(req);
 
     // Create session via Stripe REST API / Restricted Key
     // Requires Access Policy: Checkout Sessions (Write), Customers (Write)
@@ -611,7 +679,7 @@ app.post('/api/stripe/create-portal-session', async (req: Request, res: Response
       return;
     }
 
-    const origin = returnUrl || req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = getAppOrigin(req, returnUrl);
 
     // Requires Access Policy: Customer Portal (Write)
     const portalSession = await stripe.billingPortal.sessions.create({
@@ -641,7 +709,7 @@ app.post('/api/stripe/create-invoice-payment', async (req: Request, res: Respons
       return;
     }
 
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = getAppOrigin(req);
     const amountInCents = Math.round(Number(totalAmount) * 100);
 
     // Requires Access Policy: Checkout Sessions (Write)
@@ -687,8 +755,14 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
+      configFile: path.resolve(__dirname, 'vite.config.ts'),
       server: { middlewareMode: true },
       appType: 'spa',
+      optimizeDeps: {
+        esbuildOptions: {
+          target: 'es2022',
+        },
+      },
     });
     app.use(vite.middlewares);
     console.log('[Dev Server] Vite middleware attached.');

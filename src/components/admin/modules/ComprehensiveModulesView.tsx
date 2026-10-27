@@ -794,30 +794,30 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
           </div>
 
           <div className="p-5 rounded-2xl bg-[#0B1528] border border-slate-800 space-y-3 text-xs">
-            <h3 className="font-bold text-white text-sm">Mode Maintenance & Version</h3>
-            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-750 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-white">Mode Maintenance Générale</div>
-                <div className="text-[11px] text-slate-400">Suspend l'accès client pour maintenance planifiée.</div>
+            <h3 className="font-bold text-white text-sm">Nom de Domaine & Hébergement (Hostinger)</h3>
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[11px]">Domaine Principal :</span>
+                <span className="text-emerald-400 font-mono font-bold">startbill.ca</span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const toggled = !platformConfig.maintenanceMode;
-                  onUpdatePlatformConfig({ ...platformConfig, maintenanceMode: toggled });
-                  triggerToast(toggled ? 'Mode maintenance ACTIVÉ' : 'Mode maintenance DÉSACTIVÉ');
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  platformConfig.maintenanceMode ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                {platformConfig.maintenanceMode ? 'En maintenance' : 'Normal (Actif)'}
-              </button>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[11px]">Fournisseur DNS :</span>
+                <span className="text-white font-medium">Hostinger</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[11px]">Certificat SSL :</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Actif (HTTPS)</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[11px]">Statut BDD Firestore :</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">Synchronisé (/system_config/domain)</span>
+              </div>
             </div>
 
             <div className="text-[11px] text-slate-400 space-y-1">
               <div>Version actuelle : <strong className="text-white">{platformConfig.appVersion}</strong></div>
               <div>Environnement : <strong className="text-emerald-400 uppercase">{platformConfig.environment}</strong></div>
+              <div>URL canonique : <a href="https://startbill.ca" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">https://startbill.ca</a></div>
             </div>
           </div>
         </div>

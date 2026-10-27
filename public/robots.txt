@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://startbill.ca/sitemap.xml

@@ -457,4 +457,6 @@ export interface PlatformGeneralConfig {
   maintenanceNotice: string;
   appVersion: string;
   environment: 'production' | 'staging' | 'development';
+  primaryDomain?: string;
+  websiteUrl?: string;
 }

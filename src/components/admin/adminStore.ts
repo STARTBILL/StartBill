@@ -1149,11 +1149,18 @@ export const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
 // Module 22: System Health
 export const INITIAL_SYSTEM_HEALTH: SystemHealthMetric[] = [
   {
+    serviceName: 'Nom de Domaine Officiel (Hostinger DNS & SSL)',
+    status: 'operational',
+    uptime30Days: 100.0,
+    latencyMs: 42,
+    endpoint: 'https://startbill.ca',
+  },
+  {
     serviceName: 'Application Web & PWA Frontend (Vite/React)',
     status: 'operational',
     uptime30Days: 99.99,
     latencyMs: 85,
-    endpoint: 'https://ais-pre-rjf6ppcxd26epo7jpxrytn-84632692713.europe-west2.run.app',
+    endpoint: 'https://startbill.ca',
   },
   {
     serviceName: 'Cloud Firestore Database (Multi-Region)',
@@ -1167,7 +1174,7 @@ export const INITIAL_SYSTEM_HEALTH: SystemHealthMetric[] = [
     status: 'operational',
     uptime30Days: 99.98,
     latencyMs: 95,
-    endpoint: 'startbill-dev.firebaseapp.com',
+    endpoint: 'startbill.ca (startbill-dev.firebaseapp.com)',
   },
   {
     serviceName: 'Moteur de Calcul Fiscal & Ventilation (TPS/TVQ/TVA)',
@@ -1247,7 +1254,9 @@ export const INITIAL_PLATFORM_CONFIG: PlatformGeneralConfig = {
   founderName: 'Ferline ZOGNI',
   founderTitle: 'Fondatrice et CEO de STARTBILL',
   contactEmail: 'contact.startbill@gmail.com',
-  supportEmail: 'support@startbill.com',
+  supportEmail: 'contact.startbill@gmail.com',
+  primaryDomain: 'startbill.ca',
+  websiteUrl: 'https://startbill.ca',
   hqAddress: 'Montréal, Québec, Canada',
   legalEntity: 'STARTBILL Technologies Inc.',
   maintenanceMode: false,

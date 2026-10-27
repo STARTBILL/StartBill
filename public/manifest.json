@@ -1,0 +1,17 @@
+{
+  "short_name": "StartBill",
+  "name": "StartBill - Ton assistant financier",
+  "icons": [
+    {
+      "src": "/startbill-icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "https://startbill.ca/",
+  "background_color": "#0B1528",
+  "theme_color": "#2563EB",
+  "display": "standalone",
+  "scope": "https://startbill.ca/",
+  "orientation": "portrait"
+}

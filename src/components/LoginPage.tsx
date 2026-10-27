@@ -14,7 +14,8 @@ import {
   User,
   Building2,
   Zap,
-  Globe
+  Globe,
+  ExternalLink
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { useRegional } from '../context/RegionalContext';
@@ -109,7 +110,7 @@ export default function LoginPage({
       } else if (err.code === 'auth/cancelled-popup-request') {
         setErrorMessage('Une seule demande de connexion Google à la fois est autorisée.');
       } else if (err.code === 'auth/unauthorized-domain') {
-        setErrorMessage('Domaine non autorisé dans Firebase Auth. Veuillez ajouter le domaine de l’application aux domaines autorisés dans Firebase Authentication.');
+        setErrorMessage('Domaine non autorisé dans Firebase Auth : veuillez ajouter "startbill.ca" et "www.startbill.ca" dans la console Firebase (Authentication > Paramètres > Domaines autorisés).');
       } else if (err.code === 'auth/operation-not-allowed') {
         setErrorMessage('L’authentification Google n’est pas activée dans votre console Firebase Authentication (onglet Fournisseurs de connexion).');
       } else {
@@ -327,9 +328,22 @@ export default function LoginPage({
 
             {/* Error Message */}
             {errorMessage && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" strokeWidth={1.75} />
-                <span>{errorMessage}</span>
+              <div className="mb-4 p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" strokeWidth={1.75} />
+                <div className="flex-1 space-y-2">
+                  <div className="leading-relaxed font-medium">{errorMessage}</div>
+                  {errorMessage.includes('Domaines autorisés') && (
+                    <a
+                      href="https://console.firebase.google.com/project/startbill-dev/authentication/settings"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition shadow-sm"
+                    >
+                      <span>Ouvrir la Console Firebase &gt; Domaines autorisés</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 

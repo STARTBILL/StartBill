@@ -233,11 +233,38 @@
         "name": { "type": "string" },
         "currency": { "type": "string" },
         "currencySymbol": { "type": "string" },
+        "domain": { "type": "string" },
+        "appUrl": { "type": "string" },
+        "website": { "type": "string" },
         "defaultGst": { "type": "number" },
         "defaultPst": { "type": "number" },
         "defaultQst": { "type": "number" }
       },
       "required": ["id", "name", "currency"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global application configuration including domain and host settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "primaryDomain": { "type": "string" },
+        "canonicalUrl": { "type": "string" },
+        "hostingerStatus": { "type": "string" },
+        "dnsProvider": { "type": "string" },
+        "allowedOrigins": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "authDomain": { "type": "string" },
+        "firebaseAuthAuthorizedDomains": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "supportEmail": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["primaryDomain", "canonicalUrl"]
     },
     "Business": {
       "title": "Business",
@@ -247,6 +274,7 @@
         "id": { "type": "string" },
         "ownerRef": { "type": "string" },
         "businessName": { "type": "string" },
+        "website": { "type": "string" },
         "countryCode": { "type": "string", "enum": ["CA", "FR", "HT"] },
         "region": { "type": "string", "enum": ["canada", "afrique", "haiti"] },
         "currency": { "type": "string", "enum": ["CAD", "FCFA", "HTG", "USD"] },
@@ -265,6 +293,10 @@
     "/businesses/{businessId}": {
       "schema": "Business",
       "description": "Businesses collection with balance sheet metrics"
+    },
+    "/system_config/{configId}": {
+      "schema": "SystemConfig",
+      "description": "Global system configurations and domain mapping"
     },
     "/users/{userId}": {
       "schema": "User",
