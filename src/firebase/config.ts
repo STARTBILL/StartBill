@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import appletConfig from '../../firebase-applet-config.json';
@@ -37,9 +37,23 @@ export const firebaseConfig = {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Configure local persistence so sessions persist reliably across page loads and redirects
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn('[Firebase Auth] Persistence set notice:', err);
+  });
+}
+
 export const db = getFirestore(app, appletConfig.firestoreDatabaseId || 'ai-studio-startbillcanada-524eafad-0649-45be-b2ab-addae2c302f0');
 export const storage = getStorage(app);
+
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
+googleProvider.addScope('openid');
+googleProvider.setCustomParameters({ 
+  prompt: 'select_account'
+});
 
 export default app;

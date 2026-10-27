@@ -4,6 +4,8 @@ import {
   User as FirebaseUser, 
   signOut,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile
@@ -45,7 +47,7 @@ interface AuthContextType {
       region?: string;
     }
   ) => Promise<UserProfile>;
-  loginWithGoogle: () => Promise<UserProfile>;
+  loginWithGoogle: (forceRedirect?: boolean) => Promise<UserProfile>;
   updateUserPlan: (newPlan: UserPlan) => Promise<void>;
   signOutUser: () => Promise<void>;
   canAccess: (feature: FeatureKey, requiredPlan?: UserPlan) => boolean;
@@ -60,7 +62,7 @@ const AuthContext = createContext<AuthContextType>({
   isSuperAdmin: false,
   loginWithEmail: async () => { throw new Error('Not initialized'); },
   registerWithEmail: async () => { throw new Error('Not initialized'); },
-  loginWithGoogle: async () => { throw new Error('Not initialized'); },
+  loginWithGoogle: async (_forceRedirect?: boolean) => { throw new Error('Not initialized'); },
   updateUserPlan: async () => {},
   signOutUser: async () => {},
   canAccess: () => true,
@@ -73,6 +75,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
+
+    // Check if user was redirected back from Google OAuth
+    getRedirectResult(auth).then(async (cred) => {
+      if (cred && cred.user) {
+        console.log('[Auth] Google OAuth redirect resolved successfully for:', cred.user.email);
+        await syncGoogleUserProfile(cred.user);
+      }
+    }).catch((redirectErr: any) => {
+      if (redirectErr?.code) {
+        console.warn('[Auth] getRedirectResult notice:', redirectErr.code, redirectErr.message);
+      }
+    });
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
@@ -287,11 +301,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return newProfile;
   };
 
-  const loginWithGoogle = async (): Promise<UserProfile> => {
-    const cred = await signInWithPopup(auth, googleProvider);
-    const fbUser = cred.user;
+  const syncGoogleUserProfile = async (fbUser: FirebaseUser): Promise<UserProfile> => {
     const isSuper = isSuperAdminEmail(fbUser.email);
-
     const userDocRef = doc(db, 'users', fbUser.uid);
     let profile: UserProfile;
 
@@ -305,10 +316,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: fbUser.email,
           plan: isSuper ? 'enterprise' : ((data.plan as UserPlan) || 'free'),
           role: isSuper ? 'admin' : ((data.role as UserRole) || 'user'),
-          fullName: data.fullName || fbUser.displayName || undefined,
-          companyName: data.companyName,
+          fullName: data.fullName || fbUser.displayName || (isSuper ? 'Super Administrateur StartBill' : undefined),
+          companyName: data.companyName || (isSuper ? 'StartBill HQ' : undefined),
           phone: data.phone || fbUser.phoneNumber || undefined,
           region: data.region || 'canada',
+          isAnonymous: fbUser.isAnonymous,
           isSuperAdmin: isSuper
         };
       } else {
@@ -318,7 +330,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: fbUser.email,
           role: effectiveRole,
           plan: isSuper ? 'enterprise' : 'free',
-          fullName: fbUser.displayName || '',
+          fullName: fbUser.displayName || (isSuper ? 'Super Administrateur StartBill' : ''),
           phone: fbUser.phoneNumber || '',
           region: 'canada',
           createdAt: new Date().toISOString(),
@@ -331,9 +343,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: fbUser.email,
           plan: isSuper ? 'enterprise' : 'free',
           role: effectiveRole,
-          fullName: fbUser.displayName || undefined,
+          fullName: fbUser.displayName || (isSuper ? 'Super Administrateur StartBill' : undefined),
           phone: fbUser.phoneNumber || undefined,
           region: 'canada',
+          isAnonymous: fbUser.isAnonymous,
           isSuperAdmin: isSuper
         };
       }
@@ -344,15 +357,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: fbUser.email,
         plan: isSuper ? 'enterprise' : 'free',
         role: isSuper ? 'admin' : 'user',
-        fullName: fbUser.displayName || undefined,
+        fullName: fbUser.displayName || (isSuper ? 'Super Administrateur StartBill' : undefined),
         phone: fbUser.phoneNumber || undefined,
         region: 'canada',
+        isAnonymous: fbUser.isAnonymous,
         isSuperAdmin: isSuper
       };
     }
 
     setUser(profile);
     return profile;
+  };
+
+  const loginWithGoogle = async (forceRedirect: boolean = false): Promise<UserProfile> => {
+    const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+
+    if (forceRedirect && !isInIframe) {
+      await signInWithRedirect(auth, googleProvider);
+      return new Promise<UserProfile>(() => {});
+    }
+
+    try {
+      const cred = await signInWithPopup(auth, googleProvider);
+      return await syncGoogleUserProfile(cred.user);
+    } catch (popupErr: any) {
+      // In top-level tabs, if popup is blocked by the browser, fallback seamlessly to redirect
+      if (
+        (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/cancelled-popup-request') &&
+        !isInIframe
+      ) {
+        console.warn("[Auth] Popup blocked or cancelled outside iframe, falling back to signInWithRedirect...");
+        await signInWithRedirect(auth, googleProvider);
+        return new Promise<UserProfile>(() => {});
+      }
+      throw popupErr;
+    }
   };
 
   const updateUserPlan = async (newPlan: UserPlan) => {

@@ -15,7 +15,10 @@ import {
   Building2,
   Zap,
   Globe,
-  ExternalLink
+  ExternalLink,
+  Copy,
+  Info,
+  HelpCircle
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { useRegional } from '../context/RegionalContext';
@@ -75,7 +78,38 @@ export default function LoginPage({
   const [termsAccepted, setTermsAccepted] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [googleAuthErrorDetails, setGoogleAuthErrorDetails] = useState<{
+    code?: string;
+    message?: string;
+    hostname?: string;
+    type?: 'unauthorized-domain' | 'operation-not-allowed' | 'popup-blocked' | 'other';
+  } | null>(null);
+  const [showGoogleGuide, setShowGoogleGuide] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState<string | null>(null);
+
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'startbill.ca';
+
+  const handleCopyDomain = (dom: string) => {
+    navigator.clipboard.writeText(dom);
+    setCopiedDomain(dom);
+    triggerToast(`Domaine "${dom}" copié dans le presse-papier !`);
+    setTimeout(() => setCopiedDomain(null), 2500);
+  };
+
+  // Auto-trigger Google Auth if returning or requested via query parameter ?auth=google
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && !isAlreadyLoggedIn) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('auth') === 'google' || params.get('action') === 'google-login') {
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        handleSocialGoogle(false);
+      }
+    }
+  }, [isAlreadyLoggedIn]);
 
   const regionDemonym = 
     activeRegion === 'canada' ? 'canadiens' :
@@ -89,11 +123,14 @@ export default function LoginPage({
   const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
   const passwordCriteriaCount = [hasMinLength, hasUpperCase, hasLowerCase, hasNumber, hasSpecialChar].filter(Boolean).length;
 
-  const handleSocialGoogle = async () => {
-    setIsLoading(true);
+  const handleSocialGoogle = async (forceRedirect: boolean = false) => {
+    setIsGoogleLoading(true);
     setErrorMessage('');
+    setGoogleAuthErrorDetails(null);
+    const host = typeof window !== 'undefined' ? window.location.hostname : 'startbill.ca';
+
     try {
-      const profile = await loginWithGoogle();
+      const profile = await loginWithGoogle(forceRedirect);
       if (profile?.isSuperAdmin) {
         triggerToast('Connexion Super Administrateur confirmée !');
         setScreen('admin');
@@ -103,21 +140,29 @@ export default function LoginPage({
       }
     } catch (err: any) {
       console.error('Google auth error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setErrorMessage('La fenêtre de connexion Google a été fermée avant la fin de l’authentification.');
-      } else if (err.code === 'auth/popup-blocked') {
-        setErrorMessage('La fenêtre contextuelle a été bloquée. Veuillez autoriser les popups dans votre navigateur.');
-      } else if (err.code === 'auth/cancelled-popup-request') {
+      const code = err.code || '';
+
+      if (code === 'auth/popup-closed-by-user') {
+        setErrorMessage('La fenêtre de connexion Google a été fermée avant la finalisation.');
+        setGoogleAuthErrorDetails({ code, message: err.message, hostname: host, type: 'other' });
+      } else if (code === 'auth/popup-blocked') {
+        setErrorMessage('La fenêtre contextuelle Google a été bloquée par le navigateur.');
+        setGoogleAuthErrorDetails({ code, message: err.message, hostname: host, type: 'popup-blocked' });
+      } else if (code === 'auth/cancelled-popup-request') {
         setErrorMessage('Une seule demande de connexion Google à la fois est autorisée.');
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setErrorMessage('Domaine non autorisé dans Firebase Auth : veuillez ajouter "startbill.ca" et "www.startbill.ca" dans la console Firebase (Authentication > Paramètres > Domaines autorisés).');
-      } else if (err.code === 'auth/operation-not-allowed') {
-        setErrorMessage('L’authentification Google n’est pas activée dans votre console Firebase Authentication (onglet Fournisseurs de connexion).');
+        setGoogleAuthErrorDetails({ code, message: err.message, hostname: host, type: 'other' });
+      } else if (code === 'auth/unauthorized-domain') {
+        setErrorMessage(`Domaine non autorisé dans Firebase : "${host}" doit être ajouté dans la console Firebase.`);
+        setGoogleAuthErrorDetails({ code, message: err.message, hostname: host, type: 'unauthorized-domain' });
+      } else if (code === 'auth/operation-not-allowed') {
+        setErrorMessage('Le fournisseur de connexion Google n’est pas activé dans votre console Firebase (startbill-dev).');
+        setGoogleAuthErrorDetails({ code, message: err.message, hostname: host, type: 'operation-not-allowed' });
       } else {
         setErrorMessage(err.message || 'Échec de connexion avec Google. Veuillez réessayer.');
+        setGoogleAuthErrorDetails({ code, message: err.message, hostname: host, type: 'other' });
       }
     } finally {
-      setIsLoading(false);
+      setIsGoogleLoading(false);
     }
   };
 
@@ -720,21 +765,223 @@ export default function LoginPage({
               </span>
             </div>
 
-            {/* Google Login */}
-            <button
-              type="button"
-              onClick={handleSocialGoogle}
-              disabled={isLoading}
-              className="w-full h-11 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center gap-2 text-xs font-bold text-slate-700 shadow-2xs transition active:scale-95 cursor-pointer"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"/>
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.14C3.27 21.37 7.34 24 12 24z"/>
-                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.59H1.25C.46 8.16 0 9.94 0 12s.46 3.84 1.25 5.41l4.03-3.14z"/>
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.63 1.25 6.59l4.03 3.14c.95-2.83 3.6-4.98 6.72-4.98z"/>
-              </svg>
-              <span>Continuer avec Google</span>
-            </button>
+            {/* Google Login Section */}
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => handleSocialGoogle(false)}
+                disabled={isGoogleLoading || isLoading}
+                className="w-full h-11 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center gap-2.5 text-xs font-bold text-slate-800 shadow-2xs transition active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isGoogleLoading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+                    <span>Connexion Google en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.14C3.27 21.37 7.34 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.59H1.25C.46 8.16 0 9.94 0 12s.46 3.84 1.25 5.41l4.03-3.14z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.63 1.25 6.59l4.03 3.14c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                    </svg>
+                    <span>Continuer avec Google</span>
+                  </>
+                )}
+              </button>
+
+              {/* Iframe detection notice */}
+              {isInIframe && (
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-slate-600">
+                    <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Mode prévisualisation iframe</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => window.open(window.location.origin + window.location.pathname + '?auth=google', '_blank')}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-blue-600 font-bold rounded-lg text-[10px] transition cursor-pointer shadow-2xs"
+                  >
+                    <span>Ouvrir dans un nouvel onglet</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Specific Google Error Resolution Box */}
+              {googleAuthErrorDetails && (
+                <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-2xl text-xs space-y-2.5 text-slate-800 animate-in fade-in">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-bold text-amber-950">
+                        {googleAuthErrorDetails.type === 'unauthorized-domain' && 'Configuration requise : Domaine non autorisé dans Firebase'}
+                        {googleAuthErrorDetails.type === 'operation-not-allowed' && 'Configuration requise : Fournisseur Google non activé'}
+                        {googleAuthErrorDetails.type === 'popup-blocked' && 'Fenêtre popup bloquée par le navigateur'}
+                        {googleAuthErrorDetails.type === 'other' && `Information d'authentification Google (${googleAuthErrorDetails.code || 'Erreur'})`}
+                      </div>
+                      <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                        {googleAuthErrorDetails.type === 'unauthorized-domain' &&
+                          `Votre domaine "${googleAuthErrorDetails.hostname}" doit être ajouté dans les Domaines autorisés de la console Firebase (projet "startbill-dev").`}
+                        {googleAuthErrorDetails.type === 'operation-not-allowed' &&
+                          'Le fournisseur Google doit être activé avec une adresse email d\'assistance dans la console Firebase.'}
+                        {googleAuthErrorDetails.type === 'popup-blocked' &&
+                          'La popup a été bloquée. Vous pouvez ouvrir l\'application directement dans un nouvel onglet ou tenter la redirection.'}
+                        {googleAuthErrorDetails.type === 'other' &&
+                          (googleAuthErrorDetails.message || 'Vérifiez la configuration Google de votre console Firebase.')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Actions for unauthorized-domain */}
+                  {googleAuthErrorDetails.type === 'unauthorized-domain' && (
+                    <div className="space-y-2 pt-1">
+                      <div className="text-[11px] font-semibold text-slate-700">
+                        Domaines à ajouter dans Firebase Console &gt; Authentication &gt; Paramètres &gt; Domaines autorisés :
+                      </div>
+                      <div className="space-y-1">
+                        {[
+                          'startbill.ca',
+                          'www.startbill.ca',
+                          currentHost,
+                          'localhost'
+                        ].filter((v, i, a) => a.indexOf(v) === i).map((dom) => (
+                          <div key={dom} className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-amber-200 text-[11px] font-mono">
+                            <span className="truncate mr-2">{dom}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyDomain(dom)}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 transition cursor-pointer shrink-0"
+                            >
+                              {copiedDomain === dom ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedDomain === dom ? 'Copié' : 'Copier'}</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="pt-1 flex flex-wrap gap-2">
+                        <a
+                          href="https://console.firebase.google.com/project/startbill-dev/authentication/settings"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-[11px] transition shadow-xs"
+                        >
+                          <span>Ouvrir Console Firebase (Domaines autorisés)</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions for operation-not-allowed */}
+                  {googleAuthErrorDetails.type === 'operation-not-allowed' && (
+                    <div className="space-y-2 pt-1">
+                      <ol className="text-[11px] text-slate-700 list-decimal list-inside space-y-1">
+                        <li>Cliquez sur le lien ci-dessous pour ouvrir Firebase Console.</li>
+                        <li>Dans <strong>Fournisseurs de connexion</strong>, cliquez sur <strong>Google</strong>.</li>
+                        <li>Basculez sur <strong>Activer</strong>, indiquez l'e-mail de support (contact.startbill@gmail.com) et enregistrez.</li>
+                      </ol>
+                      <a
+                        href="https://console.firebase.google.com/project/startbill-dev/authentication/providers"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-[11px] transition shadow-xs"
+                      >
+                        <span>Ouvrir Console Firebase (Activer Google)</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Actions for popup-blocked */}
+                  {googleAuthErrorDetails.type === 'popup-blocked' && (
+                    <div className="pt-1 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => window.open(window.location.origin + window.location.pathname + '?auth=google', '_blank')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-[11px] transition shadow-xs cursor-pointer"
+                      >
+                        <span>Ouvrir dans un nouvel onglet</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSocialGoogle(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-[11px] transition cursor-pointer"
+                      >
+                        <span>Tenter la redirection plein écran</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Expandable Configuration Guide Toggle */}
+              <div className="pt-1 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleGuide(!showGoogleGuide)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-blue-600 transition cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>{showGoogleGuide ? 'Masquer le guide de configuration Google' : 'Besoin d’aide pour configurer la connexion Google ?'}</span>
+                </button>
+              </div>
+
+              {/* Guide Accordion */}
+              {showGoogleGuide && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-3 animate-in fade-in">
+                  <div className="font-bold text-slate-900 flex items-center justify-between">
+                    <span>Guide de Configuration Firebase Google Auth</span>
+                    <span className="text-[10px] font-mono text-slate-500">startbill-dev</span>
+                  </div>
+
+                  <div className="space-y-2 text-[11px] text-slate-600 leading-relaxed">
+                    <div className="p-2 bg-white rounded-lg border border-slate-200">
+                      <div className="font-bold text-slate-800 mb-1">Étape 1 : Activer Google dans Firebase</div>
+                      <p>Rendez-vous dans la console Firebase &gt; <strong>Authentication</strong> &gt; <strong>Sign-in method</strong>, activez <strong>Google</strong> et sélectionnez l'e-mail de support.</p>
+                      <a
+                        href="https://console.firebase.google.com/project/startbill-dev/authentication/providers"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 font-bold hover:underline mt-1"
+                      >
+                        <span>Aller aux Fournisseurs Firebase</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+
+                    <div className="p-2 bg-white rounded-lg border border-slate-200">
+                      <div className="font-bold text-slate-800 mb-1">Étape 2 : Domaines Autorisés</div>
+                      <p>Dans <strong>Authentication</strong> &gt; <strong>Settings</strong> &gt; <strong>Authorized domains</strong>, ajoutez :</p>
+                      <ul className="list-disc list-inside mt-1 font-mono text-[10px] space-y-0.5 text-slate-700">
+                        <li>startbill.ca</li>
+                        <li>www.startbill.ca</li>
+                        <li>{currentHost}</li>
+                        <li>localhost</li>
+                      </ul>
+                      <a
+                        href="https://console.firebase.google.com/project/startbill-dev/authentication/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 font-bold hover:underline mt-1"
+                      >
+                        <span>Aller aux Paramètres Firebase</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+
+                    <div className="p-2 bg-white rounded-lg border border-slate-200 text-[10px] font-mono text-slate-600">
+                      <div>OAuth Client ID: <span className="font-semibold text-slate-800">544242389255-60u258g4fu5tqajs5ctu96m2013sck4u.apps.googleusercontent.com</span></div>
+                      <div>Auth Domain: <span className="font-semibold text-slate-800">startbill-dev.firebaseapp.com</span></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Quick Demo Pre-fill Bar */}
             <div className="mt-5 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-center gap-2">
