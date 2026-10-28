@@ -25,7 +25,10 @@ import {
   generateSmartAlerts, 
   getAlertsFromFirestore, 
   markAlertAsReadInFirestore, 
-  deleteAlertFromFirestore 
+  deleteAlertFromFirestore,
+  deleteAllAlertsFromFirestore,
+  getDismissedAlertIds,
+  getReadAlertIds
 } from '../lib/alerts';
 
 interface NotificationsPageProps {
@@ -61,53 +64,90 @@ export default function NotificationsPage({
   dbInvoices = [],
   isPro = false
 }: NotificationsPageProps) {
+  const currentUserId = currentUser?.uid || 'user-default';
+
+  // Persistent dismissed notification IDs set initialized from localStorage & user profile
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    const set = getDismissedAlertIds(currentUserId);
+    if (currentUser?.dismissedNotificationIds && Array.isArray(currentUser.dismissedNotificationIds)) {
+      currentUser.dismissedNotificationIds.forEach((id: string) => set.add(id));
+    }
+    return set;
+  });
+
+  // Synchronize with currentUser Firestore profile updates
+  useEffect(() => {
+    if (currentUser?.dismissedNotificationIds && Array.isArray(currentUser.dismissedNotificationIds)) {
+      setDismissedIds(prev => {
+        let changed = false;
+        const next = new Set(prev);
+        currentUser.dismissedNotificationIds.forEach((id: string) => {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [currentUser?.dismissedNotificationIds]);
+
   // Generate live smart alerts based on Canadian tax rules
   const liveSmartAlerts = generateSmartAlerts(
-    currentUser?.uid || 'user-default',
+    currentUserId,
     totalRevenue,
     totalTax,
     dbInvoices,
     isPro
   );
 
-  const smartNotifs: NotificationItem[] = liveSmartAlerts.map(a => ({
-    id: a.id,
-    title: a.title,
-    message: a.message,
-    timestamp: a.id.includes('inv') ? 'Facturation' : 'Alertes fiscales',
-    category: a.id.includes('inv') || a.type === 'invoice_overdue' ? 'invoice' : 'alert',
-    severity: a.severity,
-    alertType: a.type,
-    isRead: a.isRead,
-    actionUrl: a.actionUrl,
-    actionLabel: a.actionLabel,
-    targetId: a.targetId
-  }));
+  const smartNotifs: NotificationItem[] = liveSmartAlerts
+    .filter(a => !dismissedIds.has(a.id))
+    .map(a => ({
+      id: a.id,
+      title: a.title,
+      message: a.message,
+      timestamp: a.id.includes('inv') ? 'Facturation' : 'Alertes fiscales',
+      category: a.id.includes('inv') || a.type === 'invoice_overdue' ? 'invoice' : 'alert',
+      severity: a.severity,
+      alertType: a.type,
+      isRead: getReadAlertIds(currentUserId).has(a.id) || a.isRead,
+      actionUrl: a.actionUrl,
+      actionLabel: a.actionLabel,
+      targetId: a.targetId
+    }));
 
-  // Direct notifications for all invoices in dbInvoices
-  const invoiceNotifs: NotificationItem[] = (dbInvoices || []).map((inv: any, idx: number) => {
-    const invId = inv.id || `FACT-2026-0${idx + 1}`;
-    const invTotal = (inv.total || inv.subtotal || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 });
-    return {
-      id: `notif-created-${invId}`,
-      title: `Facture #${invId} émise`,
-      message: `Facture pour ${inv.clientName || 'Client'} d'un montant de ${invTotal} $. Statut : ${inv.status || 'Émise'}.`,
-      timestamp: inv.date || 'Récemment',
-      category: 'invoice',
-      severity: inv.status === 'Payée' ? 'success' : 'info',
-      alertType: 'general',
-      isRead: false,
-      actionUrl: 'invoices',
-      actionLabel: 'Consulter la facture',
-      targetId: inv.id
-    };
-  });
+  // Direct notifications for all invoices in dbInvoices (exclude any dismissed)
+  const invoiceNotifs: NotificationItem[] = (dbInvoices || [])
+    .map((inv: any, idx: number) => {
+      const invId = inv.id || `FACT-2026-0${idx + 1}`;
+      const notifId = `notif-created-${invId}`;
+      const invTotal = (inv.total || inv.subtotal || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 });
+      return {
+        id: notifId,
+        title: `Facture #${invId} émise`,
+        message: `Facture pour ${inv.clientName || 'Client'} d'un montant de ${invTotal} $. Statut : ${inv.status || 'Émise'}.`,
+        timestamp: inv.date || 'Récemment',
+        category: 'invoice' as const,
+        severity: (inv.status === 'Payée' || inv.status === 'paid') ? ('success' as const) : ('info' as const),
+        alertType: 'general' as const,
+        isRead: getReadAlertIds(currentUserId).has(notifId),
+        actionUrl: 'invoices' as ScreenId,
+        actionLabel: 'Consulter la facture',
+        targetId: inv.id
+      };
+    })
+    .filter(n => !dismissedIds.has(n.id));
+
+  const initialNotifs = INITIAL_NOTIFICATIONS.filter(n => !dismissedIds.has(n.id));
 
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    const combined = [...smartNotifs, ...invoiceNotifs, ...INITIAL_NOTIFICATIONS];
+    const combined = [...smartNotifs, ...invoiceNotifs, ...initialNotifs];
     const uniqueMap = new Map<string, NotificationItem>();
     combined.forEach(n => {
-      if (!uniqueMap.has(n.id)) uniqueMap.set(n.id, n);
+      if (!uniqueMap.has(n.id) && !dismissedIds.has(n.id)) {
+        uniqueMap.set(n.id, n);
+      }
     });
     return Array.from(uniqueMap.values());
   });
@@ -115,14 +155,20 @@ export default function NotificationsPage({
   useEffect(() => {
     setNotifications(prev => {
       const existingNotifIds = new Set(prev.map(n => n.id));
-      const combined = [...smartNotifs, ...invoiceNotifs];
-      const newItems = combined.filter(sn => !existingNotifIds.has(sn.id));
+      const combined = [...smartNotifs, ...invoiceNotifs, ...initialNotifs];
+      // Filter out items already in prev OR dismissed
+      const newItems = combined.filter(sn => !existingNotifIds.has(sn.id) && !dismissedIds.has(sn.id));
+      // Also filter out any items from prev that became dismissed
+      const remainingPrev = prev.filter(n => !dismissedIds.has(n.id));
       if (newItems.length > 0) {
-        return [...newItems, ...prev];
+        return [...newItems, ...remainingPrev];
+      }
+      if (remainingPrev.length !== prev.length) {
+        return remainingPrev;
       }
       return prev;
     });
-  }, [totalRevenue, totalTax, dbInvoices, isPro]);
+  }, [totalRevenue, totalTax, dbInvoices, isPro, dismissedIds]);
 
   const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'danger' | 'warning' | 'invoice' | 'tax'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,24 +177,55 @@ export default function NotificationsPage({
 
   const handleMarkAllAsRead = () => {
     setNotifications(prev => prev.map(n => {
-      markAlertAsReadInFirestore(n.id, true);
+      markAlertAsReadInFirestore(n.id, true, currentUserId);
       return { ...n, isRead: true };
     }));
     triggerToast('Toutes les notifications et alertes ont été marquées comme lues.');
   };
 
   const handleClearRead = () => {
-    const readIds = notifications.filter(n => n.isRead).map(n => n.id);
-    readIds.forEach(id => deleteAlertFromFirestore(id));
+    const readItems = notifications.filter(n => n.isRead);
+    if (readItems.length === 0) {
+      triggerToast('Aucune notification lue à supprimer.');
+      return;
+    }
+    const readIds = readItems.map(n => n.id);
+
+    // 1. Add all read IDs to dismissedIds set immediately
+    setDismissedIds(prev => {
+      const next = new Set(prev);
+      readIds.forEach(id => next.add(id));
+      return next;
+    });
+
+    // 2. Persist deletion (localStorage + Firestore)
+    deleteAllAlertsFromFirestore(readIds, currentUserId);
+
+    // 3. Remove from local view
     setNotifications(prev => prev.filter(n => !n.isRead));
-    triggerToast('Les notifications lues ont été supprimées.');
+    triggerToast(`${readIds.length} notification${readIds.length > 1 ? 's' : ''} lue${readIds.length > 1 ? 's' : ''} supprimée${readIds.length > 1 ? 's' : ''} définitivement.`);
+  };
+
+  const handleClearAll = () => {
+    if (notifications.length === 0) return;
+    const allIds = notifications.map(n => n.id);
+
+    setDismissedIds(prev => {
+      const next = new Set(prev);
+      allIds.forEach(id => next.add(id));
+      return next;
+    });
+
+    deleteAllAlertsFromFirestore(allIds, currentUserId);
+    setNotifications([]);
+    triggerToast('Toutes les notifications ont été supprimées définitivement.');
   };
 
   const toggleReadStatus = (id: string) => {
     setNotifications(prev => prev.map(n => {
       if (n.id === id) {
         const nextIsRead = !n.isRead;
-        markAlertAsReadInFirestore(id, nextIsRead);
+        markAlertAsReadInFirestore(id, nextIsRead, currentUserId);
         return { ...n, isRead: nextIsRead };
       }
       return n;
@@ -157,9 +234,20 @@ export default function NotificationsPage({
 
   const handleDeleteNotif = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    deleteAlertFromFirestore(id);
+
+    // 1. Add to dismissedIds set immediately so it can never be regenerated
+    setDismissedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+
+    // 2. Persist deletion in alerts library (localStorage + Firestore user profile)
+    deleteAlertFromFirestore(id, currentUserId);
+
+    // 3. Remove from notifications list immediately
     setNotifications(prev => prev.filter(n => n.id !== id));
-    triggerToast('Notification supprimée.');
+    triggerToast('Notification supprimée définitivement.');
   };
 
   const filteredNotifications = notifications.filter(n => {
@@ -267,7 +355,7 @@ export default function NotificationsPage({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={handleMarkAllAsRead}
             disabled={unreadCount === 0}
@@ -279,10 +367,22 @@ export default function NotificationsPage({
           
           <button
             onClick={handleClearRead}
-            className="flex items-center gap-1.5 bg-white hover:bg-red-50 text-slate-700 hover:text-red-600 text-xs font-bold py-2 px-3 rounded-xl border border-slate-200 hover:border-red-200 transition shadow-2xs cursor-pointer"
+            disabled={notifications.filter(n => n.isRead).length === 0}
+            className="flex items-center gap-1.5 bg-white hover:bg-red-50 disabled:opacity-40 text-slate-700 hover:text-red-600 text-xs font-bold py-2 px-3 rounded-xl border border-slate-200 hover:border-red-200 transition shadow-2xs cursor-pointer"
+            title="Supprimer définitivement toutes les notifications déjà lues"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Effacer les lues</span>
+          </button>
+
+          <button
+            onClick={handleClearAll}
+            disabled={notifications.length === 0}
+            className="flex items-center gap-1.5 bg-white hover:bg-red-50 disabled:opacity-40 text-slate-500 hover:text-red-700 text-xs font-bold py-2 px-3 rounded-xl border border-slate-200 hover:border-red-200 transition shadow-2xs cursor-pointer"
+            title="Supprimer définitivement toutes les notifications"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+            <span className="hidden sm:inline text-red-600">Tout effacer</span>
           </button>
         </div>
       </div>

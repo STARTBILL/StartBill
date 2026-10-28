@@ -26,6 +26,8 @@ export interface UserProfile {
   region?: 'canada' | 'afrique' | 'haiti';
   isAnonymous?: boolean;
   isSuperAdmin?: boolean;
+  dismissedNotificationIds?: string[];
+  readNotificationIds?: string[];
   createdAt?: string;
 }
 
@@ -113,7 +115,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phone: data.phone || fbUser.phoneNumber || undefined,
               region: data.region || 'canada',
               isAnonymous: fbUser.isAnonymous,
-              isSuperAdmin: isSuper
+              isSuperAdmin: isSuper,
+              dismissedNotificationIds: Array.isArray(data.dismissedNotificationIds) ? data.dismissedNotificationIds : [],
+              readNotificationIds: Array.isArray(data.readNotificationIds) ? data.readNotificationIds : []
             });
           } else {
             // Default user profile if document doesn't exist yet

@@ -66,6 +66,10 @@ export interface SettingsPageProps {
   expenses?: Expense[];
   clients?: Client[];
   products?: ProductItem[];
+  onLockSession?: () => void;
+  activeCompany?: any;
+  onSelectCompany?: (comp: any) => void;
+  companies?: any[];
 }
 
 type SettingsTab = 'general' | 'taxes' | 'invoicing' | 'payments' | 'tax_prep' | 'subscription' | 'security';
@@ -95,7 +99,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   invoices = [],
   expenses = [],
   clients = [],
-  products = []
+  products = [],
+  onLockSession,
+  activeCompany,
+  onSelectCompany,
+  companies = []
 }) => {
   const { regionalSettings } = useRegionalContext();
   const { user: authUser } = useAuth();
@@ -132,7 +140,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     getStripeConfig().then(cfg => setStripeConfig(cfg)).catch(() => {});
   }, []);
 
-  // Save all custom settings to localStorage
+  // Synchronize company input values when activeCompany changes
+  useEffect(() => {
+    if (activeCompany) {
+      if (activeCompany.companyName !== undefined) setCompanyName(activeCompany.companyName);
+      if (activeCompany.ownerName !== undefined) setCompanyOwner(activeCompany.ownerName);
+      if (activeCompany.companyNE !== undefined || activeCompany.taxId2 !== undefined) {
+        setCompanyNE(activeCompany.companyNE || activeCompany.taxId2 || '');
+      }
+      if (activeCompany.address !== undefined) setCompanyAddress(activeCompany.address);
+      if (activeCompany.phone !== undefined) setCompanyPhone(activeCompany.phone);
+      if (activeCompany.logoUrl !== undefined) setCompanyLogo(activeCompany.logoUrl);
+      if (activeCompany.companySignature !== undefined) setCompanySignature(activeCompany.companySignature);
+      if (activeCompany.email) setCompanyEmail(activeCompany.email);
+      if (activeCompany.taxId1) setTpsNumber(activeCompany.taxId1);
+      if (activeCompany.taxId2) setTvqNumber(activeCompany.taxId2);
+    }
+  }, [activeCompany?.id, activeCompany?.companyName]);
+
+  // Save all custom settings to localStorage and update active company
   const handleSaveSettings = () => {
     localStorage.setItem('company_name', companyName);
     localStorage.setItem('company_owner', companyOwner);
@@ -157,8 +183,41 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     localStorage.setItem('sb_tax_tvq', tvqNumber);
     localStorage.setItem('sb_tax_small_supplier', String(isSmallSupplierExempt));
 
+    const updatedCompany = {
+      ...(activeCompany || {}),
+      id: activeCompany?.id || `comp_${Date.now()}`,
+      companyName,
+      ownerName: companyOwner,
+      companyNE,
+      taxId2: companyNE,
+      address: companyAddress,
+      phone: companyPhone,
+      logoUrl: companyLogo,
+      companySignature,
+      email: companyEmail,
+      website: companyWebsite,
+      taxId1: tpsNumber,
+      region: currentRegion
+    };
+
+    try {
+      localStorage.setItem('startbill_active_company', JSON.stringify(updatedCompany));
+      const storageKey = `startbill_companies_${currentRegion}`;
+      const saved = localStorage.getItem(storageKey);
+      let list = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(list) && list.length > 0) {
+        list = list.map((c: any) => (c.id === updatedCompany.id || c.companyName === updatedCompany.companyName) ? updatedCompany : c);
+      } else {
+        list = [updatedCompany];
+      }
+      localStorage.setItem(storageKey, JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: updatedCompany }));
+    } catch (e) {
+      console.warn('Error saving company update:', e);
+    }
+
     setHasSaved(true);
-    triggerToast('Paramètres de l\'entreprise enregistrés avec succès !');
+    triggerToast(`Paramètres de "${companyName}" enregistrés avec succès !`);
     setTimeout(() => setHasSaved(false), 2500);
   };
 
@@ -319,7 +378,45 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       {/* 3. TAB 1: PROFIL & IDENTITÉ LÉGALE                                        */}
       {/* ========================================================================= */}
       {activeTab === 'general' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="space-y-5">
+          {/* Multi-Company Selector in Settings */}
+          {companies && companies.length > 0 && onSelectCompany && (
+            <div className="bg-white border border-blue-200/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Entreprise active sélectionnée</span>
+                  <span className="text-sm font-black text-slate-900">{companyName || activeCompany?.companyName}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto py-1">
+                <span className="text-[11px] font-bold text-slate-500 mr-1 hidden sm:inline">Changer d'entreprise :</span>
+                {companies.map((c: any) => {
+                  const isSel = c.id === activeCompany?.id || c.companyName === companyName;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => onSelectCompany(c)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        isSel
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      <span>{c.companyName}</span>
+                      {isSel && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Main Business Details Form */}
           <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
@@ -548,6 +645,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           </div>
         </div>
+      </div>
       )}
 
       {/* ========================================================================= */}
@@ -1198,6 +1296,71 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
                 <div className="text-[10px] text-indigo-700 mt-1">Rôle : Propriétaire du compte</div>
               </div>
+            </div>
+          </div>
+
+          {/* Auto-Lock Inactivity Security Card */}
+          <div className="bg-white border border-amber-200/80 rounded-2xl p-5 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-300 flex items-center justify-center text-amber-700">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-slate-900 tracking-tight">
+                    Verrouillage automatique après inactivité
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    Protège vos factures et données fiscales si vous laissez votre écran sans surveillance.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>Actif • 1 minute</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Délai d'inactivité</span>
+                <div className="text-sm font-black text-slate-800">60 secondes (1 min)</div>
+                <p className="text-[10px] text-slate-500">Compte à rebours réinitialisé à chaque frappe ou clic.</p>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Événements surveillés</span>
+                <div className="text-sm font-black text-slate-800">Souris, Clavier & Tactile</div>
+                <p className="text-[10px] text-slate-500">Détection continue sur l'ensemble de l'application.</p>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Persistance sécurisée</span>
+                <div className="text-sm font-black text-slate-800">Verrouillage persistant</div>
+                <p className="text-[10px] text-slate-500">L'actualisation du navigateur ne contourne pas le verrou.</p>
+              </div>
+            </div>
+
+            <div className="pt-1 flex items-center justify-between gap-3">
+              <p className="text-xs text-slate-500">
+                Vous quittez votre poste ? Verrouillez instantanément votre espace de travail.
+              </p>
+              {onLockSession && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLockSession();
+                    triggerToast('Session verrouillée pour sécurité');
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Verrouiller maintenant</span>
+                </button>
+              )}
             </div>
           </div>
 

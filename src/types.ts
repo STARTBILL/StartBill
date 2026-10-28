@@ -1,5 +1,27 @@
 export type InvoiceStatus = 'Brouillon' | 'Envoyée' | 'Partiellement payée' | 'Payée' | 'En retard' | 'Annulée' | 'paid' | 'partial';
 
+export interface CompanyProfile {
+  id: string;
+  companyName: string;
+  ownerName?: string;
+  legalStatus?: string;
+  industry?: string;
+  logoUrl?: string;
+  companySignature?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  taxId1?: string; // TPS (ARC)
+  taxId2?: string; // TVQ / NEQ
+  companyNE?: string;
+  defaultPaymentMethod?: string;
+  paymentTerms?: string;
+  invoiceFooterNote?: string;
+  region?: 'canada' | 'afrique' | 'haiti';
+  isDefault?: boolean;
+}
+
 export interface Invoice {
   id: string; // e.g. FACT-2026-045
   clientName: string;
@@ -25,6 +47,8 @@ export interface Invoice {
   remainingBalance?: number;
   paymentStatus?: 'paid' | 'partial';
   userId?: string;
+  companyId?: string;
+  companyName?: string;
   stripePaymentUrl?: string;
   region?: 'canada' | 'afrique' | 'haiti';
 }
@@ -57,6 +81,8 @@ export interface Expense {
   eligibleAmount?: number; // Montant admissible fiscalement
   createdAt?: string;
   userId?: string;
+  companyId?: string;
+  companyName?: string;
   region?: 'canada' | 'afrique' | 'haiti';
 }
 
@@ -84,6 +110,8 @@ export interface Client {
   totalPaid?: number;
   createdAt?: string;
   userId?: string;
+  companyId?: string;
+  companyName?: string;
   region?: 'canada' | 'afrique' | 'haiti';
 }
 
@@ -97,6 +125,8 @@ export interface ProductItem {
   taxApplicable?: boolean;
   sku?: string;
   createdAt?: string;
+  companyId?: string;
+  companyName?: string;
   region?: 'canada' | 'afrique' | 'haiti';
 }
 

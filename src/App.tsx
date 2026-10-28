@@ -3,6 +3,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { Invoice, Expense, Client, ScreenId, InvoiceStatus } from './types';
 import { INITIAL_INVOICES, INITIAL_EXPENSES, INITIAL_CLIENTS } from './data';
+import { INITIAL_COMPANY_DATA } from './data/defaultCompanies';
 import DeviceSimulator from './components/DeviceSimulator';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import {
@@ -23,12 +24,57 @@ import { AuthProvider } from './context/AuthContext';
 import { auth, db } from './firebase/config';
 
 export default function App() {
-  const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
-  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
-  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
+  const [invoices, setInvoices] = useState<Invoice[]>(() => {
+    try {
+      const saved = localStorage.getItem('startbill_invoices_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_COMPANY_DATA.invoices;
+  });
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    try {
+      const saved = localStorage.getItem('startbill_expenses_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_COMPANY_DATA.expenses;
+  });
+  const [clients, setClients] = useState<Client[]>(() => {
+    try {
+      const saved = localStorage.getItem('startbill_clients_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_COMPANY_DATA.clients;
+  });
   const [activeUserRegion, setActiveUserRegion] = useState<'canada' | 'afrique' | 'haiti'>('canada');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isDbConnected, setIsDbConnected] = useState<boolean>(true);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('startbill_invoices_cache', JSON.stringify(invoices));
+    } catch {}
+  }, [invoices]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('startbill_expenses_cache', JSON.stringify(expenses));
+    } catch {}
+  }, [expenses]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('startbill_clients_cache', JSON.stringify(clients));
+    } catch {}
+  }, [clients]);
 
   // Active Screen ID with persistence across page refresh
   const [currentScreen, setCurrentScreen] = useState<ScreenId>(() => {
@@ -156,7 +202,9 @@ export default function App() {
       remainingBalance: cleanRemaining,
       items: cleanItems.length > 0 ? cleanItems : newInv.items,
       userId: newInv.userId || uid,
-      region: activeUserRegion
+      region: activeUserRegion,
+      companyId: newInv.companyId,
+      companyName: newInv.companyName
     };
     setInvoices(prev => [scopedInv, ...prev]);
     await saveInvoiceToFirestore(scopedInv, uid, activeUserRegion);
@@ -169,7 +217,9 @@ export default function App() {
             ...cli, 
             amountDue: parseFloat(Math.max(0, (cli.amountDue || 0) + scopedInv.total).toFixed(2)), 
             userId: cli.userId || uid,
-            region: activeUserRegion
+            region: activeUserRegion,
+            companyId: cli.companyId || scopedInv.companyId,
+            companyName: cli.companyName || scopedInv.companyName
           };
           saveClientToFirestore(updated, uid, activeUserRegion);
           return updated;
@@ -193,7 +243,9 @@ export default function App() {
       tvq: cleanTvq,
       total: cleanTot,
       userId: newExp.userId || uid,
-      region: activeUserRegion
+      region: activeUserRegion,
+      companyId: newExp.companyId,
+      companyName: newExp.companyName
     };
     setExpenses(prev => [scopedExp, ...prev]);
     await saveExpenseToFirestore(scopedExp, uid, activeUserRegion);
@@ -213,7 +265,9 @@ export default function App() {
       tvq: cleanTvq,
       total: cleanTot,
       userId: updatedExp.userId || uid,
-      region: activeUserRegion
+      region: activeUserRegion,
+      companyId: updatedExp.companyId,
+      companyName: updatedExp.companyName
     };
     setExpenses(prev => prev.map(exp => exp.id === scopedExp.id ? scopedExp : exp));
     await saveExpenseToFirestore(scopedExp, uid, activeUserRegion);
@@ -225,7 +279,9 @@ export default function App() {
       ...newCli,
       amountDue: parseFloat(Math.max(0, newCli.amountDue || 0).toFixed(2)),
       userId: newCli.userId || uid,
-      region: activeUserRegion
+      region: activeUserRegion,
+      companyId: newCli.companyId,
+      companyName: newCli.companyName
     };
     setClients(prev => [...prev, scopedCli]);
     await saveClientToFirestore(scopedCli, uid, activeUserRegion);
@@ -237,7 +293,9 @@ export default function App() {
       ...updatedCli,
       amountDue: parseFloat(Math.max(0, updatedCli.amountDue || 0).toFixed(2)),
       userId: updatedCli.userId || uid,
-      region: activeUserRegion
+      region: activeUserRegion,
+      companyId: updatedCli.companyId,
+      companyName: updatedCli.companyName
     };
     setClients(prev => prev.map(c => c.id === scopedCli.id ? scopedCli : c));
     await saveClientToFirestore(scopedCli, uid, activeUserRegion);

@@ -54,7 +54,8 @@ import {
   Package,
   Bike
 } from 'lucide-react';
-import { Invoice, Expense, Client, ScreenId, InvoiceStatus, ProductItem } from '../types';
+import { Invoice, Expense, Client, ScreenId, InvoiceStatus, ProductItem, CompanyProfile } from '../types';
+import { DEFAULT_COMPANIES } from '../data/defaultCompanies';
 import DetailedAnalysisPage from './DetailedAnalysisPage';
 import FinancialAlertsPage from './FinancialAlertsPage';
 import FinancialTrendsPage from './FinancialTrendsPage';
@@ -77,6 +78,7 @@ import LandingPage from './LandingPage';
 import PricingPage from './PricingPage';
 import AdminDashboard from './AdminDashboard';
 import SettingsPage from './SettingsPage';
+import SessionLockModal from './SessionLockModal';
 import { canCreateInvoice, checkFeatureAccess } from '../lib/planAccess';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { REGIONS } from '../data/regions';
@@ -216,6 +218,13 @@ export default function DeviceSimulator({
   const [isPro, setIsPro] = useState(false);
   const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Toast notifications state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const triggerToast = React.useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  }, []);
 
   // Dynamic Payment States
   const [paymentOption, setPaymentOption] = useState<'total' | 'partial'>('total');
@@ -359,8 +368,92 @@ export default function DeviceSimulator({
   // Determine if there is an authenticated user session
   const isAuthenticated = Boolean(
     (firebaseUser && !firebaseUser.isAnonymous) || 
-    (currentUser && currentUser.email && !currentUser.isAnonymous)
+    (currentUser && currentUser.email && !currentUser.isAnonymous) ||
+    (authUser && !authUser.isAnonymous)
   );
+
+  // 1-minute inactivity timeout configuration (60,000 ms)
+  const INACTIVITY_TIMEOUT_MS = 60 * 1000;
+
+  const [isSessionLocked, setIsSessionLocked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('startbill_session_locked') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const lastActivityRef = useRef<number>(Date.now());
+
+  const handleLockSession = React.useCallback(() => {
+    setIsSessionLocked(true);
+    try {
+      localStorage.setItem('startbill_session_locked', 'true');
+    } catch {}
+  }, []);
+
+  const handleUnlockSession = React.useCallback(() => {
+    setIsSessionLocked(false);
+    try {
+      localStorage.removeItem('startbill_session_locked');
+      localStorage.setItem('startbill_last_active', String(Date.now()));
+    } catch {}
+    lastActivityRef.current = Date.now();
+    triggerToast('Session déverrouillée avec succès');
+  }, [triggerToast]);
+
+  // Inactivity tracking effect (1 minute limit)
+  useEffect(() => {
+    const isExemptScreen = currentScreen === 'landing' || currentScreen === 'login';
+
+    if (!isAuthenticated || isExemptScreen || isSessionLocked) {
+      return;
+    }
+
+    const recordActivity = () => {
+      lastActivityRef.current = Date.now();
+      try {
+        localStorage.setItem('startbill_last_active', String(Date.now()));
+      } catch {}
+    };
+
+    // User activity listeners
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, recordActivity, { passive: true });
+    });
+
+    // Interval check every second
+    const intervalTimer = setInterval(() => {
+      let lastActive = lastActivityRef.current;
+      try {
+        const stored = localStorage.getItem('startbill_last_active');
+        if (stored) {
+          const parsed = parseInt(stored, 10);
+          if (!isNaN(parsed) && parsed > lastActive) {
+            lastActive = parsed;
+            lastActivityRef.current = parsed;
+          }
+        }
+      } catch {}
+
+      if (Date.now() - lastActive >= INACTIVITY_TIMEOUT_MS) {
+        console.log('[Security] Inactivity limit reached (1 min). Locking session.');
+        handleLockSession();
+      }
+    }, 1000);
+
+    const handleCustomLockEvent = () => handleLockSession();
+    window.addEventListener('startbill-lock-session', handleCustomLockEvent);
+
+    return () => {
+      activityEvents.forEach(evt => {
+        window.removeEventListener(evt, recordActivity);
+      });
+      clearInterval(intervalTimer);
+      window.removeEventListener('startbill-lock-session', handleCustomLockEvent);
+    };
+  }, [isAuthenticated, currentScreen, isSessionLocked, handleLockSession]);
 
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -368,12 +461,16 @@ export default function DeviceSimulator({
         setCurrentUser(user);
         await fetchFirestoreData(user.uid);
       } else {
-        // User is not logged in
+        // User is not logged in - reset lock state
         setCurrentUser(null);
         setDbInvoices([]);
         setDbExpenses([]);
         setDbClients([]);
         setDbLoading(false);
+        setIsSessionLocked(false);
+        try {
+          localStorage.removeItem('startbill_session_locked');
+        } catch {}
       }
     });
     return () => unsubscribe();
@@ -492,13 +589,6 @@ export default function DeviceSimulator({
     localStorage.setItem('company_logo', companyLogo);
     localStorage.setItem('company_signature', companySignature);
   }, [companyName, companyOwner, companyNE, companyAddress, companyPhone, companyLogo, companySignature]);
-
-  // Toast notifications state
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const triggerToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
 
   // Filter helper functions
   const matchesPeriod = (dateStr: string) => {
@@ -1067,7 +1157,24 @@ export default function DeviceSimulator({
 
               <button
                 type="button"
+                onClick={() => {
+                  handleLockSession();
+                  triggerToast('Session verrouillée pour sécurité');
+                  if (onItemClick) onItemClick();
+                }}
+                className="w-full flex items-center justify-center gap-1.5 text-[10px] font-bold text-amber-700 hover:text-amber-800 bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-200 py-1.5 px-2 rounded-xl transition cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Verrouiller l'écran</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={async () => {
+                  setIsSessionLocked(false);
+                  try {
+                    localStorage.removeItem('startbill_session_locked');
+                  } catch {}
                   await signOutUser();
                   triggerToast('Vous avez été déconnecté avec succès');
                   setScreen('login');
@@ -1314,6 +1421,19 @@ export default function DeviceSimulator({
                 {unreadAlertsCount > 0 && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full"></span>
                 )}
+              </button>
+
+              {/* Manual Session Lock Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleLockSession();
+                  triggerToast('Session verrouillée pour sécurité');
+                }}
+                className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition cursor-pointer"
+                title="Verrouiller la session (délai inactivité : 1 min)"
+              >
+                <Lock className="w-4 h-4" />
               </button>
 
               {/* Pro Status Badge */}
@@ -2770,6 +2890,7 @@ export default function DeviceSimulator({
             expenses={activeExpensesList}
             clients={clients && clients.length > 0 ? clients : dbClients}
             products={products}
+            onLockSession={handleLockSession}
           />
         )}
 
@@ -3859,6 +3980,28 @@ export default function DeviceSimulator({
           setShowResetAllDataConfirm(false);
         }}
         onCancel={() => setShowResetAllDataConfirm(false)}
+      />
+
+      {/* 1-Minute Inactivity Auto-Lock Overlay */}
+      <SessionLockModal
+        isOpen={Boolean(
+          isSessionLocked &&
+          (isAuthenticated || (authUser && !authUser.isAnonymous)) &&
+          currentScreen !== 'login' &&
+          currentScreen !== 'landing'
+        )}
+        user={authUser || currentUser}
+        onUnlock={handleUnlockSession}
+        onSignOut={async () => {
+          setIsSessionLocked(false);
+          try {
+            localStorage.removeItem('startbill_session_locked');
+          } catch {}
+          await signOutUser();
+          setScreen('login');
+          triggerToast('Vous avez été déconnecté avec succès');
+        }}
+        loginWithEmail={loginWithEmail}
       />
     </div>
   );

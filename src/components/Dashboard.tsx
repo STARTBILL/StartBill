@@ -68,6 +68,9 @@ interface DashboardProps {
   setSelectedInvoiceId: (id: string | null) => void;
   setIsPro: (isPro: boolean) => void;
   isPro: boolean;
+  activeCompany?: any;
+  onSelectCompany?: (comp: any) => void;
+  companies?: any[];
 }
 
 export default function Dashboard({
@@ -97,7 +100,10 @@ export default function Dashboard({
   dbExpenses = [],
   setSelectedInvoiceId,
   setIsPro,
-  isPro
+  isPro,
+  activeCompany: propActiveCompany,
+  onSelectCompany: propOnSelectCompany,
+  companies: propCompanies
 }: DashboardProps) {
 
   const { region, regionalSettings, currencySymbol, formatPrice } = useRegional();
@@ -108,6 +114,7 @@ export default function Dashboard({
   // Multi-companies state for the current region
   const storageKey = `startbill_companies_${region}`;
   const [companies, setCompanies] = useState<any[]>(() => {
+    if (propCompanies && propCompanies.length > 0) return propCompanies;
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
@@ -122,8 +129,8 @@ export default function Dashboard({
       console.warn('Error reading companies', e);
     }
     const defaultCompanies = [
-      { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region, isDefault: true },
-      { id: 'comp_educ', companyName: 'Educ.Inc', industry: 'Éducation et formation', region, isDefault: false }
+      { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region, isDefault: true, ownerName: 'Dr. Martin Roy', address: '450 Boulevard René-Lévesque O, Montréal, QC', phone: '+1 (514) 555-0144' },
+      { id: 'comp_educ', companyName: 'Educ.Inc', industry: 'Éducation et formation', region, isDefault: false, ownerName: 'Claire Tremblay', address: '1200 Avenue McGill College, Montréal, QC', phone: '+1 (514) 555-0822' }
     ];
     try {
       localStorage.setItem(storageKey, JSON.stringify(defaultCompanies));
@@ -133,6 +140,7 @@ export default function Dashboard({
   });
 
   const [activeCompany, setActiveCompany] = useState<any>(() => {
+    if (propActiveCompany) return propActiveCompany;
     try {
       const activeSaved = localStorage.getItem('startbill_active_company');
       if (activeSaved) return JSON.parse(activeSaved);
@@ -144,8 +152,20 @@ export default function Dashboard({
     } catch (e) {
       console.warn('Error reading active company', e);
     }
-    return { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region };
+    return { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region, isDefault: true };
   });
+
+  React.useEffect(() => {
+    if (propActiveCompany) {
+      setActiveCompany(propActiveCompany);
+    }
+  }, [propActiveCompany]);
+
+  React.useEffect(() => {
+    if (propCompanies && propCompanies.length > 0) {
+      setCompanies(propCompanies);
+    }
+  }, [propCompanies]);
 
   React.useEffect(() => {
     try {
@@ -169,10 +189,14 @@ export default function Dashboard({
 
   const handleSelectCompany = (comp: any) => {
     setActiveCompany(comp);
+    if (propOnSelectCompany) {
+      propOnSelectCompany(comp);
+    }
     try {
       localStorage.setItem('startbill_active_company', JSON.stringify(comp));
       localStorage.setItem('company_name', comp.companyName);
       if (comp.ownerName) localStorage.setItem('company_owner', comp.ownerName);
+      window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: comp }));
     } catch (e) {}
     triggerToast(`Entreprise active : ${comp.companyName}`);
   };
