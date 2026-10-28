@@ -438,16 +438,7 @@ export default function LandingPage({
           <div className="flex items-center gap-3">
             <StartBillLogo variant="horizontal" size="xs" showTagline={true} />
           </div>
-          <div className="flex items-center gap-6">
-            <button type="button" onClick={() => setScreen('choose_region')} className="hover:text-blue-600 transition cursor-pointer">
-              Changer de région
-            </button>
-            <button type="button" onClick={() => setScreen('pricing')} className="hover:text-blue-600 transition cursor-pointer">
-              Forfaits
-            </button>
-            <button type="button" onClick={() => setScreen('login')} className="hover:text-blue-600 transition cursor-pointer">
-              Connexion
-            </button>
+          <div>
             <span>© 2026 StartBill Inc.</span>
           </div>
         </div>
