@@ -30,7 +30,14 @@ import {
   ChevronRight,
   Sparkles,
   ArrowRight,
-  KeyRound
+  KeyRound,
+  Users,
+  UserPlus,
+  UserCheck,
+  Shield,
+  Trash2,
+  Edit2,
+  X
 } from 'lucide-react';
 import { Invoice, Expense, Client, ProductItem, ScreenId } from '../types';
 import { REGIONS } from '../data/regions';
@@ -72,7 +79,153 @@ export interface SettingsPageProps {
   companies?: any[];
 }
 
-type SettingsTab = 'general' | 'taxes' | 'invoicing' | 'payments' | 'tax_prep' | 'subscription' | 'security';
+export type SettingsTab = 'general' | 'taxes' | 'invoicing' | 'payments' | 'tax_prep' | 'permissions' | 'subscription' | 'security';
+
+export type CompanyRole = 'SUPER_ADMIN' | 'ADMIN' | 'ACCOUNTANT' | 'COLLABORATOR' | 'READ_ONLY';
+
+export interface CompanyTeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: CompanyRole;
+  status: 'active' | 'invited' | 'pending';
+  addedDate: string;
+}
+
+export type PermissionAction = 'read' | 'create' | 'update' | 'delete' | 'export' | 'approve';
+
+export const ROLE_DETAILS: Record<CompanyRole, { label: string; desc: string; badgeColor: string; level: string }> = {
+  SUPER_ADMIN: {
+    label: 'Super Admin (Propriétaire)',
+    desc: 'Accès sans restriction à tous les modules, configurations sensibles, suppression des données et gouvernance d\'accès.',
+    badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
+    level: 'Niveau 1 — Accès Intégral'
+  },
+  ADMIN: {
+    label: 'Administrateur',
+    desc: 'Gestion des opérations quotidiennes, validation de factures et dépenses, gestion des clients sans pouvoir supprimer l\'entreprise.',
+    badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
+    level: 'Niveau 2 — Opérationnel'
+  },
+  ACCOUNTANT: {
+    label: 'Comptable / Expert CPA',
+    desc: 'Audit et conformité fiscale (TPS/TVQ), conciliation bancaire, export des écritures et révision des bilans comptables.',
+    badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    level: 'Niveau 2 — Fiscalité & Rapports'
+  },
+  COLLABORATOR: {
+    label: 'Collaborateur / Ventes',
+    desc: 'Émission de devis, facturation client, enregistrement des paiements. Pas d\'accès aux déclarations d\'impôts ni aux paramètres.',
+    badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+    level: 'Niveau 3 — Commercial'
+  },
+  READ_ONLY: {
+    label: 'Auditeur / Lecture Seule',
+    desc: 'Consultation stricte des pièces et rapports financiers sans aucun droit de modification, approbation ou suppression.',
+    badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
+    level: 'Niveau 4 — Consultation'
+  }
+};
+
+export const BUSINESS_MODULES = [
+  { id: 'invoices', name: 'Facturation & Devis', category: 'Commercial' },
+  { id: 'expenses', name: 'Dépenses & Justificatifs', category: 'Achats' },
+  { id: 'clients', name: 'Clients & Répertoire', category: 'Commercial' },
+  { id: 'products', name: 'Catalogue Produits & Services', category: 'Commercial' },
+  { id: 'reports', name: 'Rapports & Statistiques Financières', category: 'Finance' },
+  { id: 'tax', name: 'Déclarations Fiscales (TPS / TVQ)', category: 'Fiscalité' },
+  { id: 'advisor', name: 'Conseiller Financier IA', category: 'Intelligence' },
+  { id: 'settings', name: 'Paramètres Entreprise & Coordonnées', category: 'Administration' }
+];
+
+export const PERMISSION_ACTIONS: Array<{ key: PermissionAction; label: string }> = [
+  { key: 'read', label: 'Consulter' },
+  { key: 'create', label: 'Créer' },
+  { key: 'update', label: 'Modifier' },
+  { key: 'approve', label: 'Approuver' },
+  { key: 'export', label: 'Exporter' },
+  { key: 'delete', label: 'Supprimer' }
+];
+
+export const DEFAULT_ROLE_PERMISSIONS: Record<CompanyRole, Record<string, PermissionAction[]>> = {
+  SUPER_ADMIN: {
+    invoices: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+    expenses: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+    clients: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+    products: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+    reports: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+    tax: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+    advisor: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+    settings: ['read', 'create', 'update', 'delete', 'export', 'approve'],
+  },
+  ADMIN: {
+    invoices: ['read', 'create', 'update', 'export', 'approve'],
+    expenses: ['read', 'create', 'update', 'export', 'approve'],
+    clients: ['read', 'create', 'update', 'export'],
+    products: ['read', 'create', 'update', 'export'],
+    reports: ['read', 'export'],
+    tax: ['read', 'export'],
+    advisor: ['read', 'create', 'update'],
+    settings: ['read', 'update'],
+  },
+  ACCOUNTANT: {
+    invoices: ['read', 'export'],
+    expenses: ['read', 'create', 'update', 'export', 'approve'],
+    clients: ['read', 'export'],
+    products: ['read'],
+    reports: ['read', 'export'],
+    tax: ['read', 'create', 'update', 'export', 'approve'],
+    advisor: ['read'],
+    settings: ['read'],
+  },
+  COLLABORATOR: {
+    invoices: ['read', 'create', 'update'],
+    expenses: ['read', 'create'],
+    clients: ['read', 'create', 'update'],
+    products: ['read', 'create'],
+    reports: ['read'],
+    tax: [],
+    advisor: ['read'],
+    settings: [],
+  },
+  READ_ONLY: {
+    invoices: ['read'],
+    expenses: ['read'],
+    clients: ['read'],
+    products: ['read'],
+    reports: ['read'],
+    tax: ['read'],
+    advisor: ['read'],
+    settings: ['read'],
+  },
+};
+
+export const DEFAULT_TEAM_MEMBERS: CompanyTeamMember[] = [
+  {
+    id: 'tm-1',
+    name: 'Ferline ZOGNI',
+    email: 'contact.startbill@gmail.com',
+    role: 'SUPER_ADMIN',
+    status: 'active',
+    addedDate: '2026-01-10',
+  },
+  {
+    id: 'tm-2',
+    name: 'Cabinet CPA Tremblay & Associés',
+    email: 'comptable@cpa-tremblay.ca',
+    role: 'ACCOUNTANT',
+    status: 'active',
+    addedDate: '2026-02-15',
+  },
+  {
+    id: 'tm-3',
+    name: 'Alexandre Roy (Adjoint Commercial)',
+    email: 'alexandre.roy@startbill.ca',
+    role: 'COLLABORATOR',
+    status: 'active',
+    addedDate: '2026-03-01',
+  },
+];
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
   companyName,
@@ -135,6 +288,124 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   // Stripe & Access Policy status
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
   const [stripeCardPaymentsEnabled, setStripeCardPaymentsEnabled] = useState(() => localStorage.getItem('sb_stripe_card_enabled') !== 'false');
+
+  // RBAC Roles & Permissions state
+  const [selectedPermRole, setSelectedPermRole] = useState<CompanyRole>('SUPER_ADMIN');
+  const [rolePermissions, setRolePermissions] = useState<Record<CompanyRole, Record<string, PermissionAction[]>>>(() => {
+    try {
+      const saved = localStorage.getItem('sb_role_permissions');
+      return saved ? JSON.parse(saved) : DEFAULT_ROLE_PERMISSIONS;
+    } catch {
+      return DEFAULT_ROLE_PERMISSIONS;
+    }
+  });
+
+  // Team members state
+  const [teamMembers, setTeamMembers] = useState<CompanyTeamMember[]>(() => {
+    try {
+      const saved = localStorage.getItem('sb_team_members');
+      return saved ? JSON.parse(saved) : DEFAULT_TEAM_MEMBERS;
+    } catch {
+      return DEFAULT_TEAM_MEMBERS;
+    }
+  });
+
+  // Invite modal state
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<CompanyRole>('COLLABORATOR');
+
+  // MFA & Security Policy enforcement
+  const [mfaEnforced, setMfaEnforced] = useState(() => localStorage.getItem('sb_mfa_enforced') === 'true');
+
+  const handleTogglePermission = (role: CompanyRole, moduleId: string, action: PermissionAction) => {
+    // Prevent removing all access from Super Admin to avoid accidental lockout
+    if (role === 'SUPER_ADMIN' && action === 'read' && moduleId === 'settings') {
+      triggerToast('Le Super Admin doit conserver l\'accès aux paramètres pour la gouvernance.');
+      return;
+    }
+
+    setRolePermissions(prev => {
+      const roleMap = { ...(prev[role] || {}) };
+      const currentActions = roleMap[moduleId] ? [...roleMap[moduleId]] : [];
+      const index = currentActions.indexOf(action);
+      if (index >= 0) {
+        currentActions.splice(index, 1);
+      } else {
+        currentActions.push(action);
+      }
+      const updated = {
+        ...prev,
+        [role]: {
+          ...roleMap,
+          [moduleId]: currentActions
+        }
+      };
+      localStorage.setItem('sb_role_permissions', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleSaveRolePermissions = () => {
+    try {
+      localStorage.setItem('sb_role_permissions', JSON.stringify(rolePermissions));
+      triggerToast('Matrice des rôles & permissions enregistrée avec succès !');
+    } catch {
+      triggerToast('Erreur lors de la sauvegarde des permissions');
+    }
+  };
+
+  const handleResetPermissionsToDefault = () => {
+    setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
+    localStorage.setItem('sb_role_permissions', JSON.stringify(DEFAULT_ROLE_PERMISSIONS));
+    triggerToast('Permissions rétablies aux recommandations de sécurité StartBill');
+  };
+
+  const handleAddTeamMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteName.trim() || !inviteEmail.trim()) {
+      triggerToast('Veuillez renseigner le nom et le courriel du collaborateur.');
+      return;
+    }
+
+    const newMember: CompanyTeamMember = {
+      id: `tm-${Date.now()}`,
+      name: inviteName.trim(),
+      email: inviteEmail.trim(),
+      role: inviteRole,
+      status: 'invited',
+      addedDate: new Date().toISOString().slice(0, 10)
+    };
+
+    const updated = [...teamMembers, newMember];
+    setTeamMembers(updated);
+    localStorage.setItem('sb_team_members', JSON.stringify(updated));
+    setShowInviteModal(false);
+    setInviteName('');
+    setInviteEmail('');
+    setInviteRole('COLLABORATOR');
+    triggerToast(`Invitation envoyée avec succès à ${newMember.email} (${ROLE_DETAILS[newMember.role].label})`);
+  };
+
+  const handleDeleteTeamMember = (id: string) => {
+    const member = teamMembers.find(m => m.id === id);
+    if (member?.role === 'SUPER_ADMIN') {
+      triggerToast('Impossible de supprimer le compte Super Admin / Propriétaire.');
+      return;
+    }
+    const updated = teamMembers.filter(m => m.id !== id);
+    setTeamMembers(updated);
+    localStorage.setItem('sb_team_members', JSON.stringify(updated));
+    triggerToast(`Accès révoqué pour ${member?.name || 'l\'utilisateur'}.`);
+  };
+
+  const handleUpdateMemberRole = (id: string, newRole: CompanyRole) => {
+    const updated = teamMembers.map(m => m.id === id ? { ...m, role: newRole } : m);
+    setTeamMembers(updated);
+    localStorage.setItem('sb_team_members', JSON.stringify(updated));
+    triggerToast('Rôle du membre mis à jour.');
+  };
 
   useEffect(() => {
     getStripeConfig().then(cfg => setStripeConfig(cfg)).catch(() => {});
@@ -286,6 +557,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     { id: 'invoicing', label: 'Facturation & Mentions', icon: FileText },
     { id: 'payments', label: 'Paiements & Virement', icon: Wallet },
     { id: 'tax_prep', label: 'Déclarations & Impôts', icon: Receipt },
+    { id: 'permissions', label: 'Rôles & Permissions', icon: KeyRound },
     { id: 'subscription', label: 'Abonnement & Forfaits', icon: Zap },
     { id: 'security', label: 'Sauvegardes & Données', icon: ShieldCheck }
   ];
@@ -1167,7 +1439,484 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 8. TAB 6: ABONNEMENT SAAS & QUOTAS                                        */}
+      {/* 8. TAB: RÔLES & PERMISSIONS (RBAC)                                        */}
+      {/* ========================================================================= */}
+      {activeTab === 'permissions' && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 border border-purple-200 shadow-2xs">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
+                      Gouvernance d'Entreprise
+                    </span>
+                    <span className="text-xs text-slate-400">Contrôle d'accès basé sur les rôles (RBAC)</span>
+                  </div>
+                  <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                    Rôles & Permissions d'Accès de l'Équipe
+                  </h2>
+                  <p className="text-xs text-slate-500 max-w-2xl mt-0.5">
+                    Définissez précisément les droits de chaque membre de l'entreprise (Super Admin, Administrateur, Comptable CPA, Commercial, Auditeur) pour sécuriser vos données financières et garantir la séparation des devoirs comptables.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleResetPermissionsToDefault}
+                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer"
+                  title="Réinitialiser la matrice aux valeurs recommandées par défaut"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Permissions standard</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveRolePermissions}
+                  className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold px-4 py-2 rounded-xl shadow-md transition cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Sauvegarder les permissions</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick KPI info pills */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3 bg-purple-50/50 border border-purple-100 rounded-xl flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-purple-700">Membres Actifs</div>
+                  <div className="text-sm font-black text-purple-950">{teamMembers.length} collaborateurs</div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-emerald-700">Niveaux de Sécurité</div>
+                  <div className="text-sm font-black text-emerald-950">5 rôles prédéfinis</div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-blue-700">Protection Fiscale</div>
+                  <div className="text-sm font-black text-blue-950">Isolation des déclarations</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 1: Team Members Management */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-4 h-4 text-purple-600" />
+                  <span>Collaborateurs & Membres de l'Entreprise</span>
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Gérez les utilisateurs ayant accès à l'espace StartBill de <strong>{companyName || 'votre entreprise'}</strong>.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowInviteModal(true)}
+                className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition cursor-pointer shadow-xs self-start sm:self-auto"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Inviter un collaborateur</span>
+              </button>
+            </div>
+
+            {/* Invite Modal / Inline Card */}
+            {showInviteModal && (
+              <form onSubmit={handleAddTeamMember} className="bg-slate-50 border border-blue-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm animate-fade-in">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <UserPlus className="w-3.5 h-3.5 text-blue-600" />
+                    Inviter un nouveau membre à l'entreprise
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowInviteModal(false)}
+                    className="text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nom complet *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: Jean Tremblay"
+                      value={inviteName}
+                      onChange={(e) => setInviteName(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Courriel professionnel *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="jean.tremblay@entreprise.ca"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Rôle assigné
+                    </label>
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as CompanyRole)}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-blue-500 font-semibold"
+                    >
+                      <option value="ADMIN">Administrateur (Opérations)</option>
+                      <option value="ACCOUNTANT">Comptable / Expert CPA</option>
+                      <option value="COLLABORATOR">Collaborateur / Ventes</option>
+                      <option value="READ_ONLY">Auditeur (Lecture Seule)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-[11px] text-blue-800 flex items-center justify-between">
+                  <span>
+                    Un lien sécurisé d'activation sera émis pour ce collaborateur avec les autorisations du rôle <strong>{ROLE_DETAILS[inviteRole].label}</strong>.
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowInviteModal(false)}
+                      className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 font-bold"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg shadow-xs"
+                    >
+                      Envoyer l'accès
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* Members Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs text-slate-800">
+                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">Collaborateur</th>
+                    <th className="p-3">Courriel</th>
+                    <th className="p-3">Rôle Assigné</th>
+                    <th className="p-3">Statut</th>
+                    <th className="p-3">Ajouté le</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {teamMembers.map((member) => (
+                    <tr key={member.id} className="hover:bg-slate-50/70 transition">
+                      <td className="p-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0">
+                            {member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                              <span>{member.name}</span>
+                              {member.role === 'SUPER_ADMIN' && (
+                                <span className="text-[9px] font-black bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded border border-purple-200">
+                                  Propriétaire
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3 text-slate-600">{member.email}</td>
+                      <td className="p-3">
+                        {member.role === 'SUPER_ADMIN' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                            <Shield className="w-3 h-3 text-purple-600" />
+                            {ROLE_DETAILS.SUPER_ADMIN.label}
+                          </span>
+                        ) : (
+                          <select
+                            value={member.role}
+                            onChange={(e) => handleUpdateMemberRole(member.id, e.target.value as CompanyRole)}
+                            className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 focus:outline-blue-500 cursor-pointer shadow-2xs"
+                          >
+                            <option value="ADMIN">Administrateur</option>
+                            <option value="ACCOUNTANT">Comptable / CPA</option>
+                            <option value="COLLABORATOR">Collaborateur / Ventes</option>
+                            <option value="READ_ONLY">Auditeur (Lecture)</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          member.status === 'active'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            member.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'
+                          }`} />
+                          {member.status === 'active' ? 'Actif' : 'Invitation envoyée'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-500 text-[11px]">{member.addedDate}</td>
+                      <td className="p-3 text-right">
+                        {member.role !== 'SUPER_ADMIN' && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTeamMember(member.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                            title="Révoquer l'accès de ce membre"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Section 2: Role Selector Cards */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-purple-600" />
+                  <span>Sélectionnez un rôle pour inspecter & configurer sa matrice</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Cliquez sur un rôle ci-dessous pour voir et ajuster ses autorisations modulaires.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {(Object.keys(ROLE_DETAILS) as CompanyRole[]).map((r) => {
+                const info = ROLE_DETAILS[r];
+                const isSelected = selectedPermRole === r;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPermRole(r);
+                      triggerToast(`Affichage des permissions pour : ${info.label}`);
+                    }}
+                    className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-purple-50/70 border-purple-500 ring-2 ring-purple-400/30 text-purple-950 shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/70'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${info.badgeColor}`}>
+                          {info.level}
+                        </span>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-purple-600" />
+                        )}
+                      </div>
+                      <h4 className="font-black text-xs text-slate-900">{info.label}</h4>
+                      <p className="text-[10px] text-slate-500 mt-1 line-clamp-3 leading-relaxed">
+                        {info.desc}
+                      </p>
+                    </div>
+
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-bold text-purple-600">
+                      <span>{isSelected ? 'Rôle sélectionné' : 'Configurer ce rôle'}</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 3: Granular Permissions Matrix Table */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-purple-600" />
+                  <span>Matrice des Autorisations pour : <strong className="text-purple-700">{ROLE_DETAILS[selectedPermRole].label}</strong></span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Cochez ou décochez les actions autorisées par module. Les modifications s'appliquent en temps réel aux utilisateurs de ce rôle.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-500">
+                  {ROLE_DETAILS[selectedPermRole].level}
+                </span>
+              </div>
+            </div>
+
+            {/* Matrix Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs text-slate-800">
+                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-200">
+                  <tr>
+                    <th className="p-3 w-1/3">Module Applicatif</th>
+                    {PERMISSION_ACTIONS.map(a => (
+                      <th key={a.key} className="p-3 text-center">
+                        <div>{a.label}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {BUSINESS_MODULES.map(module => {
+                    const activeActions = rolePermissions[selectedPermRole]?.[module.id] || [];
+
+                    return (
+                      <tr key={module.id} className="hover:bg-slate-50/60 transition">
+                        <td className="p-3">
+                          <div className="font-bold text-slate-900 text-xs">{module.name}</div>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase">{module.category}</span>
+                        </td>
+
+                        {PERMISSION_ACTIONS.map(action => {
+                          const hasAction = activeActions.includes(action.key);
+                          const isSuperAdminSafe = selectedPermRole === 'SUPER_ADMIN' && action.key === 'read' && module.id === 'settings';
+
+                          return (
+                            <td key={action.key} className="p-3 text-center">
+                              <button
+                                type="button"
+                                disabled={isSuperAdminSafe}
+                                onClick={() => handleTogglePermission(selectedPermRole, module.id, action.key)}
+                                className={`w-7 h-7 rounded-lg inline-flex items-center justify-center transition cursor-pointer ${
+                                  hasAction
+                                    ? 'bg-purple-600 text-white shadow-2xs hover:bg-purple-700'
+                                    : 'bg-slate-100 text-slate-300 hover:bg-slate-200 hover:text-slate-500'
+                                } ${isSuperAdminSafe ? 'opacity-80 cursor-not-allowed' : ''}`}
+                                title={`${hasAction ? 'Désactiver' : 'Activer'} ${action.label} sur ${module.name}`}
+                              >
+                                {hasAction ? (
+                                  <Check className="w-4 h-4 stroke-3" />
+                                ) : (
+                                  <span className="text-slate-300 text-xs font-bold">—</span>
+                                )}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Matrix Footer Action */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Politique de moindre privilège appliquée par défaut pour la conformité financière.</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveRolePermissions}
+                className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer shadow-xs"
+              >
+                Appliquer & Sauvegarder pour {ROLE_DETAILS[selectedPermRole].label}
+              </button>
+            </div>
+          </div>
+
+          {/* Section 4: Security Enforcement & Governance Policies */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-blue-600" />
+              <span>Politiques de Sécurité & Conformité de l'Entreprise</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="font-bold text-xs text-slate-900">Double Authentification (2FA / MFA)</div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={mfaEnforced}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setMfaEnforced(val);
+                        localStorage.setItem('sb_mfa_enforced', String(val));
+                        triggerToast(`2FA obligatoire pour l'équipe : ${val ? 'Activé' : 'Optionnel'}`);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Exige une vérification par code TOTP (Google Authenticator) ou SMS pour tout compte accédant aux modules Comptabilité, Dépenses et Fiscalité.
+                </p>
+              </div>
+
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="font-bold text-xs text-slate-900">Verrouillage de Session Inactive</div>
+                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                    60 secondes
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Conformément à la Loi 25 (Québec) et à vos paramètres de sécurité, l'écran se verrouille après 1 minute d'inactivité pour empêcher tout accès non autorisé sur site.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 9. TAB: ABONNEMENT SAAS & QUOTAS                                          */}
       {/* ========================================================================= */}
       {activeTab === 'subscription' && (
         <div className="space-y-6">

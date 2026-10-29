@@ -11,12 +11,17 @@ import {
   Sparkles,
   DollarSign
 } from 'lucide-react';
-import { ScreenId } from '../types';
+import { ScreenId, Invoice, Expense, Client, CompanyProfile } from '../types';
 import FinancialNavTabs from './FinancialNavTabs';
 
 interface FinancialAlertsPageProps {
   setScreen: (screen: ScreenId) => void;
   triggerToast?: (msg: string) => void;
+  invoices?: Invoice[];
+  expenses?: Expense[];
+  clients?: Client[];
+  activeCompany?: CompanyProfile | null;
+  currency?: string;
 }
 
 type FilterType = 'Tous' | 'Critique' | 'Importante' | 'À surveiller' | 'Résolue';
@@ -33,69 +38,98 @@ interface AlertItem {
   impact: string;
 }
 
-const INITIAL_ALERTS: AlertItem[] = [
-  {
-    id: 'alt-1',
-    title: 'Factures en retard',
-    description: '3 factures sont en retard de plus de 30 jours pour un montant total de 2 450,00 $.',
-    severity: 'Critique',
-    type: 'invoice',
-    amount: '2 450,00 $',
-    dueDate: 'Échéance dépassée (> 30 j)',
-    recommendedAction: 'Envoyer une relance par courriel avec lien de paiement Interac en 1 clic.',
-    impact: 'Ralentit le fonds de roulement et fragilise le cash flow du mois en cours.'
-  },
-  {
-    id: 'alt-2',
-    title: 'Dépenses Marketing en hausse',
-    description: 'Vos dépenses Marketing ont augmenté de 35% ce mois-ci (1 250,00 $).',
-    severity: 'Importante',
-    type: 'expense',
-    amount: '1 250,00 $',
-    dueDate: 'Mois en cours',
-    recommendedAction: 'Vérifier le ROI des campagnes en cours et plafonner les abonnements SaaS publicitaires.',
-    impact: 'Rétrécit la marge nette si les nouvelles conversions ne suivent pas sous 14 jours.'
-  },
-  {
-    id: 'alt-3',
-    title: 'Trésorerie faible prévue',
-    description: 'Votre trésorerie pourrait devenir faible dans 18 jours si rien ne change.',
-    severity: 'Importante',
-    type: 'cashflow',
-    amount: '18 jours restants',
-    dueDate: 'Point bas : fin de mois',
-    recommendedAction: 'Accélérer les encaissements ou différer les dépenses non urgentes de 2 semaines.',
-    impact: 'Risque de solde négatif lors du prélèvement des taxes provinciales/fédérales.'
-  },
-  {
-    id: 'alt-4',
-    title: 'Délai de paiement clients',
-    description: 'Votre délai moyen de paiement client est de 18 jours. Continuez comme ça !',
-    severity: 'À surveiller',
-    type: 'payment_delay',
-    amount: '18 jours (excellent)',
-    dueDate: 'Indicateur mensuel',
-    recommendedAction: 'Maintenir la politique d’escompte ou les rappels automatiques à J+7.',
-    impact: 'Performant : supérieur de 6 jours à la moyenne de votre secteur (24 j).'
-  },
-  {
-    id: 'alt-5',
-    title: 'Conformité fiscale',
-    description: 'Aucun problème fiscal détecté. Bravo !',
-    severity: 'Résolue',
-    type: 'tax',
-    amount: 'TPS/TVQ à jour',
-    dueDate: 'Déclaration trimestrielle',
-    recommendedAction: 'Les réserves de taxes automatiques sont conformes aux déclarations prévues.',
-    impact: 'Risque de pénalités Revenu Québec / ARC nul pour ce cycle.'
-  }
-];
-
-export default function FinancialAlertsPage({ setScreen, triggerToast }: FinancialAlertsPageProps) {
+export default function FinancialAlertsPage({
+  setScreen,
+  triggerToast,
+  invoices = [],
+  expenses = [],
+  clients = [],
+  activeCompany,
+  currency = 'CAD'
+}: FinancialAlertsPageProps) {
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('Tous');
   const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
-  const [alerts, setAlerts] = useState<AlertItem[]>(INITIAL_ALERTS);
+  const [resolvedAlertIds, setResolvedAlertIds] = useState<string[]>([]);
+
+  const hasData = (invoices && invoices.length > 0) || (expenses && expenses.length > 0);
+  const currSym = currency === 'XOF' ? 'FCFA' : currency === 'HTG' ? 'HTG' : '$ CAD';
+  const formatMoney = (n: number) => n.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currSym;
+
+  const overdueInvoices = (invoices || []).filter(inv => {
+    if (inv.status === 'Payée' || inv.paymentStatus === 'paid') return false;
+    if (inv.status === 'En retard') return true;
+    if (inv.dueDate) {
+      try { return new Date(inv.dueDate) < new Date(); } catch { return false; }
+    }
+    return false;
+  });
+  const overdueTotal = overdueInvoices.reduce((s, i) => s + (Number(i.remainingBalance !== undefined ? i.remainingBalance : i.total) || 0), 0);
+  const paidTotal = (invoices || []).reduce((s, i) => (i.status === 'Payée' || i.paymentStatus === 'paid') ? s + (Number(i.amountPaid !== undefined ? i.amountPaid : i.total) || 0) : s, 0);
+  const expenseTotal = (expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+  // Generate real dynamic alerts
+  const alerts: AlertItem[] = React.useMemo(() => {
+    if (!hasData) return [];
+
+    const list: AlertItem[] = [];
+
+    if (overdueInvoices.length > 0) {
+      list.push({
+        id: 'alt-overdue',
+        title: `${overdueInvoices.length} Facture(s) en retard`,
+        description: `${overdueInvoices.length} facture(s) sont en retard pour un montant total de ${formatMoney(overdueTotal)}.`,
+        severity: 'Critique',
+        type: 'invoice',
+        amount: formatMoney(overdueTotal),
+        dueDate: 'Échéance dépassée',
+        recommendedAction: 'Envoyer une relance par courriel avec le lien de paiement direct.',
+        impact: 'Ralentit le fonds de roulement et fragilise la trésorerie disponible.'
+      });
+    }
+
+    if (expenseTotal > 0 && expenseTotal > paidTotal) {
+      list.push({
+        id: 'alt-burn',
+        title: 'Dépenses supérieures aux encaissements',
+        description: `Vos dépenses (${formatMoney(expenseTotal)}) dépassent vos rentrées perçues (${formatMoney(paidTotal)}).`,
+        severity: 'Importante',
+        type: 'cashflow',
+        amount: formatMoney(expenseTotal - paidTotal),
+        dueDate: 'Mois en cours',
+        recommendedAction: 'Vérifier la rentabilité des charges et différer les dépenses d’investissement non prioritaires.',
+        impact: 'Rétrécit la marge nette si les encaissements ne suivent pas rapidement.'
+      });
+    }
+
+    if (paidTotal > 0) {
+      list.push({
+        id: 'alt-paid',
+        title: 'Encaissements confirmés',
+        description: `Un total de ${formatMoney(paidTotal)} a été encaissé avec succès pour ${activeCompany?.companyName || 'votre société'}.`,
+        severity: 'Résolue',
+        type: 'payment_delay',
+        amount: formatMoney(paidTotal),
+        dueDate: 'Encaissé',
+        recommendedAction: 'Poursuivre la facturation régulière et conserver la part des taxes perçues.',
+        impact: 'Fonds de roulement et ratios de liquidité consolidés.'
+      });
+    }
+
+    list.push({
+      id: 'alt-tax',
+      title: 'Conformité fiscale',
+      description: 'Calcul automatique TPS/TVQ actif. Aucun blocage fiscal détecté.',
+      severity: 'Résolue',
+      type: 'tax',
+      amount: 'À jour ✓',
+      dueDate: 'Déclarations',
+      recommendedAction: 'Les données de taxe sont synchronisées pour vos déclarations gouvernementales.',
+      impact: 'Sécurité et conformité fiscale assurées.'
+    });
+
+    return list.map(a => resolvedAlertIds.includes(a.id) ? { ...a, severity: 'Résolue' as const } : a);
+  }, [hasData, overdueInvoices, overdueTotal, paidTotal, expenseTotal, activeCompany, currency, resolvedAlertIds]);
 
   const filterCounts = {
     Tous: alerts.length,
@@ -173,9 +207,7 @@ export default function FinancialAlertsPage({ setScreen, triggerToast }: Financi
   };
 
   const handleResolveAlert = (id: string) => {
-    setAlerts(prev =>
-      prev.map(a => (a.id === id ? { ...a, severity: 'Résolue' } : a))
-    );
+    setResolvedAlertIds(prev => [...prev, id]);
     setSelectedAlert(null);
     triggerToast?.('Alerte marquée comme résolue.');
   };

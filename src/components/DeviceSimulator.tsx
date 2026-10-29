@@ -258,7 +258,24 @@ export default function DeviceSimulator({
   }, [products]);
 
   const handleAddProduct = (newProd: ProductItem) => {
-    setProducts(prev => [newProd, ...prev]);
+    let compId = activeCompany?.id;
+    let compName = activeCompany?.companyName;
+    if (!compId) {
+      try {
+        const saved = localStorage.getItem('startbill_active_company');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          compId = parsed?.id;
+          compName = parsed?.companyName;
+        }
+      } catch {}
+    }
+    const scopedProd: ProductItem = {
+      ...newProd,
+      companyId: newProd.companyId || compId,
+      companyName: newProd.companyName || compName
+    };
+    setProducts(prev => [scopedProd, ...prev]);
   };
 
   const handleUpdateProduct = (updatedProd: ProductItem) => {
@@ -556,14 +573,77 @@ export default function DeviceSimulator({
   const [showAiAdvisor, setShowAiAdvisor] = useState(true);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
 
-  // Company state variables (strictly user-defined, no mock/fictive defaults)
-  const [companyName, setCompanyName] = useState(() => localStorage.getItem('company_name') || authUser?.companyName || '');
-  const [companyOwner, setCompanyOwner] = useState(() => localStorage.getItem('company_owner') || authUser?.fullName || '');
-  const [companyNE, setCompanyNE] = useState(() => localStorage.getItem('company_ne') || '');
-  const [companyAddress, setCompanyAddress] = useState(() => localStorage.getItem('company_address') || '');
-  const [companyPhone, setCompanyPhone] = useState(() => localStorage.getItem('company_phone') || authUser?.phone || '');
-  const [companyLogo, setCompanyLogo] = useState(() => localStorage.getItem('company_logo') || '');
+  // Multi-Company State & Profiles for strict multi-company data segregation
+  const [companies, setCompanies] = useState<CompanyProfile[]>(() => {
+    try {
+      const saved = localStorage.getItem(`startbill_companies_${currentRegion}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_COMPANIES;
+  });
+
+  const [activeCompany, setActiveCompany] = useState<CompanyProfile>(() => {
+    try {
+      const savedActive = localStorage.getItem('startbill_active_company');
+      if (savedActive) {
+        const parsed = JSON.parse(savedActive);
+        if (parsed && parsed.id) return parsed;
+      }
+    } catch {}
+    return DEFAULT_COMPANIES[0];
+  });
+
+  // Company state variables (strictly synchronized with activeCompany)
+  const [companyName, setCompanyName] = useState(() => activeCompany?.companyName || localStorage.getItem('company_name') || authUser?.companyName || '');
+  const [companyOwner, setCompanyOwner] = useState(() => activeCompany?.ownerName || localStorage.getItem('company_owner') || authUser?.fullName || '');
+  const [companyNE, setCompanyNE] = useState(() => activeCompany?.companyNE || activeCompany?.taxId2 || localStorage.getItem('company_ne') || '');
+  const [companyAddress, setCompanyAddress] = useState(() => activeCompany?.address || localStorage.getItem('company_address') || '');
+  const [companyPhone, setCompanyPhone] = useState(() => activeCompany?.phone || localStorage.getItem('company_phone') || authUser?.phone || '');
+  const [companyLogo, setCompanyLogo] = useState(() => activeCompany?.logoUrl || localStorage.getItem('company_logo') || '');
   const [companySignature, setCompanySignature] = useState(() => localStorage.getItem('company_signature') || '');
+
+  // Function to switch active company strictly and notify all components
+  const handleSelectCompany = React.useCallback((comp: CompanyProfile) => {
+    setActiveCompany(comp);
+    setCompanyName(comp.companyName);
+    setCompanyOwner(comp.ownerName || '');
+    setCompanyNE(comp.companyNE || comp.taxId2 || '');
+    setCompanyAddress(comp.address || '');
+    setCompanyPhone(comp.phone || '');
+    setCompanyLogo(comp.logoUrl || '');
+    try {
+      localStorage.setItem('startbill_active_company', JSON.stringify(comp));
+      localStorage.setItem('company_name', comp.companyName);
+      if (comp.ownerName) localStorage.setItem('company_owner', comp.ownerName);
+      if (comp.companyNE || comp.taxId2) localStorage.setItem('company_ne', comp.companyNE || comp.taxId2 || '');
+      if (comp.address) localStorage.setItem('company_address', comp.address);
+      if (comp.phone) localStorage.setItem('company_phone', comp.phone);
+      if (comp.logoUrl) localStorage.setItem('company_logo', comp.logoUrl);
+    } catch {}
+    window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: comp }));
+    triggerToast(`Entreprise active : ${comp.companyName}`);
+  }, [triggerToast]);
+
+  // Synchronize company changes dispatched by other components (Dashboard, Settings, etc.)
+  useEffect(() => {
+    const handleCompanyEvent = (e: any) => {
+      const comp = e.detail as CompanyProfile;
+      if (comp && comp.id && comp.id !== activeCompany?.id) {
+        setActiveCompany(comp);
+        setCompanyName(comp.companyName);
+        setCompanyOwner(comp.ownerName || '');
+        setCompanyNE(comp.companyNE || comp.taxId2 || '');
+        setCompanyAddress(comp.address || '');
+        setCompanyPhone(comp.phone || '');
+        setCompanyLogo(comp.logoUrl || '');
+      }
+    };
+    window.addEventListener('startbill-company-changed', handleCompanyEvent);
+    return () => window.removeEventListener('startbill-company-changed', handleCompanyEvent);
+  }, [activeCompany?.id]);
 
   // Multi-channel Send Modal (Email & WhatsApp options)
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -608,9 +688,33 @@ export default function DeviceSimulator({
     return true;
   };
 
-  // Calculate actual total values from active user state
-  const activeInvoicesList = invoices;
-  const activeExpensesList = expenses;
+  // Helper function to strictly match records against active company
+  const matchesActiveCompany = (item: any) => {
+    if (!item) return false;
+    if (!activeCompany) return true;
+    if (item.companyId) {
+      return item.companyId === activeCompany.id;
+    }
+    if (item.companyName) {
+      return item.companyName.trim().toLowerCase() === activeCompany.companyName.trim().toLowerCase();
+    }
+    // For legacy records without company tagging, attribute to default company
+    if (activeCompany.id === 'comp_sante' || activeCompany.isDefault) {
+      return true;
+    }
+    return false;
+  };
+
+  // Calculate actual total values from active user state, strictly segregated by active company
+  const allInvoices = (invoices && invoices.length > 0) ? invoices : dbInvoices;
+  const allExpenses = (expenses && expenses.length > 0) ? expenses : dbExpenses;
+  const allClients = (clients && clients.length > 0) ? clients : dbClients;
+  const allProducts = products;
+
+  const activeInvoicesList = allInvoices.filter(matchesActiveCompany);
+  const activeExpensesList = allExpenses.filter(matchesActiveCompany);
+  const activeClientsList = allClients.filter(matchesActiveCompany);
+  const activeProductsList = allProducts.filter(matchesActiveCompany);
 
   const currentPaidInvoicesSum = activeInvoicesList
     .filter(inv => (inv.status === 'Payée' || inv.status === 'paid' || inv.status === 'Partiellement payée' || inv.status === 'partial' || (inv.amountPaid !== undefined && inv.amountPaid > 0)) && matchesPeriod(inv.date || '') && matchesAccount(inv.paymentMethod))
@@ -745,6 +849,9 @@ export default function DeviceSimulator({
     const tvqVal = parseFloat(Math.max(0, taxRes.pst + taxRes.qst).toFixed(2));
     const tot = parseFloat(Math.max(0, taxRes.total).toFixed(2));
 
+    const scopedCompanyId = activeCompany?.id || 'comp_sante';
+    const scopedCompanyName = activeCompany?.companyName || companyName || 'Santé.Inc';
+
     if (isEditingInvoice && editingInvoiceId) {
       const updatedInv: Invoice = {
         id: editingInvoiceId,
@@ -759,7 +866,9 @@ export default function DeviceSimulator({
         dueDate: invDueDate,
         currency: invCurrency,
         description: invDescription,
-        items: sanitizedItems
+        items: sanitizedItems,
+        companyId: scopedCompanyId,
+        companyName: scopedCompanyName
       };
       onUpdateInvoice(updatedInv);
       setDbInvoices(prev => prev.map(inv => inv.id === updatedInv.id ? updatedInv : inv));
@@ -783,7 +892,9 @@ export default function DeviceSimulator({
         dueDate: invDueDate,
         currency: invCurrency,
         description: invDescription,
-        items: sanitizedItems
+        items: sanitizedItems,
+        companyId: scopedCompanyId,
+        companyName: scopedCompanyName
       };
 
       onAddInvoice(newInv);
@@ -826,7 +937,9 @@ export default function DeviceSimulator({
       status: newStatus,
       paymentMethod: method,
       paymentDate: date,
-      paymentStatus: newRemaining <= 0.01 ? 'paid' : 'partial'
+      paymentStatus: newRemaining <= 0.01 ? 'paid' : 'partial',
+      companyId: inv.companyId || activeCompany?.id,
+      companyName: inv.companyName || activeCompany?.companyName
     };
 
     onUpdateInvoice(updatedInv);
@@ -845,6 +958,8 @@ export default function DeviceSimulator({
     const tpsVal = parseFloat(Math.max(0, parseFloat(newExpenseTps) || 0).toFixed(2));
     const tvqVal = parseFloat(Math.max(0, parseFloat(newExpenseTvq) || 0).toFixed(2));
     const tot = parseFloat(Math.max(0, sub + tpsVal + tvqVal).toFixed(2));
+    const scopedCompanyId = activeCompany?.id || 'comp_sante';
+    const scopedCompanyName = activeCompany?.companyName || companyName || 'Santé.Inc';
 
     if (isEditingExpense && editingExpenseId) {
       const updatedExp: Expense = {
@@ -861,7 +976,9 @@ export default function DeviceSimulator({
         notes: newExpenseNotes,
         receiptUrl: receiptImg || undefined,
         isEligible: newExpenseDeductible,
-        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0
+        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0,
+        companyId: scopedCompanyId,
+        companyName: scopedCompanyName
       };
       onUpdateExpense(updatedExp);
       setDbExpenses(prev => prev.map(exp => exp.id === updatedExp.id ? updatedExp : exp));
@@ -888,7 +1005,9 @@ export default function DeviceSimulator({
         notes: newExpenseNotes,
         receiptUrl: receiptImg || undefined,
         isEligible: newExpenseDeductible,
-        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0
+        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0,
+        companyId: scopedCompanyId,
+        companyName: scopedCompanyName
       };
 
       onAddExpense(newExp);
@@ -910,7 +1029,9 @@ export default function DeviceSimulator({
     const newCli: Client = {
       id: `CLI-0${clients.length + 1}`,
       name: clientNameInput,
-      amountDue: 0.00
+      amountDue: 0.00,
+      companyId: activeCompany?.id || 'comp_sante',
+      companyName: activeCompany?.companyName || companyName || 'Santé.Inc'
     };
 
     onAddClient(newCli);
@@ -940,7 +1061,9 @@ export default function DeviceSimulator({
       ...invoice,
       id: `FACT-2026-0${invoices.length + 41}`,
       date: '2026-05-12',
-      status: 'Brouillon'
+      status: 'Brouillon',
+      companyId: invoice.companyId || activeCompany?.id,
+      companyName: invoice.companyName || activeCompany?.companyName
     };
     onAddInvoice(newInv);
     setDbInvoices(prev => [newInv, ...prev]);
@@ -1006,6 +1129,40 @@ export default function DeviceSimulator({
                 <X className="w-5 h-5" />
               </button>
             )}
+          </div>
+
+          {/* Active Company Switcher in Sidebar */}
+          <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <span className="flex items-center gap-1.5 text-slate-700 font-extrabold">
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                Entreprise active
+              </span>
+              <span className="bg-blue-100 text-blue-700 font-black text-[9px] px-1.5 py-0.5 rounded-full">
+                {companies.length}
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={activeCompany?.id || ''}
+                onChange={(e) => {
+                  const sel = companies.find(c => c.id === e.target.value);
+                  if (sel) handleSelectCompany(sel);
+                }}
+                className="w-full bg-white border border-slate-200 text-slate-900 rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shadow-2xs"
+                aria-label="Sélectionner l'entreprise"
+              >
+                {companies.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.companyName} {c.industry ? `• ${c.industry}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="text-[10px] text-slate-500 flex items-center justify-between font-medium pt-0.5">
+              <span className="truncate">{activeCompany?.ownerName || 'Dirigeant'}</span>
+              <span className="text-[9px] text-slate-400 font-mono shrink-0">NEQ: {activeCompany?.companyNE?.slice(0, 7) || '---'}...</span>
+            </div>
           </div>
 
           {/* Nav Links - Strict RBAC: Administration shield is NEVER rendered in DOM for standard users */}
@@ -1330,8 +1487,28 @@ export default function DeviceSimulator({
               </h2>
             </div>
 
-            {/* Right: Quick actions, Region selector, Notifications, Profile */}
+            {/* Right: Quick actions, Company Selector, Region selector, Notifications, Profile */}
             <div className="flex items-center gap-3 xl:gap-4">
+              {/* Desktop Company Selector */}
+              <div className="flex items-center bg-slate-100 hover:bg-slate-200/70 border border-slate-200 rounded-xl px-2.5 py-1 text-xs transition">
+                <Building2 className="w-3.5 h-3.5 text-blue-600 mr-1.5 shrink-0" />
+                <select
+                  value={activeCompany?.id || ''}
+                  onChange={(e) => {
+                    const sel = companies.find(c => c.id === e.target.value);
+                    if (sel) handleSelectCompany(sel);
+                  }}
+                  className="bg-transparent text-xs font-bold text-slate-800 pr-2 cursor-pointer focus:outline-none"
+                  aria-label="Sélectionner l'entreprise"
+                >
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.companyName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Region Indicator: Static Badge for Standard Users vs Multi-region for Super Admin */}
               {isSuperAdminUser ? (
                 <div className="flex items-center bg-purple-50 p-1 rounded-xl border border-purple-200 text-xs font-bold" title="Super Admin : Superviseur Multi-Régions">
@@ -1469,18 +1646,21 @@ export default function DeviceSimulator({
             setShowNewInvoiceModal={setShowNewInvoiceModal}
             setShowNewClientModal={setShowNewClientModal}
             setScreen={setScreen}
-            dbClients={clients !== undefined ? clients : dbClients}
-            totalRevenue={totalRevenue}
+            dbClients={activeClientsList}
+            totalRevenue={revenuesEncaissees}
             paidInvoicesCount={paidInvoicesCount}
-            totalTax={totalTax}
-            estimatedTax={estimatedTax}
+            totalTax={taxesToRemit}
+            estimatedTax={impotEstime}
             overdueInvoicesCount={overdueInvoicesCount}
-            totalEligibleExpenses={totalEligibleExpenses}
+            totalEligibleExpenses={depensesAdmissibles}
             dbInvoices={activeInvoicesList}
             dbExpenses={activeExpensesList}
             setSelectedInvoiceId={setSelectedInvoiceId}
             setIsPro={setIsPro}
             isPro={isPro}
+            activeCompany={activeCompany}
+            onSelectCompany={handleSelectCompany}
+            companies={companies}
           />
         )}
 
@@ -1490,8 +1670,8 @@ export default function DeviceSimulator({
         {currentScreen === 'invoices' && (
           <InvoicesPage
             invoices={activeInvoicesList}
-            clients={clients !== undefined ? clients : dbClients}
-            products={products}
+            clients={activeClientsList}
+            products={activeProductsList}
             onAddProduct={handleAddProduct}
             dbLoading={dbLoading}
             dbError={dbError}
@@ -2243,6 +2423,7 @@ export default function DeviceSimulator({
         )}
 
         {/* ======================================= */}
+        {/* ======================================= */}
         {/* SCREEN: 2. ANALYSE DÉTAILLÉE */}
         {/* ======================================= */}
         {currentScreen === 'financial_health' && (
@@ -2252,6 +2433,10 @@ export default function DeviceSimulator({
             currentUser={currentUser}
             currentRegion={currentRegion}
             currency={REGIONS[currentRegion]?.currency || 'CAD'}
+            invoices={activeInvoicesList}
+            expenses={activeExpensesList}
+            clients={activeClientsList}
+            activeCompany={activeCompany}
           />
         )}
 
@@ -2262,6 +2447,11 @@ export default function DeviceSimulator({
           <AiAdvisorPage
             setScreen={setScreen}
             triggerToast={triggerToast}
+            invoices={activeInvoicesList}
+            expenses={activeExpensesList}
+            clients={activeClientsList}
+            activeCompany={activeCompany}
+            currency={REGIONS[currentRegion]?.currency || 'CAD'}
           />
         )}
 
@@ -2273,6 +2463,11 @@ export default function DeviceSimulator({
             <FinancialAlertsPage
               setScreen={setScreen}
               triggerToast={triggerToast}
+              invoices={activeInvoicesList}
+              expenses={activeExpensesList}
+              clients={activeClientsList}
+              activeCompany={activeCompany}
+              currency={REGIONS[currentRegion]?.currency || 'CAD'}
             />
           </div>
         )}
@@ -2297,6 +2492,11 @@ export default function DeviceSimulator({
             <FinancialForecastsPage
               setScreen={setScreen}
               triggerToast={triggerToast}
+              invoices={activeInvoicesList}
+              expenses={activeExpensesList}
+              clients={activeClientsList}
+              activeCompany={activeCompany}
+              currency={REGIONS[currentRegion]?.currency || 'CAD'}
             />
           </div>
         )}
@@ -2766,8 +2966,8 @@ export default function DeviceSimulator({
         {/* ======================================= */}
         {currentScreen === 'clients' && (
           <ClientsPage
-            clients={clients !== undefined ? clients : dbClients}
-            invoices={invoices}
+            clients={activeClientsList}
+            invoices={activeInvoicesList}
             dbLoading={dbLoading}
             dbError={dbError}
             fetchFirestoreData={() => currentUser?.uid && fetchFirestoreData(currentUser.uid)}
@@ -2801,7 +3001,7 @@ export default function DeviceSimulator({
         {/* ======================================= */}
         {currentScreen === 'products' && (
           <ProductsPage
-            products={products}
+            products={activeProductsList}
             onAddProduct={handleAddProduct}
             onUpdateProduct={handleUpdateProduct}
             onDeleteProduct={handleDeleteProduct}
@@ -2835,7 +3035,7 @@ export default function DeviceSimulator({
         {currentScreen === 'payments' && (
           <PaymentsPage
             invoices={activeInvoicesList}
-            clients={clients && clients.length > 0 ? clients : dbClients}
+            clients={activeClientsList}
             onRecordPayment={handleRecordPayment}
             triggerToast={triggerToast}
             setScreen={setScreen}
@@ -2852,7 +3052,7 @@ export default function DeviceSimulator({
           <ReportsPage
             invoices={activeInvoicesList}
             expenses={activeExpensesList}
-            clients={clients && clients.length > 0 ? clients : dbClients}
+            clients={activeClientsList}
             triggerToast={triggerToast}
             setScreen={setScreen}
             companyName={companyName}
@@ -2888,9 +3088,12 @@ export default function DeviceSimulator({
             setScreen={setScreen}
             invoices={activeInvoicesList}
             expenses={activeExpensesList}
-            clients={clients && clients.length > 0 ? clients : dbClients}
-            products={products}
+            clients={activeClientsList}
+            products={activeProductsList}
             onLockSession={handleLockSession}
+            activeCompany={activeCompany}
+            onSelectCompany={handleSelectCompany}
+            companies={companies}
           />
         )}
 

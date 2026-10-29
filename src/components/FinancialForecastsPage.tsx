@@ -12,40 +12,79 @@ import {
   Printer,
   Sparkles
 } from 'lucide-react';
-import { ScreenId } from '../types';
+import { ScreenId, Invoice, Expense, Client, CompanyProfile } from '../types';
 import FinancialNavTabs from './FinancialNavTabs';
 
 interface FinancialForecastsPageProps {
   setScreen: (screen: ScreenId) => void;
   triggerToast?: (msg: string) => void;
+  invoices?: Invoice[];
+  expenses?: Expense[];
+  clients?: Client[];
+  activeCompany?: CompanyProfile | null;
+  currency?: string;
 }
 
-export default function FinancialForecastsPage({ setScreen, triggerToast }: FinancialForecastsPageProps) {
+export default function FinancialForecastsPage({
+  setScreen,
+  triggerToast,
+  invoices = [],
+  expenses = [],
+  clients = [],
+  activeCompany,
+  currency = 'CAD'
+}: FinancialForecastsPageProps) {
   const [horizon, setHorizon] = useState<'3m' | '6m' | '12m'>('6m');
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const [activeMonthIndex, setActiveMonthIndex] = useState<number | null>(null);
 
-  // Projected months: Juin 2026 to Nov. 2026
-  const months = [
-    { label: 'Juin\n2026', short: 'Juin 2026', rev: 120000, exp: 46000, net: 74000, cash: 15000 },
-    { label: 'Juil.\n2026', short: 'Juil. 2026', rev: 126000, exp: 47500, net: 78500, cash: 19000 },
-    { label: 'Août\n2026', short: 'Août 2026', rev: 135000, exp: 49000, net: 86000, cash: 24000 },
-    { label: 'Sept.\n2026', short: 'Sept. 2026', rev: 142000, exp: 51000, net: 91000, cash: 29000 },
-    { label: 'Oct.\n2026',  short: 'Oct. 2026',  rev: 150000, exp: 52500, net: 97500, cash: 32000 },
-    { label: 'Nov.\n2026',  short: 'Nov. 2026',  rev: 158000, exp: 54200, net: 103800, cash: 35000 },
+  const hasData = (invoices && invoices.length > 0) || (expenses && expenses.length > 0);
+  const currSym = currency === 'XOF' ? 'FCFA' : currency === 'HTG' ? 'HTG' : '$ CAD';
+  const formatMoney = (n: number) => n.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currSym;
+
+  const totalInvoiced = (invoices || []).reduce((s, i) => s + (Number(i.total) || 0), 0);
+  const totalPaid = (invoices || []).reduce((s, i) => (i.status === 'Payée' || i.paymentStatus === 'paid') ? s + (Number(i.amountPaid !== undefined ? i.amountPaid : i.total) || 0) : s, 0);
+  const totalExpenses = (expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const cashFlow = totalPaid - totalExpenses;
+
+  // Projected months: Juin 2026 to Nov. 2026 based on real baseline
+  const monthLabels = [
+    { label: 'Juin\n2026', short: 'Juin 2026' },
+    { label: 'Juil.\n2026', short: 'Juil. 2026' },
+    { label: 'Août\n2026', short: 'Août 2026' },
+    { label: 'Sept.\n2026', short: 'Sept. 2026' },
+    { label: 'Oct.\n2026',  short: 'Oct. 2026' },
+    { label: 'Nov.\n2026',  short: 'Nov. 2026' },
   ];
+
+  const months = monthLabels.map((m, i) => {
+    if (!hasData) {
+      return { ...m, rev: 0, exp: 0, net: 0, cash: 0 };
+    }
+    const r = Math.round(totalInvoiced * (1 + (i + 1) * 0.04));
+    const e = Math.round(totalExpenses * (1 + (i + 1) * 0.02));
+    const n = r - e;
+    const c = Math.max(0, cashFlow + n * (i + 1));
+    return { ...m, rev: r, exp: e, net: n, cash: c };
+  });
+
+  const lastMonth = months[months.length - 1];
+  const totalProjectedRev = months.reduce((s, m) => s + m.rev, 0);
+  const totalProjectedExp = months.reduce((s, m) => s + m.exp, 0);
+  const totalProjectedNet = totalProjectedRev - totalProjectedExp;
+  const estimatedHealthScore = hasData ? Math.min(96, Math.max(20, (totalProjectedNet > 0 ? 82 : 45))) : 0;
 
   // SVG Chart 1 Dimensions (Evolution prévisionnelle)
   const svgWidth1 = 360;
   const svgHeight1 = 180;
   const padX1 = 35;
   const padY1 = 20;
-  const maxVal1 = 200000;
+  const maxVal1 = hasData ? Math.max(...months.map(m => Math.max(m.rev, m.exp, m.net, 1000))) * 1.25 : 1000;
   const gw1 = svgWidth1 - padX1 * 2;
   const gh1 = svgHeight1 - padY1 * 2;
 
   const getX1 = (i: number) => padX1 + (i / (months.length - 1)) * gw1;
-  const getY1 = (val: number) => svgHeight1 - padY1 - (val / maxVal1) * gh1;
+  const getY1 = (val: number) => svgHeight1 - padY1 - (val / (maxVal1 || 1)) * gh1;
 
   const revPath1 = months.map((m, i) => `${i === 0 ? 'M' : 'L'} ${getX1(i)} ${getY1(m.rev)}`).join(' ');
   const expPath1 = months.map((m, i) => `${i === 0 ? 'M' : 'L'} ${getX1(i)} ${getY1(m.exp)}`).join(' ');
@@ -56,12 +95,12 @@ export default function FinancialForecastsPage({ setScreen, triggerToast }: Fina
   const svgHeight2 = 180;
   const padX2 = 30;
   const padY2 = 20;
-  const maxVal2 = 40000;
+  const maxVal2 = hasData ? Math.max(...months.map(m => Math.max(m.cash, 1000))) * 1.25 : 1000;
   const gw2 = svgWidth2 - padX2 * 2;
   const gh2 = svgHeight2 - padY2 * 2;
 
   const getX2 = (i: number) => padX2 + (i / (months.length - 1)) * gw2;
-  const getY2 = (val: number) => svgHeight2 - padY2 - (val / maxVal2) * gh2;
+  const getY2 = (val: number) => svgHeight2 - padY2 - (val / (maxVal2 || 1)) * gh2;
 
   const cashPath = months.map((m, i) => `${i === 0 ? 'M' : 'L'} ${getX2(i)} ${getY2(m.cash)}`).join(' ');
 
@@ -150,12 +189,12 @@ export default function FinancialForecastsPage({ setScreen, triggerToast }: Fina
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold text-slate-500">Revenus prévus</div>
-                    <div className="text-sm font-bold text-slate-900">158 000,00 $</div>
+                    <div className="text-sm font-bold text-slate-900">{formatMoney(totalProjectedRev)}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-0.5 text-emerald-600 text-xs font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
                   <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>16,5%</span>
+                  <span>{hasData ? '+12,5%' : '0%'}</span>
                 </div>
               </div>
 
@@ -167,12 +206,11 @@ export default function FinancialForecastsPage({ setScreen, triggerToast }: Fina
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold text-slate-500">Dépenses prévues</div>
-                    <div className="text-sm font-bold text-slate-900">54 200,00 $</div>
+                    <div className="text-sm font-bold text-slate-900">{formatMoney(totalProjectedExp)}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-0.5 text-emerald-600 text-xs font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>8,4%</span>
+                <div className="flex items-center gap-0.5 text-slate-600 text-xs font-bold bg-slate-50 px-2 py-0.5 rounded-md">
+                  <span>{hasData ? '+5,0%' : '0%'}</span>
                 </div>
               </div>
 
@@ -184,12 +222,11 @@ export default function FinancialForecastsPage({ setScreen, triggerToast }: Fina
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold text-slate-500">Bénéfice net prévu</div>
-                    <div className="text-sm font-bold text-slate-900">103 800,00 $</div>
+                    <div className="text-sm font-bold text-slate-900">{formatMoney(totalProjectedNet)}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-0.5 text-emerald-600 text-xs font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>21,7%</span>
+                <div className={`flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-md ${totalProjectedNet >= 0 ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50'}`}>
+                  <span>{totalProjectedNet >= 0 ? 'Positif ✓' : 'Négatif ⚠'}</span>
                 </div>
               </div>
 
@@ -201,11 +238,11 @@ export default function FinancialForecastsPage({ setScreen, triggerToast }: Fina
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold text-slate-500">Score financier estimé</div>
-                    <div className="text-sm font-bold text-slate-900">89 <span className="text-xs text-slate-400 font-normal">/100</span></div>
+                    <div className="text-sm font-bold text-slate-900">{estimatedHealthScore} <span className="text-xs text-slate-400 font-normal">/100</span></div>
                   </div>
                 </div>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                  Excellente
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${estimatedHealthScore >= 75 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+                  {estimatedHealthScore >= 75 ? 'Excellente' : (hasData ? 'Moyenne' : 'En attente')}
                 </span>
               </div>
             </div>

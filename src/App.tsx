@@ -171,9 +171,21 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const getActiveCompanyFallback = () => {
+    try {
+      const saved = localStorage.getItem('startbill_active_company');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.id) return { id: parsed.id, name: parsed.companyName || 'Santé.Inc' };
+      }
+    } catch {}
+    return { id: 'comp_sante', name: 'Santé.Inc' };
+  };
+
   // Interactive CRUD updates with user isolation and strict non-negative value enforcement
   const handleAddInvoice = async (newInv: Invoice) => {
     const uid = auth.currentUser?.uid || '';
+    const activeComp = getActiveCompanyFallback();
     const cleanItems = (newInv.items || []).map(it => {
       const q = Math.max(0, it.quantity || 0);
       const p = Math.max(0, it.unitPrice || 0);
@@ -203,8 +215,8 @@ export default function App() {
       items: cleanItems.length > 0 ? cleanItems : newInv.items,
       userId: newInv.userId || uid,
       region: activeUserRegion,
-      companyId: newInv.companyId,
-      companyName: newInv.companyName
+      companyId: newInv.companyId || activeComp.id,
+      companyName: newInv.companyName || activeComp.name
     };
     setInvoices(prev => [scopedInv, ...prev]);
     await saveInvoiceToFirestore(scopedInv, uid, activeUserRegion);
@@ -231,6 +243,7 @@ export default function App() {
 
   const handleAddExpense = async (newExp: Expense) => {
     const uid = auth.currentUser?.uid || '';
+    const activeComp = getActiveCompanyFallback();
     const cleanHt = parseFloat(Math.max(0, newExp.amountHt || 0).toFixed(2));
     const cleanTps = parseFloat(Math.max(0, newExp.tps || 0).toFixed(2));
     const cleanTvq = parseFloat(Math.max(0, newExp.tvq || 0).toFixed(2));
@@ -244,8 +257,8 @@ export default function App() {
       total: cleanTot,
       userId: newExp.userId || uid,
       region: activeUserRegion,
-      companyId: newExp.companyId,
-      companyName: newExp.companyName
+      companyId: newExp.companyId || activeComp.id,
+      companyName: newExp.companyName || activeComp.name
     };
     setExpenses(prev => [scopedExp, ...prev]);
     await saveExpenseToFirestore(scopedExp, uid, activeUserRegion);
@@ -253,6 +266,7 @@ export default function App() {
 
   const handleUpdateExpense = async (updatedExp: Expense) => {
     const uid = auth.currentUser?.uid || '';
+    const activeComp = getActiveCompanyFallback();
     const cleanHt = parseFloat(Math.max(0, updatedExp.amountHt || 0).toFixed(2));
     const cleanTps = parseFloat(Math.max(0, updatedExp.tps || 0).toFixed(2));
     const cleanTvq = parseFloat(Math.max(0, updatedExp.tvq || 0).toFixed(2));
@@ -266,8 +280,8 @@ export default function App() {
       total: cleanTot,
       userId: updatedExp.userId || uid,
       region: activeUserRegion,
-      companyId: updatedExp.companyId,
-      companyName: updatedExp.companyName
+      companyId: updatedExp.companyId || activeComp.id,
+      companyName: updatedExp.companyName || activeComp.name
     };
     setExpenses(prev => prev.map(exp => exp.id === scopedExp.id ? scopedExp : exp));
     await saveExpenseToFirestore(scopedExp, uid, activeUserRegion);
@@ -275,13 +289,14 @@ export default function App() {
 
   const handleAddClient = async (newCli: Client) => {
     const uid = auth.currentUser?.uid || '';
+    const activeComp = getActiveCompanyFallback();
     const scopedCli: Client = {
       ...newCli,
       amountDue: parseFloat(Math.max(0, newCli.amountDue || 0).toFixed(2)),
       userId: newCli.userId || uid,
       region: activeUserRegion,
-      companyId: newCli.companyId,
-      companyName: newCli.companyName
+      companyId: newCli.companyId || activeComp.id,
+      companyName: newCli.companyName || activeComp.name
     };
     setClients(prev => [...prev, scopedCli]);
     await saveClientToFirestore(scopedCli, uid, activeUserRegion);
