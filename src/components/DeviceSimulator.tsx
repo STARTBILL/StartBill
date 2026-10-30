@@ -215,9 +215,31 @@ export default function DeviceSimulator({
   const [expenseTab, setExpenseTab] = useState<'Toutes' | 'Ce mois'>('Toutes');
   const [clientSearch, setClientSearch] = useState('');
   const [reportTab, setReportTab] = useState<'Aperçu' | 'Comparaison' | 'Catégories' | 'Analyse détaillée'>('Aperçu');
-  const [isPro, setIsPro] = useState(false);
+  const [isPro, setIsPro] = useState(() => {
+    try {
+      const savedPro = localStorage.getItem('startbill_is_pro');
+      if (savedPro !== null) return savedPro === 'true';
+      const savedPlan = localStorage.getItem('startbill_user_plan');
+      if (savedPlan === 'pro' || savedPlan === 'start' || savedPlan === 'enterprise') return true;
+    } catch {}
+    return false;
+  });
   const [showProUpgradeModal, setShowProUpgradeModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Synchronize plan changes dispatched across the application
+  useEffect(() => {
+    const handlePlanEvent = (e: any) => {
+      const plan = e.detail?.plan;
+      if (plan === 'pro' || plan === 'start' || plan === 'enterprise') {
+        setIsPro(true);
+      } else if (plan === 'free') {
+        setIsPro(false);
+      }
+    };
+    window.addEventListener('startbill-plan-changed', handlePlanEvent);
+    return () => window.removeEventListener('startbill-plan-changed', handlePlanEvent);
+  }, []);
 
   // Toast notifications state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -692,17 +714,17 @@ export default function DeviceSimulator({
   const matchesActiveCompany = (item: any) => {
     if (!item) return false;
     if (!activeCompany) return true;
+    const currentCompId = activeCompany.id;
+    const currentCompName = activeCompany.companyName?.trim().toLowerCase();
+
     if (item.companyId) {
-      return item.companyId === activeCompany.id;
+      return item.companyId === currentCompId;
     }
-    if (item.companyName) {
-      return item.companyName.trim().toLowerCase() === activeCompany.companyName.trim().toLowerCase();
+    if (item.companyName && currentCompName) {
+      return item.companyName.trim().toLowerCase() === currentCompName;
     }
-    // For legacy records without company tagging, attribute to default company
-    if (activeCompany.id === 'comp_sante' || activeCompany.isDefault) {
-      return true;
-    }
-    return false;
+    // Only legacy untagged items fallback to initial company 'comp_sante', never to other companies
+    return currentCompId === 'comp_sante';
   };
 
   // Calculate actual total values from active user state, strictly segregated by active company
@@ -1675,10 +1697,15 @@ export default function DeviceSimulator({
             onAddProduct={handleAddProduct}
             dbLoading={dbLoading}
             dbError={dbError}
-            fetchFirestoreData={() => currentUser?.uid && fetchFirestoreData(currentUser.uid)}
+            activeCompany={activeCompany}
             onAddInvoice={(inv) => {
-              onAddInvoice(inv);
-              setDbInvoices(prev => [inv, ...prev]);
+              const scopedInv = {
+                ...inv,
+                companyId: inv.companyId || activeCompany?.id || 'comp_sante',
+                companyName: inv.companyName || activeCompany?.companyName || 'Santé.Inc'
+              };
+              onAddInvoice(scopedInv);
+              setDbInvoices(prev => [scopedInv, ...prev]);
             }}
             onUpdateInvoice={(inv) => {
               onUpdateInvoice(inv);
@@ -2404,10 +2431,15 @@ export default function DeviceSimulator({
             expenses={activeExpensesList}
             dbLoading={dbLoading}
             dbError={dbError}
-            fetchFirestoreData={() => currentUser?.uid && fetchFirestoreData(currentUser.uid)}
+            activeCompany={activeCompany}
             onAddExpense={(exp) => {
-              onAddExpense(exp);
-              setDbExpenses(prev => [exp, ...prev]);
+              const scopedExp = {
+                ...exp,
+                companyId: exp.companyId || activeCompany?.id || 'comp_sante',
+                companyName: exp.companyName || activeCompany?.companyName || 'Santé.Inc'
+              };
+              onAddExpense(scopedExp);
+              setDbExpenses(prev => [scopedExp, ...prev]);
             }}
             onUpdateExpense={(exp) => {
               onUpdateExpense(exp);
@@ -2969,9 +3001,16 @@ export default function DeviceSimulator({
             clients={activeClientsList}
             invoices={activeInvoicesList}
             dbLoading={dbLoading}
-            dbError={dbError}
-            fetchFirestoreData={() => currentUser?.uid && fetchFirestoreData(currentUser.uid)}
-            onAddClient={onAddClient}
+            activeCompany={activeCompany}
+            onAddClient={(cli) => {
+              const scopedCli = {
+                ...cli,
+                companyId: cli.companyId || activeCompany?.id || 'comp_sante',
+                companyName: cli.companyName || activeCompany?.companyName || 'Santé.Inc'
+              };
+              onAddClient(scopedCli);
+              setDbClients(prev => [...prev, scopedCli]);
+            }}
             onUpdateClient={onUpdateClient}
             onDeleteClient={(id) => {
               onDeleteClient(id);
@@ -3186,13 +3225,15 @@ export default function DeviceSimulator({
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24">
             <PricingPage
               setScreen={setScreen}
-              currentPlan={isPro ? 'pro' : 'free'}
+              currentPlan={isPro ? 'pro' : ((userPlan === 'enterprise' ? 'pro' : userPlan as any) || 'free')}
               onSelectPlan={(planId) => {
-                if (planId === 'pro' || planId === 'start') {
-                  setIsPro(true);
-                } else {
-                  setIsPro(false);
-                }
+                const isNowPro = planId === 'pro' || planId === 'start';
+                setIsPro(isNowPro);
+                try {
+                  localStorage.setItem('startbill_is_pro', isNowPro ? 'true' : 'false');
+                  localStorage.setItem('startbill_user_plan', planId);
+                  window.dispatchEvent(new CustomEvent('startbill-plan-changed', { detail: { plan: planId } }));
+                } catch {}
               }}
             />
           </div>
@@ -3348,7 +3389,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>📈</span> 2. Analyse détaillée
+                  <span>📈</span> Analyse détaillée
                 </button>
                 <button
                   onClick={() => {
@@ -3357,7 +3398,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>⚠️</span> 3. Alertes financières
+                  <span>⚠️</span> Alertes financières
                 </button>
                 <button
                   onClick={() => {
@@ -3366,7 +3407,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>📊</span> 4. Tendances
+                  <span>📊</span> Tendances
                 </button>
                 <button
                   onClick={() => {
@@ -3375,7 +3416,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>🧭</span> 5. Prévisions
+                  <span>🧭</span> Prévisions
                 </button>
                 <button
                   onClick={() => {
@@ -3384,7 +3425,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>🕒</span> 6. Historique
+                  <span>🕒</span> Historique
                 </button>
                 <button
                   onClick={() => {
@@ -3607,7 +3648,6 @@ export default function DeviceSimulator({
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Produits et services</span>
-                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">Module 4</span>
                       </div>
                       <button
                         type="button"
@@ -3632,9 +3672,9 @@ export default function DeviceSimulator({
                             </button>
                           )}
 
-                          {/* Module 4 Selector */}
+                          {/* Product Selector */}
                           <div>
-                            <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Sélectionner depuis Produits & Services</label>
+                            <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Sélectionner depuis le catalogue</label>
                             <select
                               onChange={(e) => {
                                 const val = e.target.value;
@@ -3654,7 +3694,7 @@ export default function DeviceSimulator({
                               defaultValue=""
                               className="w-full bg-blue-50/50 border border-blue-200/80 rounded-lg px-2 py-1 text-xs text-blue-900 font-medium focus:outline-none focus:border-blue-500"
                             >
-                              <option value="">Sélectionner un produit / service (Module 4)...</option>
+                              <option value="">Sélectionner un produit / service depuis le catalogue...</option>
                               {products.map(p => (
                                 <option key={p.id} value={p.id}>
                                   {p.name} — {p.unitPrice.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ {p.unit ? `(${p.unit})` : ''}

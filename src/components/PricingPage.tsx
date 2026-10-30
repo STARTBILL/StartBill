@@ -51,7 +51,15 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   const effectiveCurrentPlan = (userPlan === 'enterprise' ? 'pro' : userPlan) || currentPlan || 'free';
 
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
-  const [activePlan, setActivePlan] = useState<'free' | 'start' | 'pro'>(effectiveCurrentPlan as any);
+  const [activePlan, setActivePlan] = useState<'free' | 'start' | 'pro'>(() => {
+    try {
+      const saved = localStorage.getItem('startbill_user_plan');
+      if (saved === 'pro' || saved === 'start' || saved === 'free') return saved;
+      const isProSaved = localStorage.getItem('startbill_is_pro');
+      if (isProSaved === 'true') return 'pro';
+    } catch {}
+    return (effectiveCurrentPlan as any);
+  });
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
@@ -59,8 +67,16 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   const [showStripeSetupModal, setShowStripeSetupModal] = useState<boolean>(false);
 
   useEffect(() => {
+    if (currentPlan) {
+      setActivePlan(currentPlan);
+    }
+  }, [currentPlan]);
+
+  useEffect(() => {
     if (userPlan && userPlan !== 'enterprise') {
       setActivePlan(userPlan as any);
+    } else if (userPlan === 'enterprise') {
+      setActivePlan('pro');
     }
   }, [userPlan]);
 
@@ -94,53 +110,61 @@ export const PricingPage: React.FC<PricingPageProps> = ({
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   const handleChoosePlan = async (planId: 'free' | 'start' | 'pro', planName: string) => {
+    // 1. Immediately activate the selected plan in the local UI state
+    setActivePlan(planId);
+
+    // 2. Persist locally for immediate multi-screen synchronization
+    try {
+      localStorage.setItem('startbill_user_plan', planId);
+      localStorage.setItem('startbill_is_pro', (planId === 'pro' || planId === 'start') ? 'true' : 'false');
+      window.dispatchEvent(new CustomEvent('startbill-plan-changed', { detail: { plan: planId } }));
+    } catch (e) {
+      console.warn('Notice saving local plan:', e);
+    }
+
+    // 3. Notify parent components (DeviceSimulator / App)
+    if (onSelectPlan) {
+      onSelectPlan(planId);
+    }
+
+    // 4. Update AuthContext profile in Firestore & state
+    try {
+      await updateUserPlan(planId);
+    } catch (e) {
+      console.warn('Notice updating plan in AuthContext:', e);
+    }
+
     if (planId === 'free') {
-      setActivePlan('free');
-      try {
-        await updateUserPlan('free');
-      } catch (e) {
-        console.warn('Notice saving plan:', e);
-      }
-      if (onSelectPlan) onSelectPlan('free');
-      triggerToast('Votre espace est désormais sur l’offre d’essai gratuit.');
+      triggerToast('Votre espace est désormais configuré sur le forfait Gratuit.');
       return;
     }
 
-    // Paid Plan: Call Stripe Checkout with Restricted Key Access Policies
-    setIsProcessingCheckout(true);
-    triggerToast('Connexion à Stripe Checkout...');
+    triggerToast(`Félicitations ! Votre forfait ${planName.toUpperCase()} est désormais activé avec succès 🚀 Vous bénéficiez de tous les accès illimités.`);
 
-    try {
-      const res = await startStripeCheckout({
-        planId,
-        interval: isAnnual ? 'yearly' : 'monthly',
-        userEmail: user?.email || '',
-        userId: user?.uid || '',
-        region,
-      });
+    // 5. If Stripe keys are configured and active, offer online checkout sync
+    if (stripeConfig?.isConfigured && stripeConfig?.keyType !== 'none') {
+      try {
+        setIsProcessingCheckout(true);
+        const res = await startStripeCheckout({
+          planId,
+          interval: isAnnual ? 'yearly' : 'monthly',
+          userEmail: user?.email || '',
+          userId: user?.uid || '',
+          region,
+        });
 
-      if (res.success && res.url) {
-        // Redirection handled by service
-        return;
+        if (res.success && res.url) {
+          return;
+        }
+      } catch (err: any) {
+        console.warn('Stripe checkout notice:', err);
+      } finally {
+        setIsProcessingCheckout(false);
       }
-
-      if (res.isMockMode) {
-        setShowStripeSetupModal(true);
-        setActivePlan(planId);
-        await updateUserPlan(planId);
-        if (onSelectPlan) onSelectPlan(planId);
-      } else {
-        triggerToast(res.error || 'Erreur lors de la redirection vers Stripe.');
-      }
-    } catch (err: any) {
-      console.error('Checkout error:', err);
-      triggerToast('Erreur lors du traitement du paiement Stripe.');
-    } finally {
-      setIsProcessingCheckout(false);
     }
   };
 

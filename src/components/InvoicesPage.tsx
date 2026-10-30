@@ -58,6 +58,7 @@ interface InvoicesPageProps {
   setSelectedInvoiceId: (id: string | null) => void;
   currentScreen: ScreenId;
   initialClientFilter?: string;
+  activeCompany?: any;
 }
 
 export default function InvoicesPage({
@@ -77,7 +78,8 @@ export default function InvoicesPage({
   selectedInvoiceId,
   setSelectedInvoiceId,
   currentScreen,
-  initialClientFilter = ''
+  initialClientFilter = '',
+  activeCompany
 }: InvoicesPageProps) {
   // Local state for list
   const [searchQuery, setSearchQuery] = useState('');
@@ -157,7 +159,7 @@ export default function InvoicesPage({
       ...prev,
       { description: newProd.name, quantity: 1, unitPrice: pPrice, total: pPrice }
     ]);
-    triggerToast(`Produit "${newProd.name}" ajouté au Module 4 et inséré dans la facture !`);
+    triggerToast(`Produit "${newProd.name}" ajouté au catalogue et inséré dans la facture !`);
     setQuickProdName('');
     setQuickProdPrice('');
     setShowQuickAddProduct(false);
@@ -309,6 +311,8 @@ export default function InvoicesPage({
 
   const handleSaveInvoiceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const scopedCompanyId = activeCompany?.id || 'comp_sante';
+    const scopedCompanyName = activeCompany?.companyName || 'Santé.Inc';
     const newInvoiceObj: Invoice = {
       id: editingId,
       clientName: invClientName,
@@ -322,7 +326,9 @@ export default function InvoicesPage({
       total: taxCalculation.total,
       currency: invCurrency,
       description: invDescription,
-      items: invItems
+      items: invItems,
+      companyId: scopedCompanyId,
+      companyName: scopedCompanyName
     };
 
     if (isEditing) {
@@ -342,7 +348,9 @@ export default function InvoicesPage({
       ...inv,
       id: duplId,
       date: new Date().toISOString().split('T')[0],
-      status: 'Brouillon'
+      status: 'Brouillon',
+      companyId: inv.companyId || activeCompany?.id || 'comp_sante',
+      companyName: inv.companyName || activeCompany?.companyName || 'Santé.Inc'
     };
     onAddInvoice(duplInv);
     triggerToast(`Facture ${inv.id} dupliquée en sous le numéro ${duplId}`);
@@ -1235,9 +1243,6 @@ export default function InvoicesPage({
                     <span className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider block">
                       Produits et services
                     </span>
-                    <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-primary-50 text-primary-700 border border-primary-200">
-                      Module 4
-                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1263,7 +1268,7 @@ export default function InvoicesPage({
                   <div className="bg-primary-50/70 border border-primary-200 rounded-xl p-3 space-y-2 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-extrabold text-primary-900 flex items-center gap-1 text-[11px]">
-                        <Package className="w-3.5 h-3.5 text-primary-600" /> Ajouter rapidement au Module 4
+                        <Package className="w-3.5 h-3.5 text-primary-600" /> Ajouter rapidement au catalogue
                       </span>
                       <button 
                         type="button" 
@@ -1338,7 +1343,7 @@ export default function InvoicesPage({
                             defaultValue=""
                             className="w-full text-xs bg-white border border-primary-200/90 text-secondary-800 font-semibold rounded-lg py-1.5 px-2.5 outline-none focus:border-primary-500 shadow-2xs"
                           >
-                            <option value="">Sélectionner un produit / service depuis le Module 4...</option>
+                            <option value="">Sélectionner un produit / service depuis le catalogue...</option>
                             {activeProducts.map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.name} — {p.unitPrice.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ {p.unit ? `(${p.unit})` : ''}

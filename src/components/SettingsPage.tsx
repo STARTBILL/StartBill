@@ -414,18 +414,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   // Synchronize company input values when activeCompany changes
   useEffect(() => {
     if (activeCompany) {
-      if (activeCompany.companyName !== undefined) setCompanyName(activeCompany.companyName);
-      if (activeCompany.ownerName !== undefined) setCompanyOwner(activeCompany.ownerName);
-      if (activeCompany.companyNE !== undefined || activeCompany.taxId2 !== undefined) {
-        setCompanyNE(activeCompany.companyNE || activeCompany.taxId2 || '');
-      }
-      if (activeCompany.address !== undefined) setCompanyAddress(activeCompany.address);
-      if (activeCompany.phone !== undefined) setCompanyPhone(activeCompany.phone);
-      if (activeCompany.logoUrl !== undefined) setCompanyLogo(activeCompany.logoUrl);
-      if (activeCompany.companySignature !== undefined) setCompanySignature(activeCompany.companySignature);
-      if (activeCompany.email) setCompanyEmail(activeCompany.email);
-      if (activeCompany.taxId1) setTpsNumber(activeCompany.taxId1);
-      if (activeCompany.taxId2) setTvqNumber(activeCompany.taxId2);
+      setCompanyName(activeCompany.companyName || '');
+      setCompanyOwner(activeCompany.ownerName || '');
+      setCompanyNE(activeCompany.companyNE || activeCompany.taxId2 || '');
+      setCompanyAddress(activeCompany.address || '');
+      setCompanyPhone(activeCompany.phone || '');
+      setCompanyLogo(activeCompany.logoUrl || '');
+      setCompanySignature(activeCompany.companySignature || '');
+      setCompanyEmail(activeCompany.email || '');
+      setTpsNumber(activeCompany.taxId1 || '');
+      setTvqNumber(activeCompany.taxId2 || '');
     }
   }, [activeCompany?.id, activeCompany?.companyName]);
 
@@ -1272,7 +1270,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
               <span className="text-xs text-slate-600 font-medium">
-                Gérer les encaissements enregistrés dans le Module 5
+                Gérer les encaissements et règlements
               </span>
               <button
                 type="button"
@@ -1398,7 +1396,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               onClick={() => setScreen('tax_prep')}
               className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition cursor-pointer self-start sm:self-auto"
             >
-              <span>Accéder au Module Déclarations</span>
+              <span>Accéder aux Déclarations de taxes</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -1799,7 +1797,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               <table className="w-full text-left text-xs text-slate-800">
                 <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-200">
                   <tr>
-                    <th className="p-3 w-1/3">Module Applicatif</th>
+                    <th className="p-3 w-1/3">Section / Fonctionnalité</th>
                     {PERMISSION_ACTIONS.map(a => (
                       <th key={a.key} className="p-3 text-center">
                         <div>{a.label}</div>
@@ -2001,7 +1999,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">Module IA Financière</span>
+                  <span className="font-bold text-slate-700">Conseiller IA Financier</span>
                   <span className="text-slate-500 font-semibold">{isPro ? 'Actif' : 'Limité'}</span>
                 </div>
                 <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
@@ -2140,7 +2138,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2 cursor-pointer"
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>Rapports comptables & exports CSV (Module 7)</span>
+                <span>Rapports comptables & exports CSV</span>
               </button>
             </div>
           </div>

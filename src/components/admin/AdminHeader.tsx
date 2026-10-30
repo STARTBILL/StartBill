@@ -73,9 +73,6 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
             <span className="text-blue-400">{current.category}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">
-              MOD {current.number}
-            </span>
             <h1 className="text-base md:text-lg font-black text-white tracking-tight">
               {current.title}
             </h1>

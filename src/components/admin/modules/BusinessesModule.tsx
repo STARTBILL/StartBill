@@ -87,7 +87,7 @@ export const BusinessesModule: React.FC<BusinessesModuleProps> = ({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 03 • GESTION DES ENTREPRISES
+              GESTION DES ENTREPRISES
             </span>
             <span className="text-xs text-slate-400">Entreprises clientes STARTBILL</span>
           </div>

@@ -159,7 +159,18 @@ export default function Dashboard({
     if (propActiveCompany) {
       setActiveCompany(propActiveCompany);
     }
-  }, [propActiveCompany]);
+  }, [propActiveCompany?.id, propActiveCompany?.companyName]);
+
+  React.useEffect(() => {
+    const handleCompanyEvent = (e: any) => {
+      const comp = e.detail;
+      if (comp && comp.id) {
+        setActiveCompany(comp);
+      }
+    };
+    window.addEventListener('startbill-company-changed', handleCompanyEvent);
+    return () => window.removeEventListener('startbill-company-changed', handleCompanyEvent);
+  }, []);
 
   React.useEffect(() => {
     if (propCompanies && propCompanies.length > 0) {

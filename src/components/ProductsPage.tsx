@@ -418,7 +418,7 @@ export default function ProductsPage({
                   <Package className="w-4 h-4" />
                 </div>
                 <h3 className="text-sm font-black text-secondary-900">
-                  {editingProduct ? 'Modifier le produit / service' : 'Ajouter un produit ou service (Module 4)'}
+                  {editingProduct ? 'Modifier le produit / service' : 'Ajouter un produit ou service'}
                 </h3>
               </div>
               <button 

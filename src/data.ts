@@ -137,9 +137,9 @@ export const SCREEN_SCHEMAS: Record<string, {
   },
   financial_health: {
     id: 'financial_health',
-    title: '2. Analyse détaillée',
+    title: 'Analyse détaillée',
     image_ref: 'st1.PNG',
-    section: '2. ANALYSE DÉTAILLÉE',
+    section: 'ANALYSE DÉTAILLÉE',
     variables: {
       activeTab: 'Onglet sélectionné: Liquidité, Rentabilité, Croissance, Gestion, Risque',
       healthScore: 'Score global de santé financière (82/100, Bonne santé)',

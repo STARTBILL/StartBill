@@ -243,14 +243,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       ? 'bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 ring-1 ring-blue-400/30'
                       : 'text-slate-400 hover:text-slate-100 hover:bg-slate-850/80'
                   }`}
-                  title={isCollapsed ? `${item.moduleNumber}. ${item.label}` : undefined}
+                  title={isCollapsed ? item.label : undefined}
                 >
                   <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
 
                   {!isCollapsed && (
                     <div className="flex-1 flex items-center justify-between truncate">
                       <span className="truncate">
-                        <span className="text-[10px] opacity-60 mr-1.5 font-mono">{item.moduleNumber}</span>
                         {item.label}
                       </span>
                       {item.badge && (

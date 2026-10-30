@@ -112,7 +112,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 04 • GESTION DES UTILISATEURS
+              GESTION DES UTILISATEURS
             </span>
             <h2 className="text-xl font-black text-white mt-1">Comptes Utilisateurs & Sécurité des Accès</h2>
             <p className="text-xs text-slate-300">
@@ -187,7 +187,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 05 • ABONNEMENTS & TARIFICATION
+              ABONNEMENTS & TARIFICATION
             </span>
             <h2 className="text-xl font-black text-white mt-1">Grille Tarifaire Multi-Régionale & Quotas</h2>
             <p className="text-xs text-slate-300">
@@ -261,7 +261,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 08 • CRM ADMINISTRATIF
+              CRM ADMINISTRATIF
             </span>
             <h2 className="text-xl font-black text-white mt-1">Pipeline des Prospects & Entreprises Intéressées</h2>
             <p className="text-xs text-slate-300">
@@ -306,7 +306,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 09 • GESTION INTERNATIONALE
+              GESTION INTERNATIONALE
             </span>
             <h2 className="text-xl font-black text-white mt-1">Centres de Marchés & Juridictions</h2>
             <p className="text-xs text-slate-300">
@@ -356,7 +356,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 10 • FEATURE FLAGS & DÉPLOIEMENT
+              FEATURE FLAGS & DÉPLOIEMENT
             </span>
             <h2 className="text-xl font-black text-white mt-1">Interrupteurs de Fonctionnalités & Déploiement Progressif</h2>
             <p className="text-xs text-slate-300">
@@ -410,7 +410,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 11 • INTELLIGENCE ARTIFICIELLE
+              INTELLIGENCE ARTIFICIELLE
             </span>
             <h2 className="text-xl font-black text-white mt-1">Supervision des Modèles IA & Garde-fous</h2>
             <p className="text-xs text-slate-300">
@@ -474,7 +474,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 12 • RÉFÉRENTIELS FISCAUX
+              RÉFÉRENTIELS FISCAUX
             </span>
             <h2 className="text-xl font-black text-white mt-1">Sources Officielles CRA, Revenu Québec & OHADA</h2>
             <p className="text-xs text-slate-300">
@@ -520,7 +520,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 14 • SUPPORT CLIENT & TICKETS
+              SUPPORT CLIENT & TICKETS
             </span>
             <h2 className="text-xl font-black text-white mt-1">Helpdesk & Assistance aux Entreprises</h2>
             <p className="text-xs text-slate-300">
@@ -574,7 +574,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 19 • CENTRE DE SÉCURITÉ
+              CENTRE DE SÉCURITÉ
             </span>
             <h2 className="text-xl font-black text-white mt-1">Supervision de la Posture de Sécurité</h2>
             <p className="text-xs text-slate-300">
@@ -616,7 +616,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 21 • AUDIT & CONFORMITÉ
+              AUDIT & CONFORMITÉ
             </span>
             <h2 className="text-xl font-black text-white mt-1">Journal d'Audit Immuable & Droit à la Confidentialité</h2>
             <p className="text-xs text-slate-300">
@@ -675,7 +675,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 22 • SURVEILLANCE TECHNIQUE
+              SURVEILLANCE TECHNIQUE
             </span>
             <h2 className="text-xl font-black text-white mt-1">État des Services & Télémétrie Cloud</h2>
             <p className="text-xs text-slate-300">
@@ -715,7 +715,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 23 • ROADMAP & VERSIONS
+              ROADMAP & VERSIONS
             </span>
             <h2 className="text-xl font-black text-white mt-1">Feuille de Route Produit & Versions Logicielles</h2>
             <p className="text-xs text-slate-300">
@@ -761,7 +761,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
         <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-              MODULE 24 • PARAMÈTRES GÉNÉRAUX
+              PARAMÈTRES GÉNÉRAUX
             </span>
             <h2 className="text-xl font-black text-white mt-1">Configuration Centrale de la Plateforme STARTBILL</h2>
             <p className="text-xs text-slate-300">

@@ -186,6 +186,10 @@ export default function CompanySetupPage({
   const handleSelectCompany = (comp: CompanyProfile) => {
     setActiveCompanyId(comp.id);
     populateForm(comp);
+    try {
+      localStorage.setItem('startbill_active_company', JSON.stringify(comp));
+      window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: comp }));
+    } catch {}
   };
 
   const handleAddNewCompany = () => {
@@ -267,14 +271,17 @@ export default function CompanySetupPage({
       defaultPaymentMethod,
       paymentTerms,
       region: activeRegion,
-      isDefault: true
+      isDefault: activeCompanyId === 'comp_sante' || activeCompanyId === 'default'
     };
 
     // Update companies list
     const updatedList = companies.map(c => c.id === activeCompanyId ? updatedCompany : c);
     setCompanies(updatedList);
-    localStorage.setItem(`startbill_companies_${activeRegion}`, JSON.stringify(updatedList));
-    localStorage.setItem('startbill_active_company', JSON.stringify(updatedCompany));
+    try {
+      localStorage.setItem(`startbill_companies_${activeRegion}`, JSON.stringify(updatedList));
+      localStorage.setItem('startbill_active_company', JSON.stringify(updatedCompany));
+      window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: updatedCompany }));
+    } catch {}
 
     try {
       const user = auth.currentUser;

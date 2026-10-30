@@ -256,7 +256,7 @@ export default function AdminDashboard({
               <div className="bg-[#0B1528] border border-slate-800 rounded-3xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                    MODULE 06 • PAIEMENTS STARTBILL
+                    PAIEMENTS STARTBILL
                   </span>
                   <h2 className="text-xl font-black text-white mt-1">Encaissements & Passerelles Sécurisées</h2>
                   <p className="text-xs text-slate-300">

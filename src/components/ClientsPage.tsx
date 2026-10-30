@@ -53,6 +53,7 @@ interface ClientsPageProps {
   setScreen: (screen: ScreenId) => void;
   setSelectedInvoiceId: (id: string | null) => void;
   setShowNewInvoiceModalWithClient?: (clientName: string) => void;
+  activeCompany?: any;
 }
 
 export default function ClientsPage({
@@ -67,7 +68,8 @@ export default function ClientsPage({
   triggerToast,
   setScreen,
   setSelectedInvoiceId,
-  setShowNewInvoiceModalWithClient
+  setShowNewInvoiceModalWithClient,
+  activeCompany
 }: ClientsPageProps) {
   // Only real clients belonging to the authenticated workspace
   const allClients = useMemo(() => {
@@ -219,7 +221,9 @@ export default function ClientsPage({
         province: formData.province,
         type: formData.type,
         status: formData.status,
-        notes: formData.notes.trim() || undefined
+        notes: formData.notes.trim() || undefined,
+        companyId: editingClient.companyId || activeCompany?.id || 'comp_sante',
+        companyName: editingClient.companyName || activeCompany?.companyName || 'Santé.Inc'
       };
       if (onUpdateClient) onUpdateClient(updated);
       triggerToast(`Client "${updated.name}" mis à jour avec succès !`);
@@ -241,7 +245,9 @@ export default function ClientsPage({
         clientSince: 'Aujourd\'hui',
         totalInvoiced: 0,
         paymentsReceived: 0,
-        lastPaymentDate: '-'
+        lastPaymentDate: '-',
+        companyId: activeCompany?.id || 'comp_sante',
+        companyName: activeCompany?.companyName || 'Santé.Inc'
       };
       onAddClient(newClient);
       triggerToast(`Client "${newClient.name}" créé avec succès !`);

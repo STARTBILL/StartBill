@@ -139,7 +139,7 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/40">
-                MODULE 07 • PROGRAMME PILOTE
+                PROGRAMME PILOTE
               </span>
               <span className="text-xs text-amber-200/80 font-bold">
                 Lancement prévu : 26 Octobre 2026 (Durée : 3 mois)

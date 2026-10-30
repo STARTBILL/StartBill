@@ -399,7 +399,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUserPlan = async (newPlan: UserPlan) => {
-    if (!firebaseUser && !user) return;
+    try {
+      localStorage.setItem('startbill_user_plan', newPlan);
+      localStorage.setItem('startbill_is_pro', (newPlan === 'pro' || newPlan === 'enterprise' || newPlan === 'start') ? 'true' : 'false');
+    } catch {}
+
+    setUser(prev => prev ? { ...prev, plan: newPlan } : {
+      uid: 'demo_user',
+      email: null,
+      plan: newPlan,
+      role: 'user',
+      isAnonymous: false,
+      isSuperAdmin: false
+    });
+
     const targetUid = firebaseUser?.uid || user?.uid;
     if (!targetUid) return;
 
@@ -420,11 +433,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'active',
         updatedAt: new Date().toISOString()
       }, { merge: true });
-
-      setUser(prev => prev ? { ...prev, plan: newPlan } : null);
     } catch (error) {
-      console.error("Failed to update user plan in Firestore:", error);
-      setUser(prev => prev ? { ...prev, plan: newPlan } : null);
+      console.warn("Notice updating user plan in Firestore:", error);
     }
   };
 

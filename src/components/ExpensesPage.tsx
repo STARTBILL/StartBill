@@ -48,6 +48,7 @@ interface ExpensesPageProps {
   onDeleteExpense: (id: string) => void;
   triggerToast: (msg: string) => void;
   setScreen: (screen: ScreenId) => void;
+  activeCompany?: any;
 }
 
 const CATEGORIES = [
@@ -72,7 +73,8 @@ export default function ExpensesPage({
   onUpdateExpense,
   onDeleteExpense,
   triggerToast,
-  setScreen
+  setScreen,
+  activeCompany
 }: ExpensesPageProps) {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -288,7 +290,9 @@ export default function ExpensesPage({
         notes: formNotes.trim() || undefined,
         receiptUrl: formReceiptUrl.trim() || undefined,
         isEligible: formDeductible,
-        taxDeductiblePercentage: formDeductible ? 100 : 0
+        taxDeductiblePercentage: formDeductible ? 100 : 0,
+        companyId: editingExpense?.companyId || activeCompany?.id || 'comp_sante',
+        companyName: editingExpense?.companyName || activeCompany?.companyName || 'Santé.Inc'
       };
 
       if (onUpdateExpense) {
@@ -315,7 +319,9 @@ export default function ExpensesPage({
         notes: formNotes.trim() || undefined,
         receiptUrl: formReceiptUrl.trim() || undefined,
         isEligible: formDeductible,
-        taxDeductiblePercentage: formDeductible ? 100 : 0
+        taxDeductiblePercentage: formDeductible ? 100 : 0,
+        companyId: activeCompany?.id || 'comp_sante',
+        companyName: activeCompany?.companyName || 'Santé.Inc'
       };
 
       onAddExpense(newExpense);

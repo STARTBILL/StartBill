@@ -380,7 +380,7 @@ export default function DetailedAnalysisPage({
   const hasData = (invoices && invoices.length > 0) || (expenses && expenses.length > 0);
   const invoicedSum = (invoices || []).reduce((s, i) => s + (Number(i.total) || 0), 0);
   const paidSum = (invoices || []).reduce((s, i) => (i.status === 'Payée' || i.paymentStatus === 'paid') ? s + (Number(i.amountPaid !== undefined ? i.amountPaid : i.total) || 0) : s, 0);
-  const expenseSum = (expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const expenseSum = (expenses || []).reduce((s, e) => s + (Number(e.total !== undefined ? e.total : (e.amount !== undefined ? e.amount : e.amountHt)) || 0), 0);
   const workingCapital = paidSum - expenseSum;
   const overdueInvoices = (invoices || []).filter(i => {
     if (i.status === 'Payée' || i.paymentStatus === 'paid') return false;
@@ -1193,7 +1193,7 @@ export default function DetailedAnalysisPage({
 
             <div className="space-y-3 text-xs text-slate-600 leading-relaxed max-h-[360px] overflow-y-auto pr-1">
               <p>
-                <strong>2. Analyse détaillée</strong> évalue la santé de votre entreprise sur 5 axes stratégiques fondamentaux :
+                <strong>L'Analyse détaillée</strong> évalue la santé de votre entreprise sur 5 axes stratégiques fondamentaux :
               </p>
               <ul className="list-disc pl-4 space-y-1">
                 <li><strong>Liquidité :</strong> Capacité à faire face à vos échéances court terme (ratio de liquidité générale, trésorerie et fonds de roulement).</li>

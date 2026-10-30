@@ -57,7 +57,7 @@ export const CeoDashboardView: React.FC<CeoDashboardViewProps> = ({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                MODULE 01 • TABLEAU DE BORD EXÉCUTIF
+                TABLEAU DE BORD EXÉCUTIF
               </span>
               <span className="text-[11px] text-slate-400">
                 Supervision temps réel • Canada, Afrique & Haïti
