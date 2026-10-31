@@ -6,7 +6,6 @@ import {
   deleteDoc, 
   query, 
   where,
-  writeBatch,
   arrayUnion
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -14,54 +13,206 @@ import { SmartAlert, Invoice, AlertSeverity, AlertType } from '../types';
 import { getFreeTrialInfo } from './planAccess';
 
 /**
- * LocalStorage and Firestore tombstone helpers to guarantee that deleted notifications
- * NEVER reappear upon screen change, recalculation, or page refresh.
+ * MASTER STORAGE KEYS:
+ * Guaranteed cross-session, cross-user and offline persistent tombstones.
+ * Any notification dismissed by the user will NEVER reappear.
  */
+export const MASTER_DISMISSED_KEY = 'startbill_dismissed_alerts_master';
+export const MASTER_READ_KEY = 'startbill_read_alerts_master';
+
+// In-memory cache for ultra-fast checks during runtime
+const MEMORY_DISMISSED_SET = new Set<string>();
+
+/**
+ * Expand an alert ID or type into all possible canonical identifier representations
+ * to prevent any ID mutations from causing ghost alerts to resurface.
+ */
+export function expandAlertKeys(alertId: string, alertType?: string, targetId?: string): string[] {
+  const keys = new Set<string>();
+  if (!alertId && !alertType && !targetId) return [];
+
+  if (alertId) {
+    keys.add(alertId);
+
+    // Strip legacy user prefix like 'alert-user-default-', 'alert-guest-', 'alert-UID-'
+    const stripped = alertId.replace(/^alert-[^-_]+-[^-_]+-/, '')
+                            .replace(/^alert-[^-_]+-/, '');
+    if (stripped && stripped !== alertId) {
+      keys.add(stripped);
+      keys.add(`alert-${stripped}`);
+    }
+
+    // Invoice pattern: alert-inv-XXX or notif-created-XXX
+    const invMatch = alertId.match(/(?:inv-|notif-created-)(FACT-[\w-]+|[\w-]+)$/i);
+    if (invMatch && invMatch[1]) {
+      const invNum = invMatch[1];
+      keys.add(invNum);
+      keys.add(`target:${invNum}`);
+      keys.add(`alert-inv-${invNum}`);
+      keys.add(`notif-created-${invNum}`);
+      keys.add(`inv-${invNum}`);
+    }
+  }
+
+  if (alertType) {
+    keys.add(alertType);
+    keys.add(`type:${alertType}`);
+    keys.add(`alert-${alertType}`);
+  }
+
+  if (targetId) {
+    keys.add(targetId);
+    keys.add(`target:${targetId}`);
+    keys.add(`alert-inv-${targetId}`);
+    keys.add(`notif-created-${targetId}`);
+    keys.add(`inv-${targetId}`);
+  }
+
+  return Array.from(keys);
+}
+
+/**
+ * Load all dismissed alert identifiers across all master and legacy localStorage stores.
+ */
+export function getAllDismissedAlertIds(): Set<string> {
+  const merged = new Set<string>(MEMORY_DISMISSED_SET);
+  if (typeof window === 'undefined') return merged;
+
+  try {
+    // 1. Master global key
+    const masterRaw = localStorage.getItem(MASTER_DISMISSED_KEY);
+    if (masterRaw) {
+      const arr = JSON.parse(masterRaw);
+      if (Array.isArray(arr)) {
+        arr.forEach(id => {
+          merged.add(String(id));
+          MEMORY_DISMISSED_SET.add(String(id));
+        });
+      }
+    }
+
+    // 2. Scan all legacy user keys and collect tombstones
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('startbill_dismissed_notifs_') || k.startsWith('startbill_dismissed_alerts_'))) {
+        const val = localStorage.getItem(k);
+        if (val) {
+          try {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) {
+              parsed.forEach(id => {
+                merged.add(String(id));
+                MEMORY_DISMISSED_SET.add(String(id));
+              });
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Notice reading dismissed alerts from storage:', err);
+  }
+
+  return merged;
+}
+
 export function getDismissedAlertIds(userId?: string): Set<string> {
-  try {
-    const key = `startbill_dismissed_notifs_${userId || 'guest'}`;
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr : []);
-  } catch {
-    return new Set();
+  const set = getAllDismissedAlertIds();
+  if (userId && typeof window !== 'undefined') {
+    try {
+      const userKey = `startbill_dismissed_notifs_${userId}`;
+      const raw = localStorage.getItem(userKey);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach(id => set.add(String(id)));
+      }
+    } catch {}
   }
+  return set;
 }
 
-export function saveDismissedAlertId(alertId: string, userId?: string): void {
-  try {
-    const key = `startbill_dismissed_notifs_${userId || 'guest'}`;
-    const current = getDismissedAlertIds(userId);
-    current.add(alertId);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(Array.from(current)));
-    }
-  } catch (e) {
-    console.warn('Error saving dismissed alert id:', e);
-  }
+/**
+ * Strict boolean check: is this notification dismissed/deleted?
+ */
+export function isAlertDismissed(
+  alertId: string, 
+  alertType?: string, 
+  targetId?: string, 
+  userId?: string
+): boolean {
+  const dismissedSet = getDismissedAlertIds(userId);
+  const variations = expandAlertKeys(alertId, alertType, targetId);
+  return variations.some(v => dismissedSet.has(v));
 }
 
-export function saveDismissedAlertIds(alertIds: string[], userId?: string): void {
+/**
+ * Save dismissed IDs into master storage, memory cache, legacy keys, and notify app.
+ */
+export function saveDismissedAlertIds(
+  alertIds: string[], 
+  userId?: string,
+  alertMetadata?: Array<{ id: string; type?: string; targetId?: string }>
+): void {
+  if (typeof window === 'undefined') return;
+
   try {
-    const key = `startbill_dismissed_notifs_${userId || 'guest'}`;
-    const current = getDismissedAlertIds(userId);
-    alertIds.forEach(id => current.add(id));
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(Array.from(current)));
+    const current = getAllDismissedAlertIds();
+
+    alertIds.forEach(id => {
+      const meta = alertMetadata?.find(m => m.id === id);
+      const variations = expandAlertKeys(id, meta?.type, meta?.targetId);
+      variations.forEach(v => {
+        current.add(v);
+        MEMORY_DISMISSED_SET.add(v);
+      });
+    });
+
+    const serialized = JSON.stringify(Array.from(current));
+
+    // Save master
+    localStorage.setItem(MASTER_DISMISSED_KEY, serialized);
+
+    // Save legacy keys for backward-compatibility
+    localStorage.setItem('startbill_dismissed_notifs_guest', serialized);
+    localStorage.setItem('startbill_dismissed_notifs_user-default', serialized);
+    if (userId && userId !== 'guest' && userId !== 'user-default') {
+      localStorage.setItem(`startbill_dismissed_notifs_${userId}`, serialized);
     }
+
+    // Broadcast synchronization event
+    window.dispatchEvent(new CustomEvent('startbill-notifications-updated', {
+      detail: { count: current.size }
+    }));
   } catch (e) {
     console.warn('Error saving dismissed alert ids:', e);
   }
+}
+
+export function saveDismissedAlertId(
+  alertId: string, 
+  userId?: string,
+  alertType?: string,
+  targetId?: string
+): void {
+  saveDismissedAlertIds([alertId], userId, [{ id: alertId, type: alertType, targetId }]);
 }
 
 export function getReadAlertIds(userId?: string): Set<string> {
   try {
     const key = `startbill_read_notifs_${userId || 'guest'}`;
     const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr : []);
+    const masterRaw = typeof window !== 'undefined' ? localStorage.getItem(MASTER_READ_KEY) : null;
+    const set = new Set<string>();
+
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) arr.forEach(id => set.add(id));
+    }
+    if (masterRaw) {
+      const arr = JSON.parse(masterRaw);
+      if (Array.isArray(arr)) arr.forEach(id => set.add(id));
+    }
+    return set;
   } catch {
     return new Set();
   }
@@ -76,8 +227,10 @@ export function saveReadAlertId(alertId: string, isRead: boolean, userId?: strin
     } else {
       current.delete(alertId);
     }
+    const serialized = JSON.stringify(Array.from(current));
     if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(Array.from(current)));
+      localStorage.setItem(key, serialized);
+      localStorage.setItem(MASTER_READ_KEY, serialized);
     }
   } catch (e) {
     console.warn('Error saving read alert id:', e);
@@ -93,7 +246,6 @@ export async function persistDismissedNotificationInFirestore(userId: string, al
       updatedAt: new Date().toISOString()
     }, { merge: true });
   } catch (err) {
-    // Non-blocking sync notice
     console.warn('Notice syncing dismissed notification to Firestore:', err);
   }
 }
@@ -104,10 +256,9 @@ export async function getAlertsFromFirestore(userId: string): Promise<SmartAlert
     const q = query(alertsRef, where('userId', '==', userId));
     const snap = await getDocs(q);
     const list: SmartAlert[] = [];
-    const dismissed = getDismissedAlertIds(userId);
     snap.forEach((docSnap) => {
       const data = docSnap.data() as SmartAlert;
-      if (!dismissed.has(data.id)) {
+      if (!isAlertDismissed(data.id, data.type, data.targetId, userId)) {
         list.push(data);
       }
     });
@@ -120,35 +271,52 @@ export async function getAlertsFromFirestore(userId: string): Promise<SmartAlert
 
 export async function saveAlertToFirestore(alert: SmartAlert): Promise<void> {
   try {
+    // Only save if not dismissed
+    if (isAlertDismissed(alert.id, alert.type, alert.targetId, alert.userId)) {
+      return;
+    }
     await setDoc(doc(db, 'alerts', alert.id), alert);
   } catch (err) {
-    // Silent failover if offline or rule updating
+    // Silent failover
   }
 }
 
-export async function deleteAlertFromFirestore(alertId: string, userId?: string): Promise<void> {
-  // 1. Immediately persist to localStorage
-  saveDismissedAlertId(alertId, userId);
+export async function deleteAlertFromFirestore(
+  alertId: string, 
+  userId?: string,
+  alertType?: string,
+  targetId?: string
+): Promise<void> {
+  // 1. Immediately persist to localStorage across all keys and dispatch sync event
+  saveDismissedAlertId(alertId, userId, alertType, targetId);
 
   // 2. Persist to Firestore user profile if authenticated
   if (userId && userId !== 'user-default' && userId !== 'guest') {
-    persistDismissedNotificationInFirestore(userId, [alertId]).catch(() => {});
+    const variations = expandAlertKeys(alertId, alertType, targetId);
+    persistDismissedNotificationInFirestore(userId, variations).catch(() => {});
   }
 
   // 3. Delete from alerts collection if present
   try {
     await deleteDoc(doc(db, 'alerts', alertId));
-  } catch (err) {
-    // In case rules deny deleting from alerts collection, tombstone in user doc guarantees it stays deleted
-  }
+  } catch (err) {}
 }
 
-export async function deleteAllAlertsFromFirestore(alertIds: string[], userId?: string): Promise<void> {
+export async function deleteAllAlertsFromFirestore(
+  alertIds: string[], 
+  userId?: string,
+  alertMetadata?: Array<{ id: string; type?: string; targetId?: string }>
+): Promise<void> {
   if (!alertIds || alertIds.length === 0) return;
-  saveDismissedAlertIds(alertIds, userId);
+  saveDismissedAlertIds(alertIds, userId, alertMetadata);
 
   if (userId && userId !== 'user-default' && userId !== 'guest') {
-    persistDismissedNotificationInFirestore(userId, alertIds).catch(() => {});
+    const allVariations = new Set<string>();
+    alertIds.forEach(id => {
+      const meta = alertMetadata?.find(m => m.id === id);
+      expandAlertKeys(id, meta?.type, meta?.targetId).forEach(v => allVariations.add(v));
+    });
+    persistDismissedNotificationInFirestore(userId, Array.from(allVariations)).catch(() => {});
   }
 
   for (const id of alertIds) {
@@ -168,6 +336,10 @@ export async function markAlertAsReadInFirestore(alertId: string, isRead = true,
   }
 }
 
+/**
+ * Generate smart alerts with DETERMINISTIC, STABLE IDs (independent of userId token).
+ * Strictly checks `isAlertDismissed` on each rule before adding.
+ */
 export function generateSmartAlerts(
   userId: string,
   totalRevenue: number,
@@ -177,10 +349,8 @@ export function generateSmartAlerts(
   existingAlerts: SmartAlert[] = []
 ): SmartAlert[] {
   const alertsMap = new Map<string, SmartAlert>();
-  const dismissedIds = getDismissedAlertIds(userId);
   const readIds = getReadAlertIds(userId);
 
-  // Map existing read states by alert type/id so user's manual "isRead" is preserved
   const existingReadState = new Map<string, boolean>();
   existingAlerts.forEach(a => {
     existingReadState.set(a.type, a.isRead);
@@ -190,18 +360,20 @@ export function generateSmartAlerts(
   const nowStr = new Date().toISOString();
 
   const addAlertIfActive = (key: string, alert: SmartAlert) => {
-    if (!dismissedIds.has(alert.id)) {
-      alertsMap.set(key, {
-        ...alert,
-        isRead: readIds.has(alert.id) || alert.isRead
-      });
+    // STRICT TOMBSTONE CHECK: Never generate if dismissed
+    if (isAlertDismissed(alert.id, alert.type, alert.targetId, userId)) {
+      return;
     }
+    alertsMap.set(key, {
+      ...alert,
+      isRead: readIds.has(alert.id) || alert.isRead
+    });
   };
 
-  // Rule 1 & 2: GST/HST Thresholds
+  // Rule 1 & 2: GST/HST Thresholds (DETERMINISTIC STABLE ID: alert-gst_exceeded / alert-gst_threshold)
   if (totalRevenue >= 30000) {
     const type: AlertType = 'gst_exceeded';
-    const id = `alert-${userId}-${type}`;
+    const id = `alert-${type}`;
     addAlertIfActive(type, {
       id,
       userId,
@@ -216,7 +388,7 @@ export function generateSmartAlerts(
     });
   } else if (totalRevenue >= 25000 && totalRevenue < 30000) {
     const type: AlertType = 'gst_threshold';
-    const id = `alert-${userId}-${type}`;
+    const id = `alert-${type}`;
     addAlertIfActive(type, {
       id,
       userId,
@@ -234,7 +406,7 @@ export function generateSmartAlerts(
   // Rule 3: Taxes collected to reserve
   if (totalTax > 0) {
     const type: AlertType = 'taxes_reserved';
-    const id = `alert-${userId}-${type}`;
+    const id = `alert-${type}`;
     const formattedTax = totalTax.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     addAlertIfActive(type, {
       id,
@@ -250,8 +422,8 @@ export function generateSmartAlerts(
     });
   }
 
-  // Rule 4: Invoice overdue
-  const overdueInvoices = invoices.filter(inv => {
+  // Rule 4: Overdue invoices
+  const overdueInvoices = (invoices || []).filter(inv => {
     if (inv.status === 'En retard') return true;
     if (inv.status !== 'Payée' && inv.status !== 'paid' && inv.dueDate) {
       return new Date(inv.dueDate) < new Date();
@@ -261,7 +433,7 @@ export function generateSmartAlerts(
 
   if (overdueInvoices.length > 0) {
     const type: AlertType = 'invoice_overdue';
-    const id = `alert-${userId}-${type}`;
+    const id = `alert-${type}`;
     const overdueCount = overdueInvoices.length;
     addAlertIfActive(type, {
       id,
@@ -280,12 +452,12 @@ export function generateSmartAlerts(
     });
   }
 
-  // Rule 5: Free plan limit reached (invoiceCount >= 5 and free plan after 5-day trial)
-  const totalInvoicesCount = invoices.length;
+  // Rule 5: Free plan limit reached
+  const totalInvoicesCount = (invoices || []).length;
   const trial = getFreeTrialInfo();
   if (!isPro && totalInvoicesCount >= 5 && !trial.isActive) {
     const type: AlertType = 'free_limit_reached';
-    const id = `alert-${userId}-${type}`;
+    const id = `alert-${type}`;
     addAlertIfActive(type, {
       id,
       userId,
@@ -303,7 +475,7 @@ export function generateSmartAlerts(
   // Rule 6: Tax savings recommendation
   if (totalRevenue > 0) {
     const type: AlertType = 'tax_savings';
-    const id = `alert-${userId}-${type}`;
+    const id = `alert-${type}`;
     const estimatedAmount = Math.round(totalRevenue * 0.20);
     const formattedAmount = estimatedAmount.toLocaleString('fr-CA');
     addAlertIfActive(type, {
@@ -320,11 +492,11 @@ export function generateSmartAlerts(
     });
   }
 
-  // Rule 7: Notification for created invoices
+  // Rule 7: Notification for created invoices (STABLE ID: alert-inv-${invId})
   if (invoices && invoices.length > 0) {
     invoices.slice(0, 5).forEach((inv) => {
       const invId = inv.id || 'FACT-NOUVELLE';
-      const alertId = `alert-${userId}-inv-${invId}`;
+      const alertId = `alert-inv-${invId}`;
       const type: AlertType = 'general';
       const invTotal = (inv.total || inv.subtotal || 0).toLocaleString('fr-CA', { minimumFractionDigits: 2 });
       addAlertIfActive(`inv_${invId}`, {
@@ -343,12 +515,5 @@ export function generateSmartAlerts(
     });
   }
 
-  const generatedList = Array.from(alertsMap.values());
-
-  // Save generated alerts to Firestore asynchronously only if active
-  generatedList.forEach(alert => {
-    saveAlertToFirestore(alert).catch(() => {});
-  });
-
-  return generatedList;
+  return Array.from(alertsMap.values());
 }

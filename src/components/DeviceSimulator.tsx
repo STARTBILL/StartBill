@@ -88,7 +88,7 @@ import { useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
 import { StartBillLogo, StartBillIcon } from './common/StartBillLogo';
 import { db, auth } from '../lib/firebase';
-import { generateSmartAlerts } from '../lib/alerts';
+import { generateSmartAlerts, isAlertDismissed } from '../lib/alerts';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 
@@ -515,6 +515,13 @@ export default function DeviceSimulator({
     return () => unsubscribe();
   }, []);
 
+  const [, setNotifEventCount] = React.useState(0);
+  React.useEffect(() => {
+    const handleNotifUpdate = () => setNotifEventCount(v => v + 1);
+    window.addEventListener('startbill-notifications-updated', handleNotifUpdate);
+    return () => window.removeEventListener('startbill-notifications-updated', handleNotifUpdate);
+  }, []);
+
   // Synchronize internal db states with App props
   React.useEffect(() => {
     if (invoices) setDbInvoices(invoices);
@@ -782,7 +789,7 @@ export default function DeviceSimulator({
     activeInvoicesList,
     isPro
   );
-  const unreadAlertsCount = smartAlerts.filter(a => !a.isRead).length;
+  const unreadAlertsCount = smartAlerts.filter(a => !a.isRead && !isAlertDismissed(a.id, a.type, a.targetId, currentUser?.uid)).length;
 
   // Find selected detail items
   const selectedInvoice = activeInvoicesList.find(inv => inv.id === selectedInvoiceId) || activeInvoicesList[0];

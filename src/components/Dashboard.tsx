@@ -33,7 +33,7 @@ import {
   Check
 } from 'lucide-react';
 import { ScreenId, SmartAlert } from '../types';
-import { generateSmartAlerts, markAlertAsReadInFirestore } from '../lib/alerts';
+import { generateSmartAlerts, markAlertAsReadInFirestore, isAlertDismissed } from '../lib/alerts';
 import { Button } from './ui/Button';
 import { Loader } from './ui/Loader';
 import { ErrorState } from './ui/ErrorState';
@@ -246,6 +246,14 @@ export default function Dashboard({
   const taxesNettes = Math.max(0, totalTax - taxesPayeesDépenses);
   const totalACote = Math.round(taxesNettes + estimatedTax);
 
+  // Listen to cross-component notification dismissal events
+  const [, setNotifVersion] = React.useState(0);
+  React.useEffect(() => {
+    const handleUpdate = () => setNotifVersion(v => v + 1);
+    window.addEventListener('startbill-notifications-updated', handleUpdate);
+    return () => window.removeEventListener('startbill-notifications-updated', handleUpdate);
+  }, []);
+
   // Compute live smart alerts based on current state & Canadian rules
   const smartAlerts = generateSmartAlerts(
     currentUser?.uid || 'user-default',
@@ -254,7 +262,7 @@ export default function Dashboard({
     dbInvoices,
     isPro
   );
-  const unreadAlertsCount = smartAlerts.filter(a => !a.isRead).length;
+  const unreadAlertsCount = smartAlerts.filter(a => !a.isRead && !isAlertDismissed(a.id, a.type, a.targetId, currentUser?.uid)).length;
 
   // Chart data for 6 months calculated from real user data (0s if empty workspace)
   const getMonthlyData = () => {
