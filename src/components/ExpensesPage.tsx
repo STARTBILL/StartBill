@@ -37,6 +37,8 @@ import { EmptyState } from './ui/EmptyState';
 import { ErrorState } from './ui/ErrorState';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { calculateTaxes } from './DeviceSimulator';
+import { getRegionalTaxConfig, calculateRegionalTaxes, CANADIAN_PROVINCES, TaxRegion } from '../lib/regionalTaxes';
+import { REGIONS } from '../data/regions';
 
 interface ExpensesPageProps {
   expenses: Expense[];
@@ -101,23 +103,41 @@ export default function ExpensesPage({
   const [formNotes, setFormNotes] = useState('');
   const [formReceiptUrl, setFormReceiptUrl] = useState('');
 
-  // Auto-calculate Canadian taxes based on Province and HT amount
-  const handleAmountOrProvinceChange = (newHt: string, newProv: string) => {
+  // Strict active region detection
+  const currentRegion: TaxRegion = (activeCompany?.region || (typeof localStorage !== 'undefined' ? localStorage.getItem('startbill_region') : 'canada') || 'canada') as TaxRegion;
+  const currentRegionalConfig = getRegionalTaxConfig(currentRegion);
+  const regionalCurrencySymbol = REGIONS[currentRegion]?.currencySymbol || '$';
+
+  const [formTaxMode, setFormTaxMode] = useState<'standard' | 'exempt' | 'custom'>('standard');
+  const [formCustomTaxRate, setFormCustomTaxRate] = useState<string>(() => String(currentRegionalConfig.taxRatePercent ?? 18));
+
+  // Calculate taxes strictly based on region (Canada vs Africa/Haiti)
+  const handleAmountOrProvinceChange = (newHt: string, newProvOrMode: string, customRateStr?: string) => {
     const rawNum = parseFloat(newHt);
     const num = isNaN(rawNum) ? 0 : Math.max(0, rawNum);
     const safeHt = isNaN(rawNum) ? '' : num.toString();
     setFormAmountHt(safeHt);
-    setFormProvince(newProv);
-    if (num <= 0) {
-      setFormTps('0.00');
+
+    if (currentRegion === 'canada') {
+      setFormProvince(newProvOrMode);
+      if (num <= 0) {
+        setFormTps('0.00');
+        setFormTvq('0.00');
+        return;
+      }
+      const tax = calculateTaxes(newProvOrMode, num);
+      const tpsHst = (tax.gst + tax.hst).toFixed(2);
+      const tvqPst = (tax.qst + tax.pst).toFixed(2);
+      setFormTps(tpsHst);
+      setFormTvq(tvqPst);
+    } else {
+      // Africa & Haiti manual tax calculation
+      const mode = (newProvOrMode as 'standard' | 'exempt' | 'custom') || formTaxMode;
+      const rateToUse = mode === 'exempt' ? 0 : (mode === 'custom' ? (parseFloat(customRateStr || formCustomTaxRate) || 0) : (currentRegionalConfig.taxRatePercent || 0));
+      const calculatedTax = parseFloat((num * (rateToUse / 100)).toFixed(2));
+      setFormTps(calculatedTax.toFixed(2)); // Primary regional tax amount
       setFormTvq('0.00');
-      return;
     }
-    const tax = calculateTaxes(newProv, num);
-    const tpsHst = (tax.gst + tax.hst).toFixed(2);
-    const tvqPst = (tax.qst + tax.pst).toFixed(2);
-    setFormTps(tpsHst);
-    setFormTvq(tvqPst);
   };
 
   // Speech Recognition States (Voice Dictation)
@@ -243,6 +263,11 @@ export default function ExpensesPage({
     setFormProvider('');
     setFormDate(new Date().toISOString().split('T')[0]);
     setFormAmountHt('');
+    setFormTps('0.00');
+    setFormTvq('0.00');
+    setFormTaxMode(currentRegionalConfig.enabled ? 'standard' : 'exempt');
+    setFormCustomTaxRate(String(currentRegionalConfig.taxRatePercent ?? 18));
+    setFormProvince(currentRegion === 'canada' ? 'Québec' : (currentRegionalConfig.taxName || 'TVA'));
     setFormPaymentMethod('Carte bancaire');
     setFormNotes('');
     setFormReceiptUrl('');
@@ -255,10 +280,15 @@ export default function ExpensesPage({
     setFormCategory(expense.category || CATEGORIES[0]);
     setFormProvider(expense.provider || '');
     setFormDate(expense.date || new Date().toISOString().split('T')[0]);
-    setFormProvince(expense.province || 'Québec');
+    setFormProvince(expense.province || (currentRegion === 'canada' ? 'Québec' : (currentRegionalConfig.taxName || 'TVA')));
     setFormAmountHt((expense.amountHt || expense.total).toFixed(2));
     setFormTps((expense.tps || 0).toFixed(2));
     setFormTvq((expense.tvq || 0).toFixed(2));
+    if (expense.province === 'Exonéré' || (expense.tps === 0 && expense.tvq === 0)) {
+      setFormTaxMode('exempt');
+    } else {
+      setFormTaxMode('standard');
+    }
     setFormDeductible(expense.isEligible !== false);
     setFormPaymentMethod(expense.paymentMethod || 'Carte bancaire');
     setFormNotes(expense.notes || '');
@@ -275,6 +305,11 @@ export default function ExpensesPage({
     const tvqNum = parseFloat(formTvq) || 0;
     const totalNum = parseFloat((amountHtNum + tpsNum + tvqNum).toFixed(2));
 
+    const taxLabel = currentRegion === 'canada' ? 'TPS/TVQ' : (currentRegionalConfig.taxName || 'TVA');
+    const provOrTaxModeLabel = currentRegion === 'canada' 
+      ? formProvince 
+      : (formTaxMode === 'exempt' ? 'Exonéré' : `${taxLabel} (${formTaxMode === 'custom' ? formCustomTaxRate : currentRegionalConfig.taxRatePercent}%)`);
+
     if (editingExpense) {
       const updated: Expense = {
         ...editingExpense,
@@ -285,14 +320,17 @@ export default function ExpensesPage({
         tps: tpsNum,
         tvq: tvqNum,
         total: totalNum,
-        province: formProvince,
+        taxAmount: tpsNum + tvqNum,
+        taxName: taxLabel,
+        province: provOrTaxModeLabel,
         paymentMethod: formPaymentMethod,
         notes: formNotes.trim() || undefined,
         receiptUrl: formReceiptUrl.trim() || undefined,
         isEligible: formDeductible,
         taxDeductiblePercentage: formDeductible ? 100 : 0,
         companyId: editingExpense?.companyId || activeCompany?.id || 'comp_sante',
-        companyName: editingExpense?.companyName || activeCompany?.companyName || 'Santé.Inc'
+        companyName: editingExpense?.companyName || activeCompany?.companyName || 'Santé.Inc',
+        region: currentRegion
       };
 
       if (onUpdateExpense) {
@@ -314,18 +352,21 @@ export default function ExpensesPage({
         tps: tpsNum,
         tvq: tvqNum,
         total: totalNum,
-        province: formProvince,
+        taxAmount: tpsNum + tvqNum,
+        taxName: taxLabel,
+        province: provOrTaxModeLabel,
         paymentMethod: formPaymentMethod,
         notes: formNotes.trim() || undefined,
         receiptUrl: formReceiptUrl.trim() || undefined,
         isEligible: formDeductible,
         taxDeductiblePercentage: formDeductible ? 100 : 0,
         companyId: activeCompany?.id || 'comp_sante',
-        companyName: activeCompany?.companyName || 'Santé.Inc'
+        companyName: activeCompany?.companyName || 'Santé.Inc',
+        region: currentRegion
       };
 
       onAddExpense(newExpense);
-      triggerToast(`Dépense de ${totalNum.toFixed(2)} $ enregistrée !`);
+      triggerToast(`Dépense de ${totalNum.toFixed(2)} ${regionalCurrencySymbol} enregistrée !`);
     }
 
     setShowModal(false);
@@ -871,92 +912,171 @@ export default function ExpensesPage({
                   onChange={(e) => setFormDate(e.target.value)}
                 />
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
-                    Province fiscale *
-                  </label>
-                  <select
-                    value={formProvince}
-                    onChange={(e) => handleAmountOrProvinceChange(formAmountHt, e.target.value)}
-                    className="w-full text-xs bg-secondary-50/70 border border-secondary-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-primary-500 transition"
-                  >
-                    <option value="Québec">Québec (TPS 5% + TVQ 9.975%)</option>
-                    <option value="Ontario">Ontario (TVH 13%)</option>
-                    <option value="Alberta">Alberta (TPS 5%)</option>
-                    <option value="Colombie-Britannique">Colombie-Britannique (TPS 5% + TVP 7%)</option>
-                    <option value="Manitoba">Manitoba (TPS 5% + TVP 7%)</option>
-                    <option value="Saskatchewan">Saskatchewan (TPS 5% + TVP 6%)</option>
-                    <option value="Nouvelle-Écosse">Nouvelle-Écosse (TVH 14%)</option>
-                    <option value="Nouveau-Brunswick">Nouveau-Brunswick (TVH 15%)</option>
-                    <option value="Terre-Neuve-et-Labrador">Terre-Neuve-et-Labrador (TVH 15%)</option>
-                    <option value="Île-du-Prince-Édouard">Île-du-Prince-Édouard (TVH 15%)</option>
-                    <option value="Territoires">Territoires (TPS 5%)</option>
-                  </select>
-                </div>
+                {currentRegion === 'canada' ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                      Province fiscale *
+                    </label>
+                    <select
+                      value={formProvince}
+                      onChange={(e) => handleAmountOrProvinceChange(formAmountHt, e.target.value)}
+                      className="w-full text-xs bg-secondary-50/70 border border-secondary-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-primary-500 transition"
+                    >
+                      {CANADIAN_PROVINCES.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name} ({p.pstLabel ? `${p.gstLabel ? `${p.gstLabel} + ` : ''}${p.pstLabel}` : p.gstLabel})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                      Régime fiscal de la dépense ({REGIONS[currentRegion]?.name || ''}) *
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        value={formTaxMode}
+                        onChange={(e) => {
+                          const newMode = e.target.value as any;
+                          setFormTaxMode(newMode);
+                          handleAmountOrProvinceChange(formAmountHt, newMode, formCustomTaxRate);
+                        }}
+                        className="flex-1 text-xs bg-secondary-50/70 border border-secondary-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-primary-500 transition font-medium"
+                      >
+                        <option value="standard">
+                          {currentRegionalConfig.taxName || 'Taxe'} Standard ({currentRegionalConfig.taxRatePercent}%)
+                        </option>
+                        <option value="exempt">Exonéré / Hors taxe (0%)</option>
+                        <option value="custom">Taux personnalisé...</option>
+                      </select>
+                      {formTaxMode === 'custom' && (
+                        <div className="w-24 relative">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={formCustomTaxRate}
+                            onChange={(e) => {
+                              setFormCustomTaxRate(e.target.value);
+                              handleAmountOrProvinceChange(formAmountHt, 'custom', e.target.value);
+                            }}
+                            placeholder="%"
+                            className="w-full text-xs bg-white border border-secondary-200 rounded-xl py-2 px-2.5 outline-none focus:border-primary-500 pr-6 font-bold"
+                          />
+                          <span className="absolute right-2 top-2 text-xs text-secondary-400 font-bold">%</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Amounts section (HT, TPS, TVQ) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Input
-                  label="Montant Hors Taxes (HT) *"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  placeholder="0.00"
-                  value={formAmountHt}
-                  onChange={(e) => {
-                    const raw = parseFloat(e.target.value);
-                    handleAmountOrProvinceChange(isNaN(raw) ? '' : Math.max(0, raw).toString(), formProvince);
-                  }}
-                />
-
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
-                      TPS/TVH payée
-                    </label>
-                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">auto</span>
-                  </div>
+              {/* Amounts section (HT and taxes) */}
+              {currentRegion === 'canada' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input
+                    label="Montant Hors Taxes (HT) *"
                     type="number"
                     step="0.01"
                     min="0"
+                    required
                     placeholder="0.00"
-                    value={formTps}
+                    value={formAmountHt}
                     onChange={(e) => {
                       const raw = parseFloat(e.target.value);
-                      setFormTps(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                      handleAmountOrProvinceChange(isNaN(raw) ? '' : Math.max(0, raw).toString(), formProvince);
                     }}
                   />
-                </div>
 
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
-                      {formProvince === 'Québec' ? 'TVQ (9.975%)' : 'TVP / Prov.'}
-                    </label>
-                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">auto</span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                        TPS/TVH payée
+                      </label>
+                      <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">auto</span>
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={formTps}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        setFormTps(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                      }}
+                    />
                   </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                        {formProvince === 'Québec' ? 'TVQ (9.975%)' : 'TVP / Prov.'}
+                      </label>
+                      <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">auto</span>
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={formTvq}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        setFormTvq(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
+                    label="Montant Hors Taxes (HT) *"
                     type="number"
                     step="0.01"
                     min="0"
+                    required
                     placeholder="0.00"
-                    value={formTvq}
+                    value={formAmountHt}
                     onChange={(e) => {
                       const raw = parseFloat(e.target.value);
-                      setFormTvq(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                      handleAmountOrProvinceChange(isNaN(raw) ? '' : Math.max(0, raw).toString(), formTaxMode, formCustomTaxRate);
                     }}
                   />
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                        {currentRegionalConfig.taxName || 'Taxe locale'} payée
+                      </label>
+                      <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">auto</span>
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={formTps}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        setFormTps(isNaN(raw) ? '0.00' : Math.max(0, raw).toFixed(2));
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Déductible à 100% Toggle */}
               <div className="flex items-center justify-between p-3 bg-secondary-50 border border-secondary-200 rounded-xl">
                 <div>
                   <span className="text-xs font-bold text-secondary-900 block">Dépense déductible fiscalement à 100%</span>
-                  <span className="text-[10px] text-secondary-500 font-medium">Donne droit au remboursement des taxes payées (CTI & RTI)</span>
+                  <span className="text-[10px] text-secondary-500 font-medium">
+                    {currentRegion === 'canada' 
+                      ? 'Donne droit au remboursement des taxes payées (CTI & RTI)' 
+                      : `Donne droit à la déduction fiscale sur votre déclaration de ${currentRegionalConfig.taxName || 'taxe'}`}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -973,30 +1093,24 @@ export default function ExpensesPage({
               <div className="bg-primary-50/70 border border-primary-200/80 rounded-xl p-3.5 space-y-1.5 text-xs">
                 <div className="flex justify-between text-secondary-600">
                   <span>Montant Hors Taxes (HT) :</span>
-                  <span className="font-bold text-secondary-900">$ {(parseFloat(formAmountHt) || 0).toFixed(2)} CAD</span>
+                  <span className="font-bold text-secondary-900">{(parseFloat(formAmountHt) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {regionalCurrencySymbol}</span>
                 </div>
                 {parseFloat(formTps) > 0 && (
                   <div className="flex justify-between text-secondary-600">
-                    <span>TPS / TVH calculée :</span>
-                    <span className="font-semibold text-secondary-800">$ {(parseFloat(formTps) || 0).toFixed(2)} CAD</span>
+                    <span>{currentRegion === 'canada' ? 'TPS / TVH calculée :' : `${currentRegionalConfig.taxName || 'Taxe'} payée :`}</span>
+                    <span className="font-semibold text-secondary-800">{(parseFloat(formTps) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {regionalCurrencySymbol}</span>
                   </div>
                 )}
-                {formProvince === 'Québec' && parseFloat(formTvq) > 0 && (
+                {currentRegion === 'canada' && parseFloat(formTvq) > 0 && (
                   <div className="flex justify-between text-secondary-600">
-                    <span>TVQ (9.975%) calculée :</span>
-                    <span className="font-semibold text-secondary-800">$ {(parseFloat(formTvq) || 0).toFixed(2)} CAD</span>
+                    <span>{formProvince === 'Québec' ? 'TVQ (9.975%) calculée :' : 'TVP / Prov. :'}</span>
+                    <span className="font-semibold text-secondary-800">{(parseFloat(formTvq) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {regionalCurrencySymbol}</span>
                   </div>
                 )}
-                {formProvince !== 'Québec' && parseFloat(formTvq) > 0 && (
-                  <div className="flex justify-between text-secondary-600">
-                    <span>TVP / Taxe provinciale :</span>
-                    <span className="font-semibold text-secondary-800">$ {(parseFloat(formTvq) || 0).toFixed(2)} CAD</span>
-                  </div>
-                )}
-                <div className="border-t border-primary-200 pt-2 flex justify-between items-center text-sm font-black text-secondary-900">
-                  <span>TOTAL TTC :</span>
-                  <span className="text-primary-700 font-black text-base">
-                    $ {((parseFloat(formAmountHt) || 0) + (parseFloat(formTps) || 0) + (parseFloat(formTvq) || 0)).toFixed(2)} CAD
+                <div className="border-t border-primary-200 pt-1.5 flex justify-between font-black text-sm text-secondary-900">
+                  <span>Total TTC Déboursé :</span>
+                  <span className="text-primary-700">
+                    {((parseFloat(formAmountHt) || 0) + (parseFloat(formTps) || 0) + (parseFloat(formTvq) || 0)).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {regionalCurrencySymbol}
                   </span>
                 </div>
               </div>

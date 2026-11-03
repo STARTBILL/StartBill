@@ -86,6 +86,7 @@ import { downloadInvoicePdf } from '../lib/pdfGenerator';
 import { useRegionalContext } from '../context/RegionalContext';
 import { useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
+import { getRegionalTaxConfig, calculateRegionalTaxes, TaxRegion } from '../lib/regionalTaxes';
 import { StartBillLogo, StartBillIcon } from './common/StartBillLogo';
 import { db, auth } from '../lib/firebase';
 import { generateSmartAlerts, isAlertDismissed } from '../lib/alerts';
@@ -115,8 +116,22 @@ export interface TaxResult {
   total: number;
 }
 
-export function calculateTaxes(province: string, subtotal: number): TaxResult {
+export function calculateTaxes(provinceOrRate: string | number, subtotal: number, regionOverride?: TaxRegion): TaxResult {
   const safeSubtotal = Math.max(0, subtotal || 0);
+  const activeRegion: TaxRegion = regionOverride || (typeof localStorage !== 'undefined' ? (localStorage.getItem('startbill_region') as TaxRegion) : 'canada') || 'canada';
+
+  if (activeRegion === 'afrique' || activeRegion === 'haiti') {
+    const regional = calculateRegionalTaxes(safeSubtotal, activeRegion, provinceOrRate);
+    return {
+      gst: regional.tax1Amount,
+      pst: regional.tax2Amount || 0,
+      qst: 0,
+      hst: 0,
+      totalTax: regional.totalTax,
+      total: regional.total
+    };
+  }
+
   const rates: Record<string, { gst: number; pst: number; qst: number; hst: number }> = {
     'Québec': { gst: 0.05, pst: 0, qst: 0.09975, hst: 0 },
     'Ontario': { gst: 0, pst: 0, qst: 0, hst: 0.13 },
@@ -131,7 +146,8 @@ export function calculateTaxes(province: string, subtotal: number): TaxResult {
     'Territoires': { gst: 0.05, pst: 0, qst: 0, hst: 0 },
   };
 
-  const tax = rates[province] || { gst: 0.05, pst: 0, qst: 0, hst: 0 };
+  const prov = typeof provinceOrRate === 'string' ? provinceOrRate : 'Québec';
+  const tax = rates[prov] || { gst: 0.05, pst: 0, qst: 0, hst: 0 };
   const gst = parseFloat((safeSubtotal * tax.gst).toFixed(2));
   const pst = parseFloat((safeSubtotal * tax.pst).toFixed(2));
   const qst = parseFloat((safeSubtotal * tax.qst).toFixed(2));
@@ -2960,10 +2976,16 @@ export default function DeviceSimulator({
                     </div>
                     <div>
                       <span className="font-bold text-slate-900 block text-xs">Taxes nettes à remettre</span>
-                      <span className="text-[10px] font-medium text-slate-400">TPS / TVH / TVQ</span>
+                      <span className="text-[10px] font-medium text-slate-400">
+                        {currentRegion === 'canada' 
+                          ? 'TPS / TVH / TVQ (ARC & MRQ)' 
+                          : `${getRegionalTaxConfig(currentRegion).taxName || 'TVA'} (Déclaration locale)`}
+                      </span>
                     </div>
                   </div>
-                  <span className="text-base font-black text-slate-900">$ {taxRemit.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-base font-black text-slate-900">
+                    {taxRemit.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {REGIONS[currentRegion]?.currencySymbol || '$'}
+                  </span>
                 </div>
               </div>
 
@@ -3562,29 +3584,55 @@ export default function DeviceSimulator({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Province du client / Lieu de vente</label>
-                    <select
-                      value={invProvince}
-                      onChange={(e) => setInvProvince(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
-                    >
-                      {PROVINCES_TAXES.map(p => {
-                        const taxLabelParts = [];
-                        if (p.gstLabel) taxLabelParts.push(p.gstLabel);
-                        if (p.pstLabel) taxLabelParts.push(p.pstLabel);
-                        const taxDesc = taxLabelParts.join(' + ');
+                  {currentRegion === 'canada' ? (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Province du client / Lieu de vente</label>
+                      <select
+                        value={invProvince}
+                        onChange={(e) => setInvProvince(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
+                      >
+                        {PROVINCES_TAXES.map(p => {
+                          const taxLabelParts = [];
+                          if (p.gstLabel) taxLabelParts.push(p.gstLabel);
+                          if (p.pstLabel) taxLabelParts.push(p.pstLabel);
+                          const taxDesc = taxLabelParts.join(' + ');
+                          return (
+                            <option key={p.name} value={p.name}>
+                              {p.name} {taxDesc ? `(${taxDesc})` : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <p className="text-[9px] text-slate-400 mt-1 font-medium">
+                        La province choisie détermine le taux de taxe appliqué.
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                        Régime fiscal ({REGIONS[currentRegion]?.name || ''})
+                      </label>
+                      {(() => {
+                        const regCfg = getRegionalTaxConfig(currentRegion);
                         return (
-                          <option key={p.name} value={p.name}>
-                            {p.name} {taxDesc ? `(${taxDesc})` : ''}
-                          </option>
+                          <select
+                            value={invProvince}
+                            onChange={(e) => setInvProvince(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
+                          >
+                            <option value={regCfg.taxName || 'TVA'}>
+                              {regCfg.taxName || 'Taxe'} Standard ({regCfg.taxRatePercent}%)
+                            </option>
+                            <option value="Exonéré">Exonéré / Hors taxe (0%)</option>
+                          </select>
                         );
-                      })}
-                    </select>
-                    <p className="text-[9px] text-slate-400 mt-1 font-medium">
-                      La province choisie détermine le taux de taxe appliqué.
-                    </p>
-                  </div>
+                      })()}
+                      <p className="text-[9px] text-slate-400 mt-1 font-medium">
+                        Taux de taxe configuré pour cette région.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -3614,10 +3662,27 @@ export default function DeviceSimulator({
                     <select
                       value={invCurrency}
                       onChange={(e) => setInvCurrency(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
                     >
-                      <option value="CAD">CAD ($)</option>
-                      <option value="USD">USD ($)</option>
+                      {currentRegion === 'canada' && (
+                        <>
+                          <option value="CAD">CAD ($)</option>
+                          <option value="USD">USD ($)</option>
+                        </>
+                      )}
+                      {currentRegion === 'afrique' && (
+                        <>
+                          <option value="FCFA">FCFA (XOF / XAF)</option>
+                          <option value="EUR">EUR (€)</option>
+                          <option value="USD">USD ($)</option>
+                        </>
+                      )}
+                      {currentRegion === 'haiti' && (
+                        <>
+                          <option value="HTG">HTG (Gourde)</option>
+                          <option value="USD">USD ($)</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -3786,9 +3851,42 @@ export default function DeviceSimulator({
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">Résumé de la facture</span>
                     
                     {(() => {
-                      const activeProvince = PROVINCES_TAXES.find(p => p.name === invProvince) || PROVINCES_TAXES[0];
                       const sub = invItems.reduce((sum, item) => sum + item.total, 0);
-                      const taxRes = calculateTaxes(invProvince, sub);
+                      const regCfg = getRegionalTaxConfig(currentRegion);
+                      const curSymbol = REGIONS[currentRegion]?.currencySymbol || '$';
+
+                      if (currentRegion !== 'canada') {
+                        const isExempt = invProvince === 'Exonéré';
+                        const regTax = calculateRegionalTaxes(sub, currentRegion, undefined, isExempt);
+                        return (
+                          <>
+                            <div className="flex justify-between text-slate-600 font-medium">
+                              <span>Sous-total HT</span>
+                              <span>{sub.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {curSymbol}</span>
+                            </div>
+
+                            <div className="flex justify-between text-slate-500">
+                              <span>{regTax.taxName} ({regTax.taxRateDisplay})</span>
+                              <span>{regTax.totalTax.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {curSymbol}</span>
+                            </div>
+
+                            <div className="flex justify-between pt-2 border-t border-slate-200 text-slate-900 font-medium">
+                              <span>Total TTC</span>
+                              <span>{regTax.total.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {curSymbol} {invCurrency}</span>
+                            </div>
+
+                            <div className="mt-3 bg-emerald-50/80 border border-emerald-100 rounded-xl p-3 text-center shadow-sm">
+                              <span className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-wider block mb-0.5">Montant à payer</span>
+                              <div className="text-base font-black text-emerald-700">
+                                Montant à payer : {regTax.total.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {curSymbol} {invCurrency}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      }
+
+                      const activeProvince = PROVINCES_TAXES.find(p => p.name === invProvince) || PROVINCES_TAXES[0];
+                      const taxRes = calculateTaxes(invProvince, sub, 'canada');
                       const tot = taxRes.total;
 
                       return (

@@ -51,6 +51,8 @@ export interface Invoice {
   companyName?: string;
   stripePaymentUrl?: string;
   region?: 'canada' | 'afrique' | 'haiti';
+  taxAmount?: number;
+  taxName?: string;
 }
 
 export interface Expense {
@@ -68,6 +70,7 @@ export interface Expense {
   receiptUrl?: string;
   isEligible?: boolean;
   taxDeductiblePercentage?: number;
+  taxName?: string;
 
   // Nouveaux champs Firestore Santé financière / Dépenses
   businessRef?: string;

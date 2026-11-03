@@ -24,6 +24,8 @@ import {
 import { Invoice, Expense, Client, ScreenId } from '../types';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
+import { getRegionalTaxConfig, TaxRegion } from '../lib/regionalTaxes';
+import { REGIONS } from '../data/regions';
 
 export interface ReportsPageProps {
   invoices: Invoice[];
@@ -117,22 +119,37 @@ export default function ReportsPage({
     return Math.round(((totalCollected - totalExpenses) / totalCollected) * 100);
   }, [totalCollected, totalExpenses]);
 
-  // Tax calculations (TPS 5% & TVQ 9.975%)
+  // Tax calculations strictly isolated by region
+  const currentRegion: TaxRegion = (typeof localStorage !== 'undefined' ? (localStorage.getItem('startbill_region') as TaxRegion) : 'canada') || 'canada';
+  const regionalTaxConfig = getRegionalTaxConfig(currentRegion);
+
   const taxSummary = useMemo(() => {
-    // Invoices collected taxes (approximated from invoices)
+    // Canada TPS & TVQ
     let tpsCollected = 0;
     let tvqCollected = 0;
+    let regionalCollected = 0;
+
     filteredInvoices.forEach(inv => {
       if (inv.tps) tpsCollected += inv.tps;
       else if (inv.subtotal) tpsCollected += inv.subtotal * 0.05;
       
       if (inv.tvq) tvqCollected += inv.tvq;
       else if (inv.subtotal) tvqCollected += inv.subtotal * 0.09975;
+
+      if (inv.taxAmount !== undefined) {
+        regionalCollected += inv.taxAmount;
+      } else if (inv.tps || inv.tvq) {
+        regionalCollected += (inv.tps || 0) + (inv.tvq || 0);
+      } else if (inv.subtotal) {
+        regionalCollected += inv.subtotal * ((regionalTaxConfig.taxRatePercent || 0) / 100);
+      }
     });
 
-    // Expenses paid taxes (CTI and RTI)
+    // Expenses paid taxes (CTI and RTI for Canada, or local tax for Africa/Haiti)
     let tpsPaid = 0;
     let tvqPaid = 0;
+    let regionalPaid = 0;
+
     filteredExpenses.forEach(exp => {
       const expHt = exp.amountHt || (exp.total / 1.14975);
       if (exp.tps) tpsPaid += exp.tps;
@@ -141,11 +158,20 @@ export default function ReportsPage({
       const tvqCalc = exp.total - expHt - (exp.tps || (expHt * 0.05));
       if (tvqCalc > 0) tvqPaid += tvqCalc;
       else tvqPaid += expHt * 0.09975;
+
+      if (exp.taxAmount !== undefined) {
+        regionalPaid += exp.taxAmount;
+      } else if (exp.tps || exp.tvq) {
+        regionalPaid += (exp.tps || 0) + (exp.tvq || 0);
+      } else if (exp.amountHt) {
+        regionalPaid += exp.amountHt * ((regionalTaxConfig.taxRatePercent || 0) / 100);
+      }
     });
 
     const netTps = tpsCollected - tpsPaid;
     const netTvq = tvqCollected - tvqPaid;
     const netTotalTaxes = netTps + netTvq;
+    const netRegional = regionalCollected - regionalPaid;
 
     return {
       tpsCollected,
@@ -156,9 +182,12 @@ export default function ReportsPage({
       totalPaid: tpsPaid + tvqPaid,
       netTps,
       netTvq,
-      netTotalTaxes
+      netTotalTaxes,
+      regionalCollected,
+      regionalPaid,
+      netRegional
     };
-  }, [filteredInvoices, filteredExpenses]);
+  }, [filteredInvoices, filteredExpenses, regionalTaxConfig.taxRatePercent]);
 
   // Monthly Evolution Data (Last 6 Months)
   const monthlyData = useMemo(() => {
@@ -582,110 +611,216 @@ export default function ReportsPage({
         </div>
       )}
 
-      {/* TAB 2: DÉCLARATION FISCALE TPS / TVQ */}
+      {/* TAB 2: DÉCLARATION FISCALE (Strictly isolated by region) */}
       {activeTab === 'taxes' && (
         <div className="space-y-6">
           <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-2xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-              <div>
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-blue-600" />
-                  <span>Synthèse Fiscale TPS / TVQ (CTI & RTI)</span>
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Déclaration conforme pour l'Agence du revenu du Canada (ARC) et Revenu Québec.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-xl">
-                  Régime Canada 🇨🇦 : TPS (5%) + TVQ (9.975%)
-                </span>
-              </div>
-            </div>
-
-            {/* Tax Comparison Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-              {/* Box 1: TPS Fédérale */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">TPS Fédérale (5%)</h4>
-                  <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md">ARC</span>
-                </div>
-                
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>TPS perçue (sur factures) :</span>
-                    <span className="font-bold text-slate-800">{currencySymbol} {taxSummary.tpsCollected.toFixed(2)}</span>
+            {currentRegion === 'canada' ? (
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-blue-600" />
+                      <span>Synthèse Fiscale TPS / TVQ (CTI & RTI)</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      Déclaration conforme pour l'Agence du revenu du Canada (ARC) et Revenu Québec.
+                    </p>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>TPS payée (CTI déductible) :</span>
-                    <span className="font-bold text-emerald-600">- {currencySymbol} {taxSummary.tpsPaid.toFixed(2)}</span>
-                  </div>
-                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center font-black">
-                    <span className="text-slate-900">Solde Net TPS :</span>
-                    <span className={`text-sm ${taxSummary.netTps >= 0 ? 'text-blue-700' : 'text-emerald-600'}`}>
-                      {currencySymbol} {Math.abs(taxSummary.netTps).toFixed(2)} {taxSummary.netTps >= 0 ? 'à payer' : 'à rembourser'}
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-xl">
+                      Régime Canada 🇨🇦 : TPS (5%) + TVQ (9.975%)
                     </span>
                   </div>
                 </div>
-              </div>
 
-              {/* Box 2: TVQ Provinciale */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">TVQ Québec (9.975%)</h4>
-                  <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md">Revenu Qc</span>
+                {/* Tax Comparison Grid Canada */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+                  {/* Box 1: TPS Fédérale */}
+                  <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">TPS Fédérale (5%)</h4>
+                      <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md">ARC</span>
+                    </div>
+                    
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between text-slate-600">
+                        <span>TPS perçue (sur factures) :</span>
+                        <span className="font-bold text-slate-800">{currencySymbol} {taxSummary.tpsCollected.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>TPS payée (CTI déductible) :</span>
+                        <span className="font-bold text-emerald-600">- {currencySymbol} {taxSummary.tpsPaid.toFixed(2)}</span>
+                      </div>
+                      <div className="pt-2 border-t border-slate-200 flex justify-between items-center font-black">
+                        <span className="text-slate-900">Solde Net TPS :</span>
+                        <span className={`text-sm ${taxSummary.netTps >= 0 ? 'text-blue-700' : 'text-emerald-600'}`}>
+                          {currencySymbol} {Math.abs(taxSummary.netTps).toFixed(2)} {taxSummary.netTps >= 0 ? 'à payer' : 'à rembourser'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Box 2: TVQ Provinciale */}
+                  <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">TVQ Québec (9.975%)</h4>
+                      <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md">Revenu Qc</span>
+                    </div>
+                    
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between text-slate-600">
+                        <span>TVQ perçue (sur factures) :</span>
+                        <span className="font-bold text-slate-800">{currencySymbol} {taxSummary.tvqCollected.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>TVQ payée (RTI déductible) :</span>
+                        <span className="font-bold text-emerald-600">- {currencySymbol} {taxSummary.tvqPaid.toFixed(2)}</span>
+                      </div>
+                      <div className="pt-2 border-t border-slate-200 flex justify-between items-center font-black">
+                        <span className="text-slate-900">Solde Net TVQ :</span>
+                        <span className={`text-sm ${taxSummary.netTvq >= 0 ? 'text-blue-700' : 'text-emerald-600'}`}>
+                          {currencySymbol} {Math.abs(taxSummary.netTvq).toFixed(2)} {taxSummary.netTvq >= 0 ? 'à payer' : 'à rembourser'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Box 3: Total Fiscal Net */}
+                  <div className="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl p-5 space-y-3 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Solde Fiscal Global</h4>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-medium block">
+                        {taxSummary.netTotalTaxes >= 0 ? 'Montant net à verser aux gouvernements' : 'Remboursement de taxe net estimé'}
+                      </span>
+                      <div className="text-2xl font-black text-white mt-1">
+                        {currencySymbol} {Math.abs(taxSummary.netTotalTaxes).toFixed(2)}
+                      </div>
+                      <span className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-md mt-2 ${
+                        taxSummary.netTotalTaxes >= 0 ? 'bg-amber-400 text-slate-950' : 'bg-emerald-400 text-slate-950'
+                      }`}>
+                        {taxSummary.netTotalTaxes >= 0 ? 'Versement à effectuer' : 'Crédit / Remboursement'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>TVQ perçue (sur factures) :</span>
-                    <span className="font-bold text-slate-800">{currencySymbol} {taxSummary.tvqCollected.toFixed(2)}</span>
+
+                {/* Explanation Note Canada */}
+                <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-1">
+                  <span className="font-bold block">💡 Bon à savoir pour votre déclaration :</span>
+                  <p className="text-blue-800">
+                    Les CTI (Crédits de Taxe sur les Intrants) pour la TPS et les RTI (Remboursements de Taxe sur les Intrants) pour la TVQ réduisent directement vos montants à payer. Conservez toujours vos justificatifs numérisés dans l'onglet Dépenses en cas d'audit de l'ARC ou de Revenu Québec.
+                  </p>
+                </div>
+              </>
+            ) : (
+              /* Regional View for Africa & Haiti */
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                      <span>Synthèse Fiscale & Taxes Déductibles</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      Suivi des taxes perçues sur vos ventes et déductibles sur vos dépenses d'exploitation.
+                    </p>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>TVQ payée (RTI déductible) :</span>
-                    <span className="font-bold text-emerald-600">- {currencySymbol} {taxSummary.tvqPaid.toFixed(2)}</span>
-                  </div>
-                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center font-black">
-                    <span className="text-slate-900">Solde Net TVQ :</span>
-                    <span className={`text-sm ${taxSummary.netTvq >= 0 ? 'text-blue-700' : 'text-emerald-600'}`}>
-                      {currencySymbol} {Math.abs(taxSummary.netTvq).toFixed(2)} {taxSummary.netTvq >= 0 ? 'à payer' : 'à rembourser'}
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-xl">
+                      {REGIONS[currentRegion]?.flag || '🌍'} Régime {REGIONS[currentRegion]?.name || 'Régional'} : {regionalTaxConfig.taxName || 'TVA'} ({regionalTaxConfig.taxRatePercent}%)
                     </span>
                   </div>
                 </div>
-              </div>
 
-              {/* Box 3: Total Fiscal Net */}
-              <div className="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl p-5 space-y-3 shadow-md">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Solde Fiscal Global</h4>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-400 font-medium block">
-                    {taxSummary.netTotalTaxes >= 0 ? 'Montant net à verser aux gouvernements' : 'Remboursement de taxe net estimé'}
-                  </span>
-                  <div className="text-2xl font-black text-white mt-1">
-                    {currencySymbol} {Math.abs(taxSummary.netTotalTaxes).toFixed(2)}
+                {/* Tax Comparison Grid Regional */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+                  {/* Box 1: Taxe Collectée */}
+                  <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        {regionalTaxConfig.taxName || 'Taxe'} Perçue (Factures)
+                      </h4>
+                      <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
+                        {regionalTaxConfig.taxRatePercent}%
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Total perçu sur clients :</span>
+                        <span className="font-bold text-slate-800">
+                          {taxSummary.regionalCollected.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {currencySymbol}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Collectée sur vos encaissements de la période
+                      </p>
+                    </div>
                   </div>
-                  <span className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-md mt-2 ${
-                    taxSummary.netTotalTaxes >= 0 ? 'bg-amber-400 text-slate-950' : 'bg-emerald-400 text-slate-950'
-                  }`}>
-                    {taxSummary.netTotalTaxes >= 0 ? 'Versement à effectuer' : 'Crédit / Remboursement'}
-                  </span>
-                </div>
-              </div>
-            </div>
 
-            {/* Explanation Note */}
-            <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-1">
-              <span className="font-bold block">💡 Bon à savoir pour votre déclaration :</span>
-              <p className="text-blue-800">
-                Les CTI (Crédits de Taxe sur les Intrants) pour la TPS et les RTI (Remboursements de Taxe sur les Intrants) pour la TVQ réduisent directement vos montants à payer. Conservez toujours vos justificatifs numérisés dans l'onglet Dépenses en cas d'audit de l'ARC ou de Revenu Québec.
-              </p>
-            </div>
+                  {/* Box 2: Taxe Payée (Déductible) */}
+                  <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                        {regionalTaxConfig.taxName || 'Taxe'} Déductible (Achats)
+                      </h4>
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                        Déductible
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Taxes payées fournisseurs :</span>
+                        <span className="font-bold text-emerald-600">
+                          - {taxSummary.regionalPaid.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {currencySymbol}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Payée sur vos charges déductibles
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Box 3: Solde Fiscal Net */}
+                  <div className="bg-gradient-to-br from-slate-900 to-emerald-950 text-white rounded-2xl p-5 space-y-3 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Solde Fiscal Net</h4>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-medium block">
+                        {taxSummary.netRegional >= 0 ? 'Montant net à reverser au Trésor Public' : 'Crédit de taxe à reporter'}
+                      </span>
+                      <div className="text-2xl font-black text-white mt-1">
+                        {Math.abs(taxSummary.netRegional).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {currencySymbol}
+                      </div>
+                      <span className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-md mt-2 ${
+                        taxSummary.netRegional >= 0 ? 'bg-amber-400 text-slate-950' : 'bg-emerald-400 text-slate-950'
+                      }`}>
+                        {taxSummary.netRegional >= 0 ? 'À verser' : 'Crédit déductible'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Explanation Note Regional */}
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-1">
+                  <span className="font-bold block">💡 Suivi déclaratif régional ({REGIONS[currentRegion]?.name || ''}) :</span>
+                  <p className="text-emerald-900">
+                    Chaque région dispose de sa propre comptabilité fiscale stricte. Renseignez votre identifiant fiscal ({regionalTaxConfig.taxNumber || 'NIF / RCCM à configurer dans Paramètres'}) pour vos déclarations périodiques. Conservez vos factures fournisseurs pour justifier vos déductions en cas de contrôle fiscal.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

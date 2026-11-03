@@ -370,55 +370,66 @@ export function generateSmartAlerts(
     });
   };
 
-  // Rule 1 & 2: GST/HST Thresholds (DETERMINISTIC STABLE ID: alert-gst_exceeded / alert-gst_threshold)
-  if (totalRevenue >= 30000) {
-    const type: AlertType = 'gst_exceeded';
-    const id = `alert-${type}`;
-    addAlertIfActive(type, {
-      id,
-      userId,
-      type,
-      title: 'Seuil GST/HST dépassé',
-      message: 'Tu as atteint ou dépassé 30 000 $ de revenus taxables. Vérifie si tu dois t\'inscrire à la GST/HST.',
-      severity: 'danger',
-      isRead: existingReadState.get(type) ?? existingReadState.get(id) ?? false,
-      createdAt: nowStr,
-      actionUrl: 'tax_prep',
-      actionLabel: 'S\'inscrire à la GST/HST'
-    });
-  } else if (totalRevenue >= 25000 && totalRevenue < 30000) {
-    const type: AlertType = 'gst_threshold';
-    const id = `alert-${type}`;
-    addAlertIfActive(type, {
-      id,
-      userId,
-      type,
-      title: 'Seuil GST/HST approchant',
-      message: 'Tu approches du seuil de 30 000 $. Prépare-toi à t\'inscrire à la GST/HST.',
-      severity: 'warning',
-      isRead: existingReadState.get(type) ?? existingReadState.get(id) ?? false,
-      createdAt: nowStr,
-      actionUrl: 'tax_prep',
-      actionLabel: 'Prépare l\'inscription'
-    });
+  const activeRegion = (typeof localStorage !== 'undefined' ? (localStorage.getItem('startbill_region') || 'canada') : 'canada');
+
+  // Rule 1 & 2: GST/HST Thresholds (STRICTLY CANADA ONLY - NEVER for Africa or Haiti)
+  if (activeRegion === 'canada') {
+    if (totalRevenue >= 30000) {
+      const type: AlertType = 'gst_exceeded';
+      const id = `alert-${type}`;
+      addAlertIfActive(type, {
+        id,
+        userId,
+        type,
+        title: 'Seuil GST/HST dépassé',
+        message: 'Tu as atteint ou dépassé 30 000 $ de revenus taxables. Vérifie si tu dois t\'inscrire à la GST/HST.',
+        severity: 'danger',
+        isRead: existingReadState.get(type) ?? existingReadState.get(id) ?? false,
+        createdAt: nowStr,
+        actionUrl: 'tax_prep',
+        actionLabel: 'S\'inscrire à la GST/HST'
+      });
+    } else if (totalRevenue >= 25000 && totalRevenue < 30000) {
+      const type: AlertType = 'gst_threshold';
+      const id = `alert-${type}`;
+      addAlertIfActive(type, {
+        id,
+        userId,
+        type,
+        title: 'Seuil GST/HST approchant',
+        message: 'Tu approches du seuil de 30 000 $. Prépare-toi à t\'inscrire à la GST/HST.',
+        severity: 'warning',
+        isRead: existingReadState.get(type) ?? existingReadState.get(id) ?? false,
+        createdAt: nowStr,
+        actionUrl: 'tax_prep',
+        actionLabel: 'Prépare l\'inscription'
+      });
+    }
   }
 
-  // Rule 3: Taxes collected to reserve
+  // Rule 3: Taxes collected to reserve (Region-specific wording)
   if (totalTax > 0) {
     const type: AlertType = 'taxes_reserved';
     const id = `alert-${type}`;
-    const formattedTax = totalTax.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedTax = totalTax.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const taxTitle = activeRegion === 'canada' 
+      ? 'Taxes TPS/TVQ à réserver' 
+      : (activeRegion === 'afrique' ? 'Taxes TVA à réserver' : 'Taxes TCA à réserver');
+    const taxMsg = activeRegion === 'canada'
+      ? `Tu as collecté ${formattedTax} $ de taxes. Cet argent devrait être réservé pour le gouvernement.`
+      : `Vous avez collecté ${formattedTax} de taxes. Pensez à réserver ce montant pour votre prochaine déclaration fiscale locale.`;
+
     addAlertIfActive(type, {
       id,
       userId,
       type,
-      title: 'Taxes TPS/TVQ à réserver',
-      message: `Tu as collecté ${formattedTax} $ de taxes. Cet argent devrait être réservé pour le gouvernement.`,
+      title: taxTitle,
+      message: taxMsg,
       severity: 'warning',
       isRead: existingReadState.get(type) ?? existingReadState.get(id) ?? false,
       createdAt: nowStr,
       actionUrl: 'tax_prep',
-      actionLabel: 'Réserver l\'argent'
+      actionLabel: 'Réserver les fonds'
     });
   }
 

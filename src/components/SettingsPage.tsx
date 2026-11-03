@@ -44,6 +44,7 @@ import { REGIONS } from '../data/regions';
 import { useRegionalContext } from '../context/RegionalContext';
 import { useAuth } from '../context/AuthContext';
 import { getStripeConfig, StripeConfigResponse } from '../lib/stripeService';
+import { getRegionalTaxConfig, saveRegionalTaxConfig, RegionalTaxConfig } from '../lib/regionalTaxes';
 
 export type SupportedRegion = 'canada' | 'afrique' | 'haiti';
 
@@ -285,6 +286,34 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [tvqNumber, setTvqNumber] = useState(() => localStorage.getItem('sb_tax_tvq') || '');
   const [isSmallSupplierExempt, setIsSmallSupplierExempt] = useState(() => localStorage.getItem('sb_tax_small_supplier') === 'true');
 
+  // Strict Regional Tax Config (Africa / Haiti manual tax configuration)
+  const [regionalTaxConfig, setRegionalTaxConfig] = useState<RegionalTaxConfig>(() => getRegionalTaxConfig(currentRegion));
+  const [manualTaxName, setManualTaxName] = useState(() => regionalTaxConfig.taxName || (currentRegion === 'afrique' ? 'TVA' : currentRegion === 'haiti' ? 'TCA' : 'TPS/TVQ'));
+  const [manualTaxRate, setManualTaxRate] = useState<string>(() => String(regionalTaxConfig.taxRatePercent ?? (currentRegion === 'afrique' ? 18 : currentRegion === 'haiti' ? 10 : 14.975)));
+  const [manualTaxNumber, setManualTaxNumber] = useState<string>(() => regionalTaxConfig.taxNumber || '');
+  const [manualTaxEnabled, setManualTaxEnabled] = useState<boolean>(() => regionalTaxConfig.enabled !== false);
+  const [manualHasSecondTax, setManualHasSecondTax] = useState<boolean>(() => !!regionalTaxConfig.hasSecondTax);
+  const [manualSecondTaxName, setManualSecondTaxName] = useState<string>(() => regionalTaxConfig.secondTaxName || 'Centimes additionnels');
+  const [manualSecondTaxRate, setManualSecondTaxRate] = useState<string>(() => String(regionalTaxConfig.secondTaxRatePercent ?? 0));
+
+  // Sync regional tax form state whenever currentRegion changes
+  useEffect(() => {
+    const cfg = getRegionalTaxConfig(currentRegion);
+    setRegionalTaxConfig(cfg);
+    setManualTaxName(cfg.taxName || (currentRegion === 'afrique' ? 'TVA' : currentRegion === 'haiti' ? 'TCA' : 'TPS/TVQ'));
+    setManualTaxRate(String(cfg.taxRatePercent ?? (currentRegion === 'afrique' ? 18 : currentRegion === 'haiti' ? 10 : 14.975)));
+    setManualTaxNumber(cfg.taxNumber || '');
+    setManualTaxEnabled(cfg.enabled !== false);
+    setManualHasSecondTax(!!cfg.hasSecondTax);
+    setManualSecondTaxName(cfg.secondTaxName || 'Centimes additionnels');
+    setManualSecondTaxRate(String(cfg.secondTaxRatePercent ?? 0));
+    if (currentRegion === 'canada') {
+      setIsSmallSupplierExempt(!!cfg.isSmallSupplierExempt);
+      if (cfg.tpsNumber) setTpsNumber(cfg.tpsNumber);
+      if (cfg.tvqNumber) setTvqNumber(cfg.tvqNumber);
+    }
+  }, [currentRegion]);
+
   // Stripe & Access Policy status
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
   const [stripeCardPaymentsEnabled, setStripeCardPaymentsEnabled] = useState(() => localStorage.getItem('sb_stripe_card_enabled') !== 'false');
@@ -452,6 +481,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     localStorage.setItem('sb_tax_tvq', tvqNumber);
     localStorage.setItem('sb_tax_small_supplier', String(isSmallSupplierExempt));
 
+    // Save strict regional tax configuration
+    const updatedTaxConfig: RegionalTaxConfig = {
+      region: currentRegion,
+      enabled: manualTaxEnabled,
+      taxName: manualTaxName.trim() || (currentRegion === 'afrique' ? 'TVA' : currentRegion === 'haiti' ? 'TCA' : 'TPS/TVQ'),
+      taxRatePercent: isNaN(parseFloat(manualTaxRate)) ? 0 : parseFloat(manualTaxRate),
+      taxNumber: currentRegion === 'canada' ? tpsNumber : manualTaxNumber,
+      hasSecondTax: manualHasSecondTax,
+      secondTaxName: manualSecondTaxName.trim() || 'Centimes additionnels',
+      secondTaxRatePercent: isNaN(parseFloat(manualSecondTaxRate)) ? 0 : parseFloat(manualSecondTaxRate),
+      ...(currentRegion === 'canada' ? {
+        tpsNumber,
+        tvqNumber,
+        isSmallSupplierExempt
+      } : {})
+    };
+    saveRegionalTaxConfig(updatedTaxConfig);
+    setRegionalTaxConfig(updatedTaxConfig);
+
     const updatedCompany = {
       ...(activeCompany || {}),
       id: activeCompany?.id || `comp_${Date.now()}`,
@@ -548,6 +596,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const tpsPaidOnExpenses = expenses.reduce((sum, exp) => sum + (exp.tps || 0), 0);
   const netTpsToRemit = Math.max(0, tpsCollected - tpsPaidOnExpenses);
   const netTvqToRemit = Math.max(0, tvqCollected - (tpsPaidOnExpenses * 1.995));
+
+  // Regional Tax Summary for Africa & Haiti
+  const regionalTaxCollected = totalInvoicesPaid.reduce((sum, inv) => sum + ((inv.taxAmount ?? ((inv.tps || 0) + (inv.tvq || 0)))), 0);
+  const regionalTaxPaidOnExpenses = expenses.reduce((sum, exp) => sum + ((exp.taxAmount ?? ((exp.tps || 0) + (exp.tvq || 0)))), 0);
+  const netRegionalTaxToRemit = Math.max(0, regionalTaxCollected - regionalTaxPaidOnExpenses);
 
   const tabsConfig: Array<{ id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'general', label: 'Profil & Identité', icon: Building2 },
@@ -947,109 +1000,316 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* Tax Rates Configuration */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
-              <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
-                <Percent className="w-4 h-4 text-blue-600" />
-                Taux de perception des taxes
-              </h2>
+          {currentRegion === 'canada' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+                  <Percent className="w-4 h-4 text-blue-600" />
+                  Régime fiscal canadien (TPS / TVQ)
+                </h2>
 
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                      TPS (Fédéral ARC)
-                    </label>
-                    <div className="text-base font-black text-slate-800">5.000 %</div>
-                    <span className="text-[10px] text-slate-400">Partout au Canada</span>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                        TPS (Fédéral ARC)
+                      </label>
+                      <div className="text-base font-black text-slate-800">5.000 %</div>
+                      <span className="text-[10px] text-slate-400">Partout au Canada</span>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                        TVQ (Québec MRQ)
+                      </label>
+                      <div className="text-base font-black text-slate-800">9.975 %</div>
+                      <span className="text-[10px] text-slate-400">Total combiné : 14.975 %</span>
+                    </div>
                   </div>
 
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                      TVQ (Québec MRQ)
-                    </label>
-                    <div className="text-base font-black text-slate-800">9.975 %</div>
-                    <span className="text-[10px] text-slate-400">Total combiné : 14.975 %</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                    Numéro d'inscription TPS (Fédéral - Finissant par RT0001)
-                  </label>
-                  <input 
-                    type="text" 
-                    value={tpsNumber} 
-                    onChange={(e) => setTpsNumber(e.target.value)}
-                    placeholder="Ex: 123456789 RT0001"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500" 
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                    Numéro d'inscription TVQ (Revenu Québec - Finissant par TQ0001)
-                  </label>
-                  <input 
-                    type="text" 
-                    value={tvqNumber} 
-                    onChange={(e) => setTvqNumber(e.target.value)}
-                    placeholder="Ex: 1234567890 TQ0001"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500" 
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Small Supplier Exemption Card */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
-              <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                Régime du Petit Fournisseur
-              </h2>
-
-              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-emerald-900">Seuil légal de 30 000 $ CAD</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800">
-                    Règle ARC & Revenu Québec
-                  </span>
-                </div>
-                <p className="text-[11px] text-emerald-800 leading-normal">
-                  Si vos revenus imposables mondiaux sont inférieurs à 30 000 $ sur 4 trimestres consécutifs, vous pouvez bénéficier de la dispense d'inscription aux taxes.
-                </p>
-              </div>
-
-              <div className="pt-2">
-                <label className="flex items-start gap-3 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={isSmallSupplierExempt}
-                    onChange={(e) => setIsSmallSupplierExempt(e.target.checked)}
-                    className="mt-1 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" 
-                  />
                   <div>
-                    <div className="text-xs font-bold text-slate-900">
-                      Activer le statut de petit fournisseur (Exonéré de perception)
-                    </div>
-                    <div className="text-[10px] text-slate-500">
-                      Lorsque coché, les factures seront générées à 0.00 $ de TPS/TVQ avec la mention légale de dispense.
-                    </div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                      Numéro d'inscription TPS (Fédéral - Finissant par RT0001)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={tpsNumber} 
+                      onChange={(e) => setTpsNumber(e.target.value)}
+                      placeholder="Ex: 123456789 RT0001"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500" 
+                    />
                   </div>
-                </label>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                      Numéro d'inscription TVQ (Revenu Québec - Finissant par TQ0001)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={tvqNumber} 
+                      onChange={(e) => setTvqNumber(e.target.value)}
+                      placeholder="Ex: 1234567890 TQ0001"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500" 
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleSaveSettings}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
-                >
-                  Enregistrer la fiscalité
-                </button>
+              {/* Small Supplier Exemption Card */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  Régime du Petit Fournisseur
+                </h2>
+
+                <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-emerald-900">Seuil légal de 30 000 $ CAD</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800">
+                      Règle ARC & Revenu Québec
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-normal">
+                    Si vos revenus imposables mondiaux sont inférieurs à 30 000 $ sur 4 trimestres consécutifs, vous pouvez bénéficier de la dispense d'inscription aux taxes.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={isSmallSupplierExempt}
+                      onChange={(e) => setIsSmallSupplierExempt(e.target.checked)}
+                      className="mt-1 w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" 
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">
+                        Activer le statut de petit fournisseur (Exonéré de perception)
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Lorsque coché, les factures seront générées à 0.00 $ de TPS/TVQ avec la mention légale de dispense.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveSettings}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                  >
+                    Enregistrer la fiscalité canadienne
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            /* ========================================================================= */
+            /* STRICT MANUAL TAX CONFIGURATION FOR AFRIQUE & HAÏTI                       */
+            /* Zero Canadian taxes, zero TPS/TVQ/ARC mentions. Strict regional isolation.*/
+            /* ========================================================================= */
+            <div className="space-y-6">
+              <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                <span className="text-xl">⚙️</span>
+                <div className="text-xs text-amber-900 leading-relaxed">
+                  <strong>Configuration Manuelle Stricte ({currentRegion === 'afrique' ? 'Région Afrique' : 'Région Haïti'}) :</strong><br />
+                  Chaque région dispose de ses propres paramètres isolés. Définissez manuellement le nom et les taux de taxes appliqués à vos factures et dépenses (ex : TVA 18%, TCA 10%, ou tout taux local adapté à vos déclarations).
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Carte 1 : Taxe Principale Manuelle */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                  <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+                    <Percent className="w-4 h-4 text-emerald-600" />
+                    Taxe Principale Personnalisable
+                  </h2>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                        Nom officiel de la taxe *
+                      </label>
+                      <input 
+                        type="text" 
+                        value={manualTaxName} 
+                        onChange={(e) => setManualTaxName(e.target.value)}
+                        placeholder={currentRegion === 'afrique' ? 'Ex: TVA' : 'Ex: TCA'}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500" 
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        Ex : TVA, TCA, Taxe sur la Valeur Ajoutée, Taxe d'affaires
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                          Taux de taxe (%) *
+                        </label>
+                        <div className="relative">
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={manualTaxRate} 
+                            onChange={(e) => setManualTaxRate(e.target.value)}
+                            placeholder="18"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black text-slate-800 focus:outline-none focus:border-emerald-500 pr-7" 
+                          />
+                          <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">%</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 mt-0.5 block">
+                          Taux standard appliqué
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                          Statut d'assujettissement
+                        </label>
+                        <select
+                          value={manualTaxEnabled ? 'oui' : 'non'}
+                          onChange={(e) => setManualTaxEnabled(e.target.value === 'oui')}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="oui">Assujetti à la taxe</option>
+                          <option value="non">Exonéré / Hors taxe (0%)</option>
+                        </select>
+                        <span className="text-[10px] text-slate-400 mt-0.5 block">
+                          {manualTaxEnabled ? 'Perception activée' : 'Facturation à 0%'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                        {currentRegion === 'afrique' 
+                          ? "Numéro fiscal / NIF / Matricule / RCCM" 
+                          : "Numéro fiscal / NIF / Matricule DGI"}
+                      </label>
+                      <input 
+                        type="text" 
+                        value={manualTaxNumber} 
+                        onChange={(e) => setManualTaxNumber(e.target.value)}
+                        placeholder={currentRegion === 'afrique' ? 'Ex: NIF 00123456789-A' : 'Ex: NIF 000-123-456-7'}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-emerald-500" 
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        Ce numéro sera imprimé sur vos devis et factures conformes
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Carte 2 : Surtaxe optionnelle & Simulateur en direct */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                  <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-600" />
+                    Surtaxe optionnelle & Aperçu en direct
+                  </h2>
+
+                  {/* Surtaxe Toggle */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={manualHasSecondTax}
+                        onChange={(e) => setManualHasSecondTax(e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500" 
+                      />
+                      <span className="text-xs font-bold text-slate-900">
+                        Ajouter une surtaxe ou taxe additionnelle (optionnel)
+                      </span>
+                    </label>
+
+                    {manualHasSecondTax && (
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                            Nom de la surtaxe
+                          </label>
+                          <input 
+                            type="text"
+                            value={manualSecondTaxName}
+                            onChange={(e) => setManualSecondTaxName(e.target.value)}
+                            placeholder="Ex: Centimes add."
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                            Taux surtaxe (%)
+                          </label>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={manualSecondTaxRate}
+                            onChange={(e) => setManualSecondTaxRate(e.target.value)}
+                            placeholder="1.5"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Live Simulation Box */}
+                  <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
+                    <span className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-wider block">
+                      Aperçu du calcul sur une vente de 100 000 {REGIONS[currentRegion]?.currencySymbol || ''}
+                    </span>
+                    {(() => {
+                      const baseAmt = 100000;
+                      const rate1 = manualTaxEnabled ? (parseFloat(manualTaxRate) || 0) : 0;
+                      const rate2 = (manualTaxEnabled && manualHasSecondTax) ? (parseFloat(manualSecondTaxRate) || 0) : 0;
+                      const tax1Val = (baseAmt * (rate1 / 100));
+                      const tax2Val = (baseAmt * (rate2 / 100));
+                      const totalTaxes = tax1Val + tax2Val;
+                      const totalTTC = baseAmt + totalTaxes;
+                      const cur = REGIONS[currentRegion]?.currencySymbol || '';
+
+                      return (
+                        <div className="text-xs space-y-1 text-emerald-950 font-medium">
+                          <div className="flex justify-between">
+                            <span>Montant Hors Taxe (HT) :</span>
+                            <span className="font-bold">100 000,00 {cur}</span>
+                          </div>
+                          <div className="flex justify-between text-emerald-800">
+                            <span>{manualTaxName || 'Taxe'} ({rate1}%) :</span>
+                            <span className="font-bold">{tax1Val.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {cur}</span>
+                          </div>
+                          {manualHasSecondTax && rate2 > 0 && (
+                            <div className="flex justify-between text-emerald-800">
+                              <span>{manualSecondTaxName || 'Surtaxe'} ({rate2}%) :</span>
+                              <span className="font-bold">{tax2Val.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {cur}</span>
+                            </div>
+                          )}
+                          <div className="pt-2 border-t border-emerald-200 flex justify-between font-black text-sm text-emerald-900">
+                            <span>Total TTC Facturé :</span>
+                            <span>{totalTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {cur}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSaveSettings}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer shadow-xs"
+                    >
+                      Enregistrer la fiscalité {REGIONS[currentRegion]?.name || ''}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1384,10 +1644,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <div>
               <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-blue-600" />
-                Synthèse Fiscale & Préparation Déclarative
+                {currentRegion === 'canada' 
+                  ? 'Synthèse Fiscale & Préparation Déclarative (ARC / Revenu Québec)' 
+                  : `Synthèse Fiscale & Suivi Déclaratif (${REGIONS[currentRegion]?.name || 'Régional'})`}
               </h2>
               <p className="text-xs text-slate-500">
-                Calcul automatique des taxes nettes à remettre (TPS perçue - CTI, TVQ perçue - RTI).
+                {currentRegion === 'canada'
+                  ? 'Calcul automatique des taxes nettes à remettre (TPS perçue - CTI, TVQ perçue - RTI).'
+                  : `Suivi des taxes perçues (${manualTaxName || 'TVA'}) et taxes déductibles sur les achats professionnels.`}
               </p>
             </div>
 
@@ -1402,37 +1666,77 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* Quick Metrics Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-              <div className="text-[10px] font-bold text-slate-500 uppercase">TPS Nette à remettre (ARC)</div>
-              <div className="text-xl font-black text-slate-900">
-                {netTpsToRemit.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+          {currentRegion === 'canada' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div className="text-[10px] font-bold text-slate-500 uppercase">TPS Nette à remettre (ARC)</div>
+                <div className="text-xl font-black text-slate-900">
+                  {netTpsToRemit.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Collectée : {tpsCollected.toFixed(2)} $ — CTI déduit : {tpsPaidOnExpenses.toFixed(2)} $
+                </p>
               </div>
-              <p className="text-[10px] text-slate-400">
-                Collectée : {tpsCollected.toFixed(2)} $ — CTI déduit : {tpsPaidOnExpenses.toFixed(2)} $
-              </p>
-            </div>
 
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-              <div className="text-[10px] font-bold text-slate-500 uppercase">TVQ Nette à remettre (MRQ)</div>
-              <div className="text-xl font-black text-slate-900">
-                {netTvqToRemit.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div className="text-[10px] font-bold text-slate-500 uppercase">TVQ Nette à remettre (MRQ)</div>
+                <div className="text-xl font-black text-slate-900">
+                  {netTvqToRemit.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Collectée : {tvqCollected.toFixed(2)} $ — RTI déduit
+                </p>
               </div>
-              <p className="text-[10px] text-slate-400">
-                Collectée : {tvqCollected.toFixed(2)} $ — RTI déduit
-              </p>
-            </div>
 
-            <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1">
-              <div className="text-[10px] font-bold text-blue-700 uppercase">Provision Fiscale Totale Recommandée</div>
-              <div className="text-xl font-black text-blue-900">
-                {(netTpsToRemit + netTvqToRemit).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+              <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1">
+                <div className="text-[10px] font-bold text-blue-700 uppercase">Provision Fiscale Totale Recommandée</div>
+                <div className="text-xl font-black text-blue-900">
+                  {(netTpsToRemit + netTvqToRemit).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+                </div>
+                <p className="text-[10px] text-blue-600 font-semibold">
+                  Montant à conserver sur compte de réserve
+                </p>
               </div>
-              <p className="text-[10px] text-blue-600 font-semibold">
-                Montant à conserver sur compte de réserve
-              </p>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div className="text-[10px] font-bold text-slate-500 uppercase">
+                  {manualTaxName || 'Taxe'} Collectée (Ventes)
+                </div>
+                <div className="text-xl font-black text-slate-900">
+                  {regionalTaxCollected.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {REGIONS[currentRegion]?.currencySymbol || ''}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Taux appliqué : {manualTaxRate}% {manualHasSecondTax ? `+ ${manualSecondTaxRate}% (${manualSecondTaxName})` : ''}
+                </p>
+              </div>
+
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div className="text-[10px] font-bold text-slate-500 uppercase">
+                  {manualTaxName || 'Taxe'} Déductible (Dépenses)
+                </div>
+                <div className="text-xl font-black text-emerald-700">
+                  {regionalTaxPaidOnExpenses.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {REGIONS[currentRegion]?.currencySymbol || ''}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Taxes payées sur vos achats déductibles
+                </p>
+              </div>
+
+              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
+                <div className="text-[10px] font-bold text-emerald-800 uppercase">
+                  Solde Net à Déclarer / Reverser
+                </div>
+                <div className="text-xl font-black text-emerald-950">
+                  {netRegionalTaxToRemit.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {REGIONS[currentRegion]?.currencySymbol || ''}
+                </div>
+                <p className="text-[10px] text-emerald-700 font-semibold">
+                  {netRegionalTaxToRemit > 0 ? 'Provision à mettre de côté pour la déclaration' : 'Aucun montant net exigible'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

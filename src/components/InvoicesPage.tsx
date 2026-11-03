@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { Invoice, InvoiceStatus, Client, ScreenId, ProductItem } from '../types';
 import { calculateTaxes } from './DeviceSimulator';
+import { getRegionalTaxConfig, calculateRegionalTaxes, CANADIAN_PROVINCES, TaxRegion } from '../lib/regionalTaxes';
+import { REGIONS } from '../data/regions';
 import { DEFAULT_PRODUCTS_CANADA } from '../data/defaultProducts';
 import { downloadInvoicePdf } from '../lib/pdfGenerator';
 import { createInvoiceOnlinePayment } from '../lib/stripeService';
@@ -100,6 +102,14 @@ export default function InvoicesPage({
   const [invStatus, setInvStatus] = useState<InvoiceStatus>('Envoyée');
   const [invCurrency, setInvCurrency] = useState('CAD');
   const [invDescription, setInvDescription] = useState('');
+  const [invTaxMode, setInvTaxMode] = useState<'standard' | 'exempt' | 'custom'>('standard');
+  const [invCustomTaxRate, setInvCustomTaxRate] = useState<string>('18');
+
+  // Strict active region detection
+  const currentRegion: TaxRegion = (activeCompany?.region || (typeof localStorage !== 'undefined' ? localStorage.getItem('startbill_region') : 'canada') || 'canada') as TaxRegion;
+  const currentRegionalConfig = getRegionalTaxConfig(currentRegion);
+  const regionalCurrencySymbol = REGIONS[currentRegion]?.currencySymbol || '$';
+
   const [invItems, setInvItems] = useState<Array<{ description: string; quantity: number; unitPrice: number; total: number }>>([
     { description: 'Prestation de services', quantity: 1, unitPrice: 500, total: 500 }
   ]);
@@ -178,11 +188,13 @@ export default function InvoicesPage({
     d.setDate(d.getDate() + 30);
     setInvDueDate(d.toISOString().split('T')[0]);
     
-    setInvProvince('Québec');
+    setInvProvince(currentRegion === 'canada' ? 'Québec' : (currentRegionalConfig.taxName || 'TVA'));
     setInvStatus('Envoyée');
-    setInvCurrency('CAD');
+    setInvCurrency(REGIONS[currentRegion]?.currency || 'CAD');
+    setInvTaxMode(currentRegionalConfig.enabled ? 'standard' : 'exempt');
+    setInvCustomTaxRate(String(currentRegionalConfig.taxRatePercent ?? 18));
     setInvDescription('');
-    setInvItems([{ description: 'Services de consultation', quantity: 1, unitPrice: 1000, total: 1000 }]);
+    setInvItems([{ description: 'Prestation de services', quantity: 1, unitPrice: 1000, total: 1000 }]);
     setShowModal(true);
   };
 
@@ -305,9 +317,16 @@ export default function InvoicesPage({
     setInvItems(updated);
   };
 
-  // Subtotal & Tax calculation for form
+  // Subtotal & Regional Tax calculation for form
   const computedSubtotal = invItems.reduce((s, it) => s + (it.total || 0), 0);
-  const taxCalculation = calculateTaxes(invProvince, computedSubtotal);
+  const regionalTaxCalc = calculateRegionalTaxes(
+    computedSubtotal,
+    currentRegion,
+    currentRegion === 'canada' 
+      ? invProvince 
+      : (invTaxMode === 'custom' ? (parseFloat(invCustomTaxRate) || 0) : undefined),
+    invTaxMode === 'exempt'
+  );
 
   const handleSaveInvoiceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -318,17 +337,20 @@ export default function InvoicesPage({
       clientName: invClientName,
       date: invDate,
       dueDate: invDueDate || invDate,
-      province: invProvince,
+      province: currentRegion === 'canada' ? invProvince : (regionalTaxCalc.isExempt ? 'Exonéré' : `${regionalTaxCalc.taxName} (${regionalTaxCalc.taxRateDisplay})`),
       status: invStatus,
-      subtotal: taxCalculation.gst + taxCalculation.pst + taxCalculation.qst + taxCalculation.hst > 0 ? computedSubtotal : computedSubtotal,
-      tps: taxCalculation.gst,
-      tvq: taxCalculation.qst || taxCalculation.pst || taxCalculation.hst,
-      total: taxCalculation.total,
+      subtotal: computedSubtotal,
+      tps: currentRegion === 'canada' ? regionalTaxCalc.tax1Amount : 0,
+      tvq: currentRegion === 'canada' ? (regionalTaxCalc.tax2Amount || 0) : 0,
+      taxAmount: regionalTaxCalc.totalTax,
+      taxName: regionalTaxCalc.taxName,
+      total: regionalTaxCalc.total,
       currency: invCurrency,
       description: invDescription,
       items: invItems,
       companyId: scopedCompanyId,
-      companyName: scopedCompanyName
+      companyName: scopedCompanyName,
+      region: currentRegion
     };
 
     if (isEditing) {
@@ -1183,25 +1205,58 @@ export default function InvoicesPage({
                   </select>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
-                    Province Fiscale (Taxes) *
-                  </label>
-                  <select
-                    value={invProvince}
-                    onChange={(e) => setInvProvince(e.target.value)}
-                    className="w-full text-xs bg-secondary-50/70 border border-secondary-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-primary-500 transition"
-                  >
-                    <option value="Québec">Québec (TPS 5% + TVQ 9.975%)</option>
-                    <option value="Ontario">Ontario (TVH 13%)</option>
-                    <option value="Alberta">Alberta (TPS 5%)</option>
-                    <option value="Colombie-Britannique">Colombie-Britannique (TPS 5% + PST 7%)</option>
-                    <option value="Manitoba">Manitoba (TPS 5% + RST 7%)</option>
-                    <option value="Saskatchewan">Saskatchewan (TPS 5% + PST 6%)</option>
-                    <option value="Nouvelle-Écosse">Nouvelle-Écosse (TVH 14%)</option>
-                    <option value="Nouveau-Brunswick">Nouveau-Brunswick (TVH 15%)</option>
-                  </select>
-                </div>
+                {currentRegion === 'canada' ? (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                      Province Fiscale (Taxes) *
+                    </label>
+                    <select
+                      value={invProvince}
+                      onChange={(e) => setInvProvince(e.target.value)}
+                      className="w-full text-xs bg-secondary-50/70 border border-secondary-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-primary-500 transition"
+                    >
+                      {CANADIAN_PROVINCES.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name} ({p.pstLabel ? `${p.gstLabel ? `${p.gstLabel} + ` : ''}${p.pstLabel}` : p.gstLabel})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-secondary-500 uppercase tracking-wider">
+                      Régime de taxe ({REGIONS[currentRegion]?.name || ''}) *
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        value={invTaxMode}
+                        onChange={(e) => setInvTaxMode(e.target.value as any)}
+                        className="flex-1 text-xs bg-secondary-50/70 border border-secondary-200 rounded-xl py-2 px-3 outline-none focus:bg-white focus:border-primary-500 transition font-medium"
+                      >
+                        <option value="standard">
+                          {currentRegionalConfig.taxName || 'Taxe'} Standard ({currentRegionalConfig.taxRatePercent}%)
+                        </option>
+                        <option value="exempt">Exonéré / Hors taxe (0%)</option>
+                        <option value="custom">Taux personnalisé...</option>
+                      </select>
+                      {invTaxMode === 'custom' && (
+                        <div className="w-24 relative">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={invCustomTaxRate}
+                            onChange={(e) => setInvCustomTaxRate(e.target.value)}
+                            placeholder="%"
+                            className="w-full text-xs bg-white border border-secondary-200 rounded-xl py-2 px-2.5 outline-none focus:border-primary-500 pr-6 font-bold"
+                          />
+                          <span className="absolute right-2 top-2 text-xs text-secondary-400 font-bold">%</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1417,15 +1472,15 @@ export default function InvoicesPage({
               <div className="bg-secondary-50 border border-secondary-200 rounded-xl p-3 space-y-1.5 text-xs text-secondary-700">
                 <div className="flex justify-between">
                   <span>Sous-total HT :</span>
-                  <span className="font-bold">$ {computedSubtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-bold">{computedSubtotal.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {regionalCurrencySymbol}</span>
                 </div>
                 <div className="flex justify-between text-secondary-500">
-                  <span>Taxes estimées ({invProvince}) :</span>
-                  <span className="font-semibold">$ {taxCalculation.totalTax.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</span>
+                  <span>{regionalTaxCalc.taxName} ({regionalTaxCalc.taxRateDisplay}) :</span>
+                  <span className="font-semibold">{regionalTaxCalc.totalTax.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {regionalCurrencySymbol}</span>
                 </div>
                 <div className="border-t border-secondary-200 pt-1.5 flex justify-between font-black text-sm text-secondary-900">
                   <span>Total Facture :</span>
-                  <span className="text-primary-700">$ {taxCalculation.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} CAD</span>
+                  <span className="text-primary-700">{regionalTaxCalc.total.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {regionalCurrencySymbol} {invCurrency}</span>
                 </div>
               </div>
 

@@ -548,8 +548,8 @@ export default function CompanySetupPage({
               </div>
             </div>
 
-            {/* 2. NUMÉROS FISCAUX (ONLY SHOWN FOR CANADA) */}
-            {activeRegion === 'canada' && (
+            {/* 2. NUMÉROS FISCAUX ET IDENTIFIANTS LÉGAUX */}
+            {activeRegion === 'canada' ? (
               <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
                 <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
                   <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
@@ -560,7 +560,7 @@ export default function CompanySetupPage({
                       2. NUMÉROS FISCAUX
                     </h2>
                     <span className="text-[11px] text-slate-400 font-medium">
-                      Numéros TPS/TVQ et NEQ
+                      Numéros TPS/TVQ et NEQ (Canada)
                     </span>
                   </div>
                 </div>
@@ -588,6 +588,52 @@ export default function CompanySetupPage({
                       value={taxId2}
                       onChange={(e) => setTaxId2(e.target.value)}
                       placeholder="Ex: 1234567890 TQ 0001"
+                      className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-slate-900 text-xs sm:text-sm uppercase tracking-wider">
+                      2. IDENTIFIANTS FISCAUX & LÉGAUX
+                    </h2>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {activeRegion === 'afrique' 
+                        ? 'NIF, Matricule fiscal et RCCM (Afrique)' 
+                        : 'NIF, Matricule fiscal et Registre (Haïti)'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Numéro d'Identification Fiscale (NIF / Matricule)
+                    </label>
+                    <input
+                      type="text"
+                      value={taxId1}
+                      onChange={(e) => setTaxId1(e.target.value)}
+                      placeholder={activeRegion === 'afrique' ? 'Ex: NIF 00123456789-A' : 'Ex: NIF 000-123-456-7'}
+                      className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Registre du Commerce (RCCM / Registre légal)
+                    </label>
+                    <input
+                      type="text"
+                      value={taxId2}
+                      onChange={(e) => setTaxId2(e.target.value)}
+                      placeholder={activeRegion === 'afrique' ? 'Ex: CI-ABJ-2026-B-1234' : 'Ex: Reg. Commerce No 12345'}
                       className="w-full bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#3855F6]/20 focus:border-[#3855F6] transition"
                     />
                   </div>
