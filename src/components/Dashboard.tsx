@@ -212,6 +212,14 @@ export default function Dashboard({
     triggerToast(`Entreprise active : ${comp.companyName}`);
   };
 
+  // Listen to cross-component notification dismissal events
+  const [, setNotifVersion] = React.useState(0);
+  React.useEffect(() => {
+    const handleUpdate = () => setNotifVersion(v => v + 1);
+    window.addEventListener('startbill-notifications-updated', handleUpdate);
+    return () => window.removeEventListener('startbill-notifications-updated', handleUpdate);
+  }, []);
+
   const userName = currentUser?.displayName 
     ? currentUser.displayName
     : currentUser?.email
@@ -245,14 +253,6 @@ export default function Dashboard({
   const taxesPayeesDépenses = Math.round(totalEligibleExpenses * 0.14975); // TPS+TVQ estimées sur dépenses
   const taxesNettes = Math.max(0, totalTax - taxesPayeesDépenses);
   const totalACote = Math.round(taxesNettes + estimatedTax);
-
-  // Listen to cross-component notification dismissal events
-  const [, setNotifVersion] = React.useState(0);
-  React.useEffect(() => {
-    const handleUpdate = () => setNotifVersion(v => v + 1);
-    window.addEventListener('startbill-notifications-updated', handleUpdate);
-    return () => window.removeEventListener('startbill-notifications-updated', handleUpdate);
-  }, []);
 
   // Compute live smart alerts based on current state & Canadian rules
   const smartAlerts = generateSmartAlerts(

@@ -33,13 +33,13 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({
   onUpdateProfile,
   triggerToast,
 }) => {
-  if (!isOpen) return null;
-
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'sessions' | 'preferences'>('profile');
-  const [phone, setPhone] = useState(profile.phone || '+1 (514) 890-4321');
-  const [language, setLanguage] = useState<'fr' | 'en'>(profile.language);
-  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(profile.theme);
-  const [mfaEnabled, setMfaEnabled] = useState(profile.isMfaActive);
+  const [phone, setPhone] = useState(profile?.phone || '+1 (514) 890-4321');
+  const [language, setLanguage] = useState<'fr' | 'en'>(profile?.language || 'fr');
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(profile?.theme || 'dark');
+  const [mfaEnabled, setMfaEnabled] = useState(profile?.isMfaActive || false);
+
+  if (!isOpen) return null;
 
   const handleSaveContact = (e: React.FormEvent) => {
     e.preventDefault();
