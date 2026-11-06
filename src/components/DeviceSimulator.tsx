@@ -53,7 +53,8 @@ import {
   Activity,
   Package,
   Bike,
-  Scale
+  Scale,
+  Smartphone
 } from 'lucide-react';
 import { Invoice, Expense, Client, ScreenId, InvoiceStatus, ProductItem, CompanyProfile } from '../types';
 import { DEFAULT_COMPANIES } from '../data/defaultCompanies';
@@ -692,9 +693,9 @@ export default function DeviceSimulator({
     return () => window.removeEventListener('startbill-company-changed', handleCompanyEvent);
   }, [activeCompany?.id]);
 
-  // Multi-channel Send Modal (Email & WhatsApp options)
+  // Multi-channel Send Modal (Email, WhatsApp & SMS options)
   const [showEmailModal, setShowEmailModal] = useState(false);
-  const [sendChannel, setSendChannel] = useState<'email' | 'whatsapp'>('email');
+  const [sendChannel, setSendChannel] = useState<'email' | 'whatsapp' | 'sms'>('email');
   const [emailRecipient, setEmailRecipient] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailMessage, setEmailMessage] = useState('');
@@ -2042,7 +2043,7 @@ export default function DeviceSimulator({
 
             {/* ACTION ROW BUTTONS (PDF, EMAIL, WHATSAPP, EDIT, DUPLICATE, DELETE) */}
             <div className="space-y-3 no-print">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {/* 1. Télécharger PDF */}
                 <button
                   type="button"
@@ -2097,6 +2098,24 @@ export default function DeviceSimulator({
                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
+                </button>
+
+                {/* 4. Envoyer par SMS */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const activeClients = clients && clients.length > 0 ? clients : dbClients;
+                    const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
+                    setWhatsappRecipient(clientObj?.phone || '');
+                    setWhatsappMessage(
+                      `Bonjour ${selectedInvoice.clientName}, voici votre facture #${selectedInvoice.id} de ${selectedInvoice.total} $ CAD émise par StartBill. Échéance : ${selectedInvoice.dueDate || selectedInvoice.date}. Merci de votre règlement.`
+                    );
+                    setSendChannel('sms');
+                    setShowEmailModal(true);
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                >
+                  <Smartphone className="w-3.5 h-3.5" /> SMS
                 </button>
               </div>
 
@@ -4041,8 +4060,8 @@ export default function DeviceSimulator({
               </button>
             </div>
 
-            {/* Mode Switcher Tabs: Email vs WhatsApp */}
-            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+            {/* Mode Switcher Tabs: Email vs WhatsApp vs SMS */}
+            <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-xl">
               <button
                 type="button"
                 onClick={() => setSendChannel('email')}
@@ -4052,7 +4071,7 @@ export default function DeviceSimulator({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Mail className="w-3.5 h-3.5 text-blue-600" /> Option Courriel (Email)
+                <Mail className="w-3.5 h-3.5 text-blue-600" /> Courriel
               </button>
               <button
                 type="button"
@@ -4063,7 +4082,18 @@ export default function DeviceSimulator({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Option WhatsApp
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={() => setSendChannel('sms')}
+                className={`py-2 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  sendChannel === 'sms'
+                    ? 'bg-white text-purple-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5 text-purple-600" /> SMS
               </button>
             </div>
 
@@ -4111,11 +4141,11 @@ export default function DeviceSimulator({
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 flex gap-2">
                   <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                   <p className="text-[11px] text-blue-800 leading-normal">
-                    L'envoi mettra à jour l'état de la facture en <strong>Envoyée</strong>.
+                    L'envoi mettra à jour l'état de la facture en <strong>Envoyée</strong> (dans la section <strong>Paiements</strong>, elle apparaîtra sous <strong>Non payé</strong> ou <strong>En retard</strong> selon l'échéance).
                   </p>
                 </div>
               </div>
-            ) : (
+            ) : sendChannel === 'whatsapp' ? (
               /* WhatsApp Form Fields */
               <div className="space-y-3">
                 <div>
@@ -4159,6 +4189,50 @@ export default function DeviceSimulator({
                   </button>
                 </div>
               </div>
+            ) : (
+              /* SMS Form Fields */
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                    Numéro de téléphone mobile (SMS)
+                  </label>
+                  <input 
+                    type="tel"
+                    value={whatsappRecipient}
+                    onChange={(e) => setWhatsappRecipient(e.target.value)}
+                    placeholder="+1 (514) 000-0000"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-purple-500 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                    Message SMS
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={whatsappMessage}
+                    onChange={(e) => setWhatsappMessage(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-purple-500 focus:bg-white"
+                  />
+                </div>
+
+                <div className="bg-purple-50 border border-purple-100 rounded-xl p-2.5 text-[11px] text-purple-800 flex items-center justify-between gap-2">
+                  <span>📱 Envoi par SMS direct (compatible tout téléphone).</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(whatsappMessage);
+                        triggerToast("Texte SMS copié !");
+                      }
+                    }}
+                    className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-bold px-2 py-1 rounded-md shrink-0 transition"
+                  >
+                    Copier
+                  </button>
+                </div>
+              </div>
             )}
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
@@ -4192,7 +4266,7 @@ export default function DeviceSimulator({
                 >
                   <Mail className="w-3.5 h-3.5" /> Envoyer par courriel
                 </button>
-              ) : (
+              ) : sendChannel === 'whatsapp' ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -4211,6 +4285,24 @@ export default function DeviceSimulator({
                   className="text-xs text-white bg-emerald-600 hover:bg-emerald-700 font-bold px-4 py-2 rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" /> Envoyer via WhatsApp
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cleanPhone = whatsappRecipient.replace(/[^0-9]/g, '');
+                    const encodedText = encodeURIComponent(whatsappMessage);
+                    const url = cleanPhone ? `sms:${cleanPhone}?body=${encodedText}` : `sms:?body=${encodedText}`;
+                    window.open(url, '_blank');
+                    // Mark as Envoyée
+                    onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                    setDbInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'Envoyée' } : inv));
+                    setShowEmailModal(false);
+                    triggerToast(`Application SMS ouverte pour la facture ${selectedInvoice.id} !`);
+                  }}
+                  className="text-xs text-white bg-purple-600 hover:bg-purple-700 font-bold px-4 py-2 rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Smartphone className="w-3.5 h-3.5" /> Envoyer via SMS
                 </button>
               )}
             </div>

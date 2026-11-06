@@ -26,6 +26,7 @@ import {
   Percent
 } from 'lucide-react';
 import { Invoice, Client, ScreenId, InvoiceStatus } from '../types';
+import { PaymentSectionStatus, getPaymentSectionStatus, getPaymentStatusBadgeStyle } from '../lib/paymentStatus';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { downloadInvoicePdf } from '../lib/pdfGenerator';
@@ -57,7 +58,8 @@ export default function PaymentsPage({
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'pending'>('all');
+  // 4 statuts stricts de la section Paiements : 'Non payé' | 'Payé' | 'Payé partiellement' | 'En retard'
+  const [statusFilter, setStatusFilter] = useState<'all' | PaymentSectionStatus>('all');
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [periodFilter, setPeriodFilter] = useState<'all' | 'month' | 'quarter' | 'year'>('all');
 
@@ -75,7 +77,7 @@ export default function PaymentsPage({
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptInvoice, setReceiptInvoice] = useState<Invoice | null>(null);
 
-  // Filter invoices based on search, status, and method
+  // Filter invoices based on search, strict payment status, and method
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
       // Search
@@ -88,14 +90,11 @@ export default function PaymentsPage({
 
       if (!matchesSearch) return false;
 
-      // Status
-      const isPaid = inv.status === 'Payée' || inv.status === 'paid';
-      const isPartial = inv.status === 'Partiellement payée' || inv.status === 'partial';
-      const isPending = !isPaid && !isPartial;
-
-      if (statusFilter === 'paid' && !isPaid) return false;
-      if (statusFilter === 'partial' && !isPartial) return false;
-      if (statusFilter === 'pending' && !isPending) return false;
+      // Strict 4 Payment Statuses (Non payé, Payé, Payé partiellement, En retard)
+      const paymentStatus = getPaymentSectionStatus(inv);
+      if (statusFilter !== 'all' && paymentStatus !== statusFilter) {
+        return false;
+      }
 
       // Method
       if (methodFilter !== 'all') {
@@ -129,41 +128,46 @@ export default function PaymentsPage({
   // Unpaid or partially paid invoices (candidates for payment)
   const openInvoices = useMemo(() => {
     return invoices.filter(inv => {
-      const isPaid = inv.status === 'Payée' || inv.status === 'paid';
-      const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (isPaid ? 0 : inv.total);
-      return remaining > 0 && inv.status !== 'Annulée';
+      const pStatus = getPaymentSectionStatus(inv);
+      return pStatus !== 'Payé' && inv.status !== 'Annulée';
     });
   }, [invoices]);
 
-  // Financial KPIs
+  // Financial KPIs - based on the 4 payment statuses
   const kpis = useMemo(() => {
     let totalCollected = 0;
     let totalPending = 0;
     let totalInvoiced = 0;
     let paidCount = 0;
     let partialCount = 0;
-    let pendingCount = 0;
+    let unpaidCount = 0;
+    let overdueCount = 0;
 
     invoices.forEach(inv => {
       const tot = inv.total || 0;
       totalInvoiced += tot;
+      const pStatus = getPaymentSectionStatus(inv);
 
-      const isPaid = inv.status === 'Payée' || inv.status === 'paid';
-      const isPartial = inv.status === 'Partiellement payée' || inv.status === 'partial';
+      const isPaid = pStatus === 'Payé';
+      const paid = inv.amountPaid !== undefined ? inv.amountPaid : (isPaid ? tot : 0);
+      const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : Math.max(0, tot - paid);
 
-      if (isPaid) {
-        const paid = inv.amountPaid !== undefined ? inv.amountPaid : tot;
+      if (pStatus === 'Payé') {
         totalCollected += paid;
         paidCount++;
-      } else if (isPartial) {
-        const paid = inv.amountPaid || 0;
-        const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : Math.max(0, tot - paid);
+      } else if (pStatus === 'Payé partiellement') {
         totalCollected += paid;
         totalPending += remaining;
         partialCount++;
+      } else if (pStatus === 'En retard') {
+        totalCollected += paid;
+        totalPending += remaining;
+        overdueCount++;
       } else {
-        totalPending += tot;
-        pendingCount++;
+        // Non payé
+        totalCollected += paid;
+        totalPending += remaining;
+        unpaidCount++;
       }
     });
 
@@ -175,7 +179,8 @@ export default function PaymentsPage({
       totalInvoiced,
       paidCount,
       partialCount,
-      pendingCount,
+      unpaidCount,
+      overdueCount,
       recoveryRate
     };
   }, [invoices]);
@@ -252,11 +257,12 @@ export default function PaymentsPage({
 
   // Export payments log to CSV
   const handleExportCsv = () => {
-    const headers = ['N° Facture', 'Client', 'Date Émission', 'Date Paiement', 'Total TTC', 'Montant Encaissé', 'Solde Restant', 'Mode de Paiement', 'Statut'];
+    const headers = ['N° Facture', 'Client', 'Date Émission', 'Date Paiement', 'Total TTC', 'Montant Encaissé', 'Solde Restant', 'Mode de Paiement', 'Statut de Paiement'];
     const rows = filteredInvoices.map(inv => {
-      const isPaid = inv.status === 'Payée' || inv.status === 'paid';
+      const pStatus = getPaymentSectionStatus(inv);
+      const isPaid = pStatus === 'Payé';
       const paid = inv.amountPaid !== undefined ? inv.amountPaid : (isPaid ? inv.total : 0);
-      const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (isPaid ? 0 : inv.total);
+      const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (isPaid ? 0 : Math.max(0, (inv.total || 0) - paid));
       return [
         `"${inv.id}"`,
         `"${inv.clientName}"`,
@@ -266,7 +272,7 @@ export default function PaymentsPage({
         paid.toFixed(2),
         remaining.toFixed(2),
         `"${inv.paymentMethod || 'Non spécifié'}"`,
-        `"${inv.status}"`
+        `"${pStatus}"`
       ];
     });
 
@@ -340,7 +346,7 @@ export default function PaymentsPage({
             {kpis.totalCollected.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} {currencySymbol}
           </div>
           <span className="text-[11px] text-slate-500 font-medium mt-1.5 block">
-            {kpis.paidCount} facture(s) soldée(s) • {kpis.partialCount} partielle(s)
+            {kpis.paidCount} payée(s) • {kpis.partialCount} payée(s) partiellement
           </span>
         </div>
 
@@ -356,7 +362,7 @@ export default function PaymentsPage({
             {kpis.totalPending.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} {currencySymbol}
           </div>
           <span className="text-[11px] text-slate-500 font-medium mt-1.5 block">
-            {openInvoices.length} facture(s) avec solde ouvert
+            {kpis.unpaidCount} non payée(s) • <span className={kpis.overdueCount > 0 ? 'text-rose-600 font-bold' : ''}>{kpis.overdueCount} en retard</span>
           </span>
         </div>
 
@@ -466,17 +472,18 @@ export default function PaymentsPage({
             )}
           </div>
 
-          {/* Status Filter */}
+          {/* Status Filter (4 statuts stricts de la section Paiements) */}
           <div>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
             >
-              <option value="all">Tous les états de règlement</option>
-              <option value="paid">Payée / Soldée</option>
-              <option value="partial">Partiellement payée</option>
-              <option value="pending">En attente de paiement</option>
+              <option value="all">Tous les statuts de paiement (4)</option>
+              <option value="Non payé">⏳ Non payé</option>
+              <option value="Payé">✅ Payé</option>
+              <option value="Payé partiellement">🔷 Payé partiellement</option>
+              <option value="En retard">🚨 En retard</option>
             </select>
           </div>
 
@@ -528,16 +535,16 @@ export default function PaymentsPage({
                     <th className="py-3 px-4 text-right">Total TTC</th>
                     <th className="py-3 px-4 text-right">Montant Encaissé</th>
                     <th className="py-3 px-4 text-right">Solde Restant</th>
-                    <th className="py-3 px-4 text-center">État</th>
+                    <th className="py-3 px-4 text-center">Statut de Paiement</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredInvoices.map((inv) => {
-                    const isPaid = inv.status === 'Payée' || inv.status === 'paid';
-                    const isPartial = inv.status === 'Partiellement payée' || inv.status === 'partial';
+                    const pStatus = getPaymentSectionStatus(inv);
+                    const isPaid = pStatus === 'Payé';
                     const amountPaid = inv.amountPaid !== undefined ? inv.amountPaid : (isPaid ? inv.total : 0);
-                    const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (isPaid ? 0 : inv.total);
+                    const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (isPaid ? 0 : Math.max(0, (inv.total || 0) - amountPaid));
 
                     return (
                       <tr key={inv.id} className="hover:bg-slate-50/80 transition">
@@ -594,7 +601,7 @@ export default function PaymentsPage({
                         {/* Solde Restant */}
                         <td className="py-3.5 px-4 text-right font-bold whitespace-nowrap">
                           {remaining > 0 ? (
-                            <span className="text-amber-600">
+                            <span className={pStatus === 'En retard' ? 'text-rose-600 font-black' : 'text-amber-600'}>
                               {remaining.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} {currencySymbol}
                             </span>
                           ) : (
@@ -602,17 +609,17 @@ export default function PaymentsPage({
                           )}
                         </td>
 
-                        {/* État Badge */}
+                        {/* Statut de Paiement Badge (Non payé | Payé | Payé partiellement | En retard) */}
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-block ${
-                            isPaid
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : isPartial
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {inv.status}
-                          </span>
+                          {(() => {
+                            const badge = getPaymentStatusBadgeStyle(pStatus);
+                            return (
+                              <span className={`text-[10px] px-2.5 py-1 rounded-full inline-flex items-center gap-1.5 border shadow-2xs ${badge.className}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                                <span>{badge.label}</span>
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* Actions */}
@@ -694,9 +701,11 @@ export default function PaymentsPage({
           ) : (
             <div className="divide-y divide-slate-100">
               {openInvoices.map((inv) => {
+                const pStatus = getPaymentSectionStatus(inv);
+                const badge = getPaymentStatusBadgeStyle(pStatus);
                 const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : inv.total;
                 const paid = inv.amountPaid || 0;
-                const isOverdue = inv.status === 'En retard' || (inv.dueDate && new Date(inv.dueDate) < new Date());
+                const isOverdue = pStatus === 'En retard';
 
                 return (
                   <div key={inv.id} className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition">
@@ -704,7 +713,7 @@ export default function PaymentsPage({
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                         isOverdue ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
                       }`}>
-                        <Clock className="w-5 h-5" />
+                        {isOverdue ? <AlertCircle className="w-5 h-5 text-red-600" /> : <Clock className="w-5 h-5" />}
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -720,10 +729,9 @@ export default function PaymentsPage({
                           </button>
                           <span className="text-slate-300">•</span>
                           <span className="text-xs font-bold text-slate-800">{inv.clientName}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            isOverdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {isOverdue ? 'En retard' : inv.status}
+                          <span className={`text-[10px] px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 border shadow-2xs ${badge.className}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                            <span>{badge.label}</span>
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1 flex-wrap">
@@ -809,11 +817,12 @@ export default function PaymentsPage({
                 >
                   <option value="">Sélectionnez une facture...</option>
                   {invoices.map(inv => {
-                    const isPaid = inv.status === 'Payée' || inv.status === 'paid';
+                    const pStatus = getPaymentSectionStatus(inv);
+                    const isPaid = pStatus === 'Payé';
                     const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (isPaid ? 0 : inv.total);
                     return (
                       <option key={inv.id} value={inv.id}>
-                        {inv.id} — {inv.clientName} (Solde restant : {remaining.toFixed(2)} {currencySymbol})
+                        {inv.id} — {inv.clientName} [{pStatus}] (Solde : {remaining.toFixed(2)} {currencySymbol})
                       </option>
                     );
                   })}
@@ -823,13 +832,21 @@ export default function PaymentsPage({
               {/* Target Invoice Card Info */}
               {(() => {
                 const inv = invoices.find(i => i.id === targetInvoiceId);
-                if (!inv) return null;
-                const isPaid = inv.status === 'Payée' || inv.status === 'paid';
+                const pStatus = getPaymentSectionStatus(inv);
+                const badge = getPaymentStatusBadgeStyle(pStatus);
+                const isPaid = pStatus === 'Payé';
                 const remaining = inv.remainingBalance !== undefined ? inv.remainingBalance : (isPaid ? 0 : inv.total);
                 const paid = inv.amountPaid || 0;
 
                 return (
                   <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 text-xs space-y-1.5">
+                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                      <span className="text-slate-500 font-semibold">Statut de paiement actuel :</span>
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 border ${badge.className}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                        <span>{badge.label}</span>
+                      </span>
+                    </div>
                     <div className="flex justify-between text-slate-500">
                       <span>Total de la facture :</span>
                       <span className="font-bold text-slate-800">{(inv.total || 0).toFixed(2)} {currencySymbol}</span>

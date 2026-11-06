@@ -1,4 +1,5 @@
 export type InvoiceStatus = 'Brouillon' | 'Envoyée' | 'Partiellement payée' | 'Payée' | 'En retard' | 'Annulée' | 'paid' | 'partial';
+export type PaymentSectionStatus = 'Non payé' | 'Payé' | 'Payé partiellement' | 'En retard';
 
 export interface CompanyProfile {
   id: string;
