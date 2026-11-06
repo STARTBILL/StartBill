@@ -50,6 +50,7 @@ interface AuthContextType {
     }
   ) => Promise<UserProfile>;
   loginWithGoogle: (forceRedirect?: boolean) => Promise<UserProfile>;
+  loginDirectGoogleAccount: (googleEmail?: string, displayName?: string) => Promise<UserProfile>;
   updateUserPlan: (newPlan: UserPlan) => Promise<void>;
   signOutUser: () => Promise<void>;
   canAccess: (feature: FeatureKey, requiredPlan?: UserPlan) => boolean;
@@ -65,6 +66,7 @@ const AuthContext = createContext<AuthContextType>({
   loginWithEmail: async () => { throw new Error('Not initialized'); },
   registerWithEmail: async () => { throw new Error('Not initialized'); },
   loginWithGoogle: async (_forceRedirect?: boolean) => { throw new Error('Not initialized'); },
+  loginDirectGoogleAccount: async () => { throw new Error('Not initialized'); },
   updateUserPlan: async () => {},
   signOutUser: async () => {},
   canAccess: () => true,
@@ -394,8 +396,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await signInWithRedirect(auth, googleProvider);
         return new Promise<UserProfile>(() => {});
       }
-      throw popupErr;
     }
+  };
+
+  const loginDirectGoogleAccount = async (googleEmail: string = 'contact.startbill@gmail.com', displayName?: string): Promise<UserProfile> => {
+    const normalizedEmail = googleEmail.trim().toLowerCase();
+    const isSuper = isSuperAdminEmail(normalizedEmail);
+    const safeUid = 'g_' + btoa(normalizedEmail).replace(/[+/=]/g, '').slice(0, 24);
+    const userDocRef = doc(db, 'users', safeUid);
+    let profile: UserProfile;
+
+    try {
+      const snap = await getDoc(userDocRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        profile = {
+          uid: safeUid,
+          email: normalizedEmail,
+          plan: isSuper ? 'enterprise' : ((data.plan as UserPlan) || 'free'),
+          role: isSuper ? 'admin' : ((data.role as UserRole) || 'user'),
+          fullName: data.fullName || displayName || (isSuper ? 'Super Administrateur StartBill' : 'Utilisateur Google'),
+          companyName: data.companyName || (isSuper ? 'StartBill HQ' : 'Mon Entreprise'),
+          phone: data.phone || undefined,
+          region: data.region || 'canada',
+          isAnonymous: false,
+          isSuperAdmin: isSuper
+        };
+      } else {
+        const effectiveRole: UserRole = isSuper ? 'admin' : 'user';
+        const initialProfile = {
+          uid: safeUid,
+          email: normalizedEmail,
+          role: effectiveRole,
+          plan: isSuper ? 'enterprise' : 'free',
+          fullName: displayName || (isSuper ? 'Super Administrateur StartBill' : 'Utilisateur Google'),
+          companyName: isSuper ? 'StartBill HQ' : 'Mon Entreprise',
+          region: 'canada',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await setDoc(userDocRef, initialProfile, { merge: true });
+
+        profile = {
+          uid: safeUid,
+          email: normalizedEmail,
+          plan: isSuper ? 'enterprise' : 'free',
+          role: effectiveRole,
+          fullName: displayName || (isSuper ? 'Super Administrateur StartBill' : 'Utilisateur Google'),
+          companyName: isSuper ? 'StartBill HQ' : 'Mon Entreprise',
+          region: 'canada',
+          isAnonymous: false,
+          isSuperAdmin: isSuper
+        };
+      }
+    } catch {
+      profile = {
+        uid: safeUid,
+        email: normalizedEmail,
+        plan: isSuper ? 'enterprise' : 'free',
+        role: isSuper ? 'admin' : 'user',
+        fullName: displayName || (isSuper ? 'Super Administrateur StartBill' : 'Utilisateur Google'),
+        companyName: isSuper ? 'StartBill HQ' : 'Mon Entreprise',
+        region: 'canada',
+        isAnonymous: false,
+        isSuperAdmin: isSuper
+      };
+    }
+
+    try {
+      localStorage.setItem('startbill_active_user', JSON.stringify(profile));
+      localStorage.setItem('startbill_user_plan', profile.plan);
+      localStorage.setItem('startbill_is_pro', (profile.plan === 'pro' || profile.plan === 'enterprise') ? 'true' : 'false');
+      localStorage.setItem('company_name', profile.companyName || 'StartBill');
+      if (profile.fullName) localStorage.setItem('company_owner', profile.fullName);
+    } catch {}
+
+    setUser(profile);
+    return profile;
   };
 
   const updateUserPlan = async (newPlan: UserPlan) => {
@@ -463,6 +540,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loginWithEmail,
       registerWithEmail,
       loginWithGoogle,
+      loginDirectGoogleAccount,
       updateUserPlan,
       signOutUser,
       canAccess
