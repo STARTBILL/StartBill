@@ -452,310 +452,63 @@ export default function LandingPage({
       </main>
 
       {/* ========================================================================= */}
-      {/* FOOTER CONFORME RGPD, LOI 25 & DOSSIER JURIDIQUE STARTBILL INC.          */}
+      {/* FOOTER ÉPURÉ AVEC LIEN DIRECT VERS LE CENTRE JURIDIQUE & RGPD             */}
       {/* ========================================================================= */}
-      <footer className="w-full border-t border-slate-200/80 bg-slate-900 text-slate-300 pt-12 pb-8 mt-16 font-sans">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 space-y-10">
+      <footer className="w-full border-t border-slate-200/80 bg-white py-6 mt-12 font-sans">
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           
-          {/* Top Footer Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-6">
-            
-            {/* Column 1: Company Profile & Compliance Badges */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-white p-2 rounded-xl shadow-xs inline-block">
-                  <StartBillLogo variant="horizontal" size="sm" showTagline={true} />
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
-                Solution SaaS de facturation professionnelle, conformité fiscale multi-régionale et santé financière pour indépendants, créateurs et entreprises.
-              </p>
-
-              {/* Official Corporate Identification Box */}
-              <div className="p-3.5 bg-slate-800/80 border border-slate-750 rounded-xl space-y-2 text-[11px] text-slate-400">
-                <div className="flex items-center gap-2 text-slate-200 font-bold">
-                  <Building className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span>{LEGAL_COMPANY_INFO.name}</span>
-                </div>
-                <div className="flex items-start gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                  <span>{LEGAL_COMPANY_INFO.headquarters}</span>
-                </div>
-                <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-700/60">
-                  <span>N° Société fédérale : <strong className="text-slate-300">{LEGAL_COMPANY_INFO.federalNumber}</strong></span>
-                  <span>Régime : <strong className="text-slate-300">Fédéral Canada</strong></span>
-                </div>
-                <div className="flex items-center gap-1.5 text-blue-400">
-                  <Mail className="w-3.5 h-3.5 shrink-0" />
-                  <a href={`mailto:${LEGAL_COMPANY_INFO.email}`} className="hover:underline">
-                    {LEGAL_COMPANY_INFO.email}
-                  </a>
-                </div>
-              </div>
-
-              {/* Compliance Trust Badges */}
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-800 text-[10px] font-semibold">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                  <span>100% Conforme RGPD</span>
-                </div>
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-950/60 text-blue-300 border border-blue-800 text-[10px] font-semibold">
-                  <CheckCircle2 className="w-3 h-3 text-blue-400" />
-                  <span>Loi 25 (Québec)</span>
-                </div>
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-medium">
-                  <Lock className="w-3 h-3 text-amber-400" />
-                  <span>AES-256 & TLS 1.3</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Column 2: Protection des Données & RGPD */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-blue-400" />
-                <span>Protection & RGPD</span>
-              </h4>
-              <ul className="space-y-2 text-xs">
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('politique-confidentialite')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 opacity-60 group-hover:opacity-100" />
-                    <span>Politique de confidentialité</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('politique-cookies')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 opacity-60 group-hover:opacity-100" />
-                    <span>Politique relative aux cookies</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('conservation-suppression')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 opacity-60 group-hover:opacity-100" />
-                    <span>Conservation & suppression</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('accord-traitement-donnees-dpa')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 opacity-60 group-hover:opacity-100" />
-                    <span>Accord DPA (Sous-traitance)</span>
-                  </button>
-                </li>
-                <li className="pt-2 text-[11px] text-slate-400 border-t border-slate-800">
-                  <span className="text-slate-500 block">Délégué aux données (DPO) :</span>
-                  <span className="text-slate-300 font-semibold">{LEGAL_COMPANY_INFO.dpoName}</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Column 3: Conditions Générales & Vente */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
-                <Scale className="w-3.5 h-3.5 text-blue-400" />
-                <span>Conditions & Vente</span>
-              </h4>
-              <ul className="space-y-2 text-xs">
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('mentions-legales')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 opacity-60 group-hover:opacity-100" />
-                    <span>Mentions légales (DOC 01)</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('cgu')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 opacity-60 group-hover:opacity-100" />
-                    <span>Conditions d’utilisation (CGU)</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('cgv')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 opacity-60 group-hover:opacity-100" />
-                    <span>Conditions de vente (CGV)</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('remboursement-annulation')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 opacity-60 group-hover:opacity-100" />
-                    <span>Remboursement & annulation</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('accord-niveau-service-sla')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 opacity-60 group-hover:opacity-100" />
-                    <span>Niveau de service (SLA)</span>
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            {/* Column 4: Sécurité & Gouvernance */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
-                <Lock className="w-3.5 h-3.5 text-blue-400" />
-                <span>Sécurité & Support</span>
-              </h4>
-              <ul className="space-y-2 text-xs">
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('politique-securite')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-60 group-hover:opacity-100" />
-                    <span>Politique de sécurité</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('gestion-incidents')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-60 group-hover:opacity-100" />
-                    <span>Gestion des incidents</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('utilisation-acceptable')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-60 group-hover:opacity-100" />
-                    <span>Utilisation acceptable (AUP)</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('propriete-intellectuelle')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-60 group-hover:opacity-100" />
-                    <span>Propriété intellectuelle</span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openLegalDocument('support-reclamations')}
-                    className="text-slate-400 hover:text-white transition-colors text-left flex items-center gap-1.5 group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 opacity-60 group-hover:opacity-100" />
-                    <span>Support & réclamations</span>
-                  </button>
-                </li>
-              </ul>
-            </div>
-
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <StartBillLogo variant="horizontal" size="xs" showTagline={true} />
+            <span className="hidden sm:inline text-slate-300">|</span>
+            <span className="text-[11px] text-slate-400">© 2026 {LEGAL_COMPANY_INFO.name} — Tous droits réservés.</span>
           </div>
 
-          {/* Direct PDF Downloads Strip */}
-          <div className="p-4 rounded-xl bg-slate-800/90 border border-slate-750 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                <Download className="w-4 h-4" />
-              </div>
-              <div>
-                <h5 className="font-bold text-white text-xs">Télécharger les Dossiers Juridiques Officiels Originaux</h5>
-                <p className="text-[11px] text-slate-400">
-                  Documents certifiés rédigés pour STARTBILL INC. (Conformité RGPD, Loi 25 & LPRPDE)
-                </p>
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium">
+            {/* Lien direct pour accéder à l'ensemble des 14 documents juridiques & RGPD */}
+            <button
+              onClick={() => openLegalDocument('politique-confidentialite')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors cursor-pointer border border-blue-200 shadow-2xs"
+              title="Consulter le dossier juridique complet et la conformité RGPD"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+              <span>Documents Juridiques & RGPD (14 docs)</span>
+            </button>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <a
-                href={LEGAL_COMPANY_INFO.privacyPdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white rounded-lg text-xs font-semibold transition-colors border border-slate-600"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-400" />
-                <span>Politique Confidentialité PDF</span>
-              </a>
-              <a
-                href={LEGAL_COMPANY_INFO.dossierPdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs"
-              >
-                <FileText className="w-3.5 h-3.5 text-white" />
-                <span>Dossier 13 Documents PDF</span>
-              </a>
-            </div>
-          </div>
+            <button
+              onClick={() => openLegalDocument('politique-confidentialite')}
+              className="text-slate-600 hover:text-blue-600 transition-colors cursor-pointer"
+            >
+              Confidentialité
+            </button>
 
-          {/* Bottom Bar: Copyright & Quick Links */}
-          <div className="pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
-            <div>
-              <span>© 2026 {LEGAL_COMPANY_INFO.name} — Tous droits réservés.</span>
-            </div>
+            <button
+              onClick={() => openLegalDocument('cgu')}
+              className="text-slate-600 hover:text-blue-600 transition-colors cursor-pointer"
+            >
+              CGU / CGV
+            </button>
 
-            <div className="flex flex-wrap items-center gap-4 text-[11px]">
-              <button
-                onClick={() => openLegalDocument('politique-confidentialite')}
-                className="hover:text-white transition-colors"
-              >
-                Confidentialité
-              </button>
-              <button
-                onClick={() => openLegalDocument('cgu')}
-                className="hover:text-white transition-colors"
-              >
-                CGU
-              </button>
-              <button
-                onClick={() => openLegalDocument('cgv')}
-                className="hover:text-white transition-colors"
-              >
-                CGV
-              </button>
-              <button
-                onClick={() => openLegalDocument('mentions-legales')}
-                className="hover:text-white transition-colors"
-              >
-                Mentions légales
-              </button>
-              <button
-                onClick={() => openLegalDocument('politique-cookies')}
-                className="hover:text-white transition-colors flex items-center gap-1 text-blue-400 hover:underline"
-              >
-                <Cookie className="w-3 h-3" />
-                <span>Gérer les cookies</span>
-              </button>
-              <a
-                href={`mailto:${LEGAL_COMPANY_INFO.email}`}
-                className="hover:text-white transition-colors"
-              >
-                Contact DPO
-              </a>
-            </div>
+            <button
+              onClick={() => openLegalDocument('mentions-legales')}
+              className="text-slate-600 hover:text-blue-600 transition-colors cursor-pointer"
+            >
+              Mentions légales
+            </button>
+
+            <button
+              onClick={() => openLegalDocument('politique-cookies')}
+              className="text-slate-600 hover:text-blue-600 transition-colors inline-flex items-center gap-1 cursor-pointer"
+            >
+              <Cookie className="w-3 h-3 text-amber-600" />
+              <span>Gérer les cookies</span>
+            </button>
+
+            <a
+              href={`mailto:${LEGAL_COMPANY_INFO.email}`}
+              className="text-slate-600 hover:text-blue-600 transition-colors"
+            >
+              Contact DPO
+            </a>
           </div>
 
         </div>
