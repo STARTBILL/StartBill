@@ -160,6 +160,7 @@ export type ScreenId =
   | 'settings'
   | 'notifications'
   | 'pricing'
+  | 'legal'
   | 'admin';
 
 export type AlertType = 

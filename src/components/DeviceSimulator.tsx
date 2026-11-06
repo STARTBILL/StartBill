@@ -52,7 +52,8 @@ import {
   Clock,
   Activity,
   Package,
-  Bike
+  Bike,
+  Scale
 } from 'lucide-react';
 import { Invoice, Expense, Client, ScreenId, InvoiceStatus, ProductItem, CompanyProfile } from '../types';
 import { DEFAULT_COMPANIES } from '../data/defaultCompanies';
@@ -78,6 +79,7 @@ import LandingPage from './LandingPage';
 import PricingPage from './PricingPage';
 import AdminDashboard from './AdminDashboard';
 import SettingsPage from './SettingsPage';
+import LegalPage from './LegalPage';
 import SessionLockModal from './SessionLockModal';
 import { canCreateInvoice, checkFeatureAccess } from '../lib/planAccess';
 import { ConfirmModal } from './ui/ConfirmModal';
@@ -1223,6 +1225,7 @@ export default function DeviceSimulator({
               { id: 'financial_health' as ScreenId, label: 'Santé financière', sublabel: 'Score et analyse', icon: TrendingUp, isPublic: false },
               { id: 'ai_advisor' as ScreenId, label: 'Conseiller AI', sublabel: 'Assistant intelligent', icon: Sparkles, isPublic: false },
               { id: 'settings' as ScreenId, label: 'Paramètres', sublabel: 'Configuration générale', icon: Settings, isPublic: false },
+              { id: 'legal' as ScreenId, label: 'Centre Juridique & RGPD', sublabel: '14 documents & Lois', icon: Scale, isPublic: false },
               { id: 'pricing' as ScreenId, label: 'Forfaits & Tarifs', sublabel: 'Gestion abonnement', icon: Zap, isPublic: false, badge: userPlan ? userPlan.toUpperCase() : 'PLAN' },
               ...(isSuperAdminUser ? [
                 { id: 'admin' as ScreenId, label: 'Administration', sublabel: 'CEO Command Center', icon: ShieldCheck, isPublic: false, badge: 'ADMIN' }
@@ -1526,6 +1529,7 @@ export default function DeviceSimulator({
                  currentScreen === 'financial_alerts' ? 'Alertes & Trésorerie' :
                  currentScreen === 'pricing' ? 'Forfaits & Abonnements' :
                  currentScreen === 'settings' ? 'Paramètres & Configuration' :
+                 currentScreen === 'legal' ? 'Centre Juridique & Conformité RGPD' :
                  currentScreen === 'admin' ? 'Super Administration' :
                  currentScreen === 'notifications' ? 'Centre de Notifications' :
                  'Espace Professionnel'}
@@ -3264,6 +3268,18 @@ export default function DeviceSimulator({
                   window.dispatchEvent(new CustomEvent('startbill-plan-changed', { detail: { plan: planId } }));
                 } catch {}
               }}
+            />
+          </div>
+        )}
+
+        {/* ======================================= */}
+        {/* SCREEN: CENTRE JURIDIQUE & RGPD */}
+        {/* ======================================= */}
+        {currentScreen === 'legal' && (
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 bg-slate-50">
+            <LegalPage
+              setScreen={setScreen}
+              triggerToast={triggerToast}
             />
           </div>
         )}

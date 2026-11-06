@@ -37,7 +37,8 @@ import {
   Shield,
   Trash2,
   Edit2,
-  X
+  X,
+  Scale
 } from 'lucide-react';
 import { Invoice, Expense, Client, ProductItem, ScreenId } from '../types';
 import { REGIONS } from '../data/regions';
@@ -45,6 +46,7 @@ import { useRegionalContext } from '../context/RegionalContext';
 import { useAuth } from '../context/AuthContext';
 import { getStripeConfig, StripeConfigResponse } from '../lib/stripeService';
 import { getRegionalTaxConfig, saveRegionalTaxConfig, RegionalTaxConfig } from '../lib/regionalTaxes';
+import { LEGAL_COMPANY_INFO } from '../data/legalDocuments';
 
 export type SupportedRegion = 'canada' | 'afrique' | 'haiti';
 
@@ -2444,6 +2446,85 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <FileText className="w-3.5 h-3.5" />
                 <span>Rapports comptables & exports CSV</span>
               </button>
+            </div>
+          </div>
+
+          {/* Dossier Juridique & Conformité RGPD (Loi 25 / LPRPDE) */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-200 flex items-center justify-center text-blue-600">
+                  <Scale className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-slate-900 tracking-tight">
+                    Conformité Réglementaire, RGPD & Dossier Juridique
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    Dossier juridique complet de {LEGAL_COMPANY_INFO.name} comprenant 13 documents certifiés et la Politique de confidentialité RGPD / Loi 25.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>Conforme RGPD & Loi 25</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Responsable DPO</span>
+                <div className="text-xs font-black text-slate-800">{LEGAL_COMPANY_INFO.dpoName}</div>
+                <p className="text-[10px] text-blue-600 truncate">{LEGAL_COMPANY_INFO.email}</p>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Entité & Enregistrement</span>
+                <div className="text-xs font-black text-slate-800">Société Fédérale Canada</div>
+                <p className="text-[10px] text-slate-500">N° {LEGAL_COMPANY_INFO.federalNumber}</p>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Documentation</span>
+                <div className="text-xs font-black text-slate-800">14 Documents Disponibles</div>
+                <p className="text-[10px] text-slate-500">CGU, CGV, DPA, Cookies, Sécurité...</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setScreen('legal')}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer shadow-xs"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Ouvrir le Centre Juridique Complet</span>
+              </button>
+
+              <a
+                href={LEGAL_COMPANY_INFO.privacyPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-2 border border-slate-200"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-600" />
+                <span>Politique Confidentialité (PDF)</span>
+              </a>
+
+              <a
+                href={LEGAL_COMPANY_INFO.dossierPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-2 border border-slate-200"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-600" />
+                <span>Dossier 13 Documents (PDF)</span>
+              </a>
             </div>
           </div>
 
