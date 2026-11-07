@@ -1317,7 +1317,7 @@ export default function DeviceSimulator({
                 }}
                 className="w-full bg-blue-500 hover:bg-blue-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg shadow-sm transition cursor-pointer"
               >
-                Devenir Pro 🚀
+                Devenir Pro
               </button>
             </div>
           ) : (
@@ -1413,17 +1413,6 @@ export default function DeviceSimulator({
               </button>
             </div>
           )}
-          
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-center space-y-1 text-white shadow-2xs">
-            <div className="text-[10px] font-black flex items-center justify-center gap-1.5 text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>MODE PRODUCTION ACTIF</span>
-            </div>
-            <div className="text-[9px] text-slate-400 font-medium flex items-center justify-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-blue-400" />
-              <span>Cloud Firestore Sécurisé SSL</span>
-            </div>
-          </div>
         </div>
       </div>
     );
@@ -1667,9 +1656,8 @@ export default function DeviceSimulator({
               <button
                 type="button"
                 onClick={() => setShowProUpgradeModal(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-300 text-amber-800 rounded-full text-[11px] font-black hover:bg-amber-100 transition cursor-pointer"
+                className="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-300 text-amber-800 rounded-full text-[11px] font-black hover:bg-amber-100 transition cursor-pointer"
               >
-                <Sparkles className="w-3 h-3 text-amber-600" />
                 <span>{isPro ? 'PRO' : 'PASSER PRO'}</span>
               </button>
             </div>

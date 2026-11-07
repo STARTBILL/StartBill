@@ -2,7 +2,6 @@ import {
   collection, 
   doc, 
   getDocs, 
-  getDocFromServer,
   setDoc, 
   deleteDoc, 
   writeBatch,
@@ -61,17 +60,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Validate Connection to Firestore per Firebase Skill
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Firestore backend is operating in offline mode or waiting for connection.");
-    }
-  }
-}
-testConnection();
+
 
 // Invoices collection helper - Strictly isolated by authenticated userId and registered region
 export async function getInvoicesFromFirestore(userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<Invoice[]> {
