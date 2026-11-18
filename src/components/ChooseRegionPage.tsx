@@ -3,6 +3,7 @@ import { ScreenId } from '../types';
 import { REGIONS } from '../data/regions';
 import { Globe, Check, ArrowRight, ShieldCheck, CreditCard, Sparkles, ChevronLeft } from 'lucide-react';
 import { StartBillLogo } from './common/StartBillLogo';
+import { isRegionEnabled, resolveActiveRegion } from '../config/featureFlags';
 
 interface ChooseRegionPageProps {
   currentRegionId?: 'canada' | 'afrique' | 'haiti';
@@ -19,17 +20,19 @@ export default function ChooseRegionPage({
   setScreen,
   triggerToast
 }: ChooseRegionPageProps) {
-  const [selected, setSelected] = useState<'canada' | 'afrique' | 'haiti'>(currentRegionId);
+  const [selected, setSelected] = useState<'canada' | 'afrique' | 'haiti'>(() => resolveActiveRegion(currentRegionId));
 
   const handleSelect = (id: 'canada' | 'afrique' | 'haiti') => {
+    if (!isRegionEnabled(id)) return;
     setSelected(id);
     onSelectRegion(id);
   };
 
   const handleNext = () => {
-    onSelectRegion(selected);
+    const safeRegion = resolveActiveRegion(selected);
+    onSelectRegion(safeRegion);
     if (triggerToast) {
-      triggerToast(`Région sélectionnée : ${REGIONS[selected].name}`);
+      triggerToast(`Région sélectionnée : ${REGIONS[safeRegion].name}`);
     }
     onContinue();
   };
@@ -69,6 +72,9 @@ export default function ChooseRegionPage({
       description: 'Gestion multi-devises Gourdes et Dollars américains avec encaissements rapides par MonCash.'
     }
   ];
+
+  // Filtrage dynamique via Feature Flags : conserve le code des autres régions intact pour activation ultérieure
+  const visibleRegions = regionDetails.filter((reg) => isRegionEnabled(reg.id));
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
@@ -120,13 +126,15 @@ export default function ChooseRegionPage({
           </h1>
 
           <p className="text-xs sm:text-sm text-slate-600 font-normal leading-relaxed">
-            StartBill calibre automatiquement les devises, les calculs de taxes (TPS, TVQ, TVH ou TVA), les passerelles de paiement locales et les modèles de factures conformes.
+            {visibleRegions.length > 1
+              ? 'StartBill calibre automatiquement les devises, les calculs de taxes (TPS, TVQ, TVH ou TVA), les passerelles de paiement locales et les modèles de factures conformes.'
+              : 'StartBill Canada calibre automatiquement la devise CAD ($), les calculs de taxes provinciales et fédérales (TPS, TVQ, TVH) et les modèles de factures conformes ARC / Revenu Québec.'}
           </p>
         </div>
 
-        {/* Region Cards Grid: 1 col on mobile, 3 cols on tablet & desktop */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 lg:gap-6 mb-8">
-          {regionDetails.map((reg) => {
+        {/* Region Cards Grid */}
+        <div className={`grid gap-5 lg:gap-6 mb-8 ${visibleRegions.length === 1 ? 'grid-cols-1 max-w-md mx-auto w-full' : 'grid-cols-1 md:grid-cols-3'}`}>
+          {visibleRegions.map((reg) => {
             const isSelected = selected === reg.id;
             return (
               <div

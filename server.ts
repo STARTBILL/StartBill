@@ -8,6 +8,7 @@ import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { createRegionIsolationMiddleware } from './src/middleware/regionSecurity';
+import { resolveActiveRegion } from './src/config/featureFlags';
 
 dotenv.config();
 
@@ -590,7 +591,8 @@ function getAppOrigin(req: Request, customReturnUrl?: string): string {
 // -------------------------------------------------------------
 app.post('/api/stripe/create-checkout-session', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { planId, interval = 'monthly', userEmail, userId, region = 'canada' } = req.body;
+    const { planId, interval = 'monthly', userEmail, userId, region: rawRegion = 'canada' } = req.body;
+    const region = resolveActiveRegion(rawRegion);
 
     if (!stripe) {
       res.status(400).json({

@@ -14,6 +14,7 @@ import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
 import { UserPlan, UserRole, FeatureKey, checkFeatureAccess, PLAN_LIMITS } from '../lib/planAccess';
 import { isSuperAdminEmail } from '../lib/authSecurity';
+import { isRegionEnabled, resolveActiveRegion } from '../config/featureFlags';
 
 export interface UserProfile {
   uid: string;
@@ -179,7 +180,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ) {
         try {
           const isSuper = isSuperAdminEmail(normalizedEmail);
-          const initialRegion = normalizedEmail.includes('afrique') ? 'afrique' : normalizedEmail.includes('haiti') ? 'haiti' : 'canada';
+          const inferredRegion = normalizedEmail.includes('afrique') ? 'afrique' : normalizedEmail.includes('haiti') ? 'haiti' : 'canada';
+          const initialRegion = resolveActiveRegion(inferredRegion);
           return await registerWithEmail(normalizedEmail, pass, {
             fullName: isSuper ? 'Ferline ZOGNI' : 'Utilisateur Démo',
             companyName: isSuper ? 'STARTBILL Inc.' : 'Entreprise Démo',
@@ -204,7 +206,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profileData = snap.data();
       } else {
         // Seed initial user document
-        const initialRegion = normalizedEmail.includes('afrique') ? 'afrique' : normalizedEmail.includes('haiti') ? 'haiti' : 'canada';
+        const inferredRegion = normalizedEmail.includes('afrique') ? 'afrique' : normalizedEmail.includes('haiti') ? 'haiti' : 'canada';
+        const initialRegion = resolveActiveRegion(inferredRegion);
         profileData = {
           uid: fbUser.uid,
           email: fbUser.email,
@@ -229,7 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fullName: profileData.fullName || fbUser.displayName || undefined,
       companyName: profileData.companyName,
       phone: profileData.phone,
-      region: profileData.region || 'canada',
+      region: resolveActiveRegion(profileData.region),
       isSuperAdmin: isSuper
     };
     setUser(loadedProfile);
@@ -248,13 +251,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<UserProfile> => {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Règle absolue de sécurité : la sélection de région est obligatoire et restreinte
-    const chosenRegion = extra?.region as 'canada' | 'afrique' | 'haiti';
-    if (!chosenRegion || !['canada', 'afrique', 'haiti'].includes(chosenRegion)) {
+    // Règle absolue de sécurité : la sélection de région est obligatoire, restreinte et soumise aux feature flags
+    const rawRegion = extra?.region as 'canada' | 'afrique' | 'haiti';
+    if (!rawRegion || !['canada', 'afrique', 'haiti'].includes(rawRegion)) {
       const err: any = new Error("La sélection de votre région d'exploitation (Canada, Afrique ou Haïti) est obligatoire à l'inscription pour garantir le cloisonnement strict de vos données.");
       err.code = 'auth/region-required';
       throw err;
     }
+    if (!isRegionEnabled(rawRegion)) {
+      const err: any = new Error("L'inscription pour cette région n'est pas encore ouverte pour cette version. Seul le Canada (CAD) est actuellement disponible.");
+      err.code = 'auth/region-disabled';
+      throw err;
+    }
+    const chosenRegion = rawRegion;
 
     // Enforce password requirements matching Firebase security policy
     if (pass.length < 8 || !/[A-Z]/.test(pass) || !/[^A-Za-z0-9]/.test(pass)) {

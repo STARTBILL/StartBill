@@ -1,9 +1,16 @@
 /// <reference types="vite/client" />
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, setLogLevel } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import appletConfig from '../../firebase-applet-config.json';
+
+// Configure log level to avoid false-positive offline timeout warnings in browser
+try {
+  setLogLevel('error');
+} catch {
+  // Ignore if already set
+}
 
 // In AI Studio sandbox environments, VITE_FIREBASE_* environment variables may contain
 // internal API gateway proxy tokens (prefixed with "AQ.") rather than real Google API keys.
@@ -45,7 +52,18 @@ if (typeof window !== 'undefined') {
   });
 }
 
-export const db = getFirestore(app, appletConfig.firestoreDatabaseId || 'ai-studio-startbillcanada-524eafad-0649-45be-b2ab-addae2c302f0');
+const firestoreDbId = appletConfig.firestoreDatabaseId || 'ai-studio-startbillcanada-524eafad-0649-45be-b2ab-addae2c302f0';
+let firestoreInstance;
+
+try {
+  firestoreInstance = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true
+  }, firestoreDbId);
+} catch {
+  firestoreInstance = getFirestore(app, firestoreDbId);
+}
+
+export const db = firestoreInstance;
 export const storage = getStorage(app);
 
 export const googleProvider = new GoogleAuthProvider();

@@ -25,6 +25,7 @@ import { REGIONS } from '../data/regions';
 import { getFreeTrialInfo } from '../lib/planAccess';
 import { StartBillLogo } from './common/StartBillLogo';
 import { startStripeCheckout, getStripeConfig, StripeConfigResponse } from '../lib/stripeService';
+import { FEATURE_FLAGS } from '../config/featureFlags';
 
 interface PricingPageProps {
   onSelectPlan?: (planId: 'free' | 'start' | 'pro') => void;
@@ -209,9 +210,9 @@ export const PricingPage: React.FC<PricingPageProps> = ({
       features: [
         { label: 'Factures', value: 'Illimité', included: true },
         { label: 'Clients', value: 'Illimité', included: true },
-        { label: 'Paiements', value: 'Manuel + Mobile Money', included: true },
+        { label: 'Paiements', value: FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'Manuel + Mobile Money' : 'Interac, Virement & Stripe', included: true },
         { label: 'Téléchargement PDF', value: 'Disponible', included: true },
-        { label: 'Rappels WhatsApp / SMS', value: 'Disponible', included: true },
+        { label: FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'Rappels WhatsApp / SMS' : 'Relances courriel auto', value: 'Disponible', included: true },
         { label: 'Alertes fiscales & impôts', value: 'Non disponible', included: false },
         { label: 'Analyses financières', value: 'Non disponible', included: false },
         { label: 'Coaching & Conseils', value: 'Non disponible', included: false },
@@ -232,9 +233,9 @@ export const PricingPage: React.FC<PricingPageProps> = ({
       features: [
         { label: 'Factures', value: 'Illimité', included: true },
         { label: 'Clients', value: 'Illimité', included: true },
-        { label: 'Paiements', value: 'Manuel + Mobile Money', included: true },
+        { label: 'Paiements', value: FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'Manuel + Mobile Money' : 'Interac, Virement & Stripe', included: true },
         { label: 'Téléchargement PDF', value: 'Disponible', included: true },
-        { label: 'Rappels WhatsApp / SMS', value: 'Disponible', included: true },
+        { label: FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'Rappels WhatsApp / SMS' : 'Relances courriel auto', value: 'Disponible', included: true },
         { label: 'Alertes fiscales & impôts', value: 'Disponible', included: true },
         { label: 'Analyses financières', value: 'Disponible', included: true },
         { label: 'Coaching & Conseils', value: 'Disponible', included: true },
@@ -301,7 +302,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
             <Globe className="w-3.5 h-3.5 text-blue-600" />
             Région : {regionConfig.flag} <strong>{regionConfig.name}</strong> ({currency})
           </span>
-          {setScreen && (
+          {setScreen && FEATURE_FLAGS.MULTI_REGION_ENABLED && (
             <button 
               onClick={() => setScreen('choose_region')}
               className="text-blue-600 hover:underline text-xs font-bold"
@@ -517,16 +518,18 @@ export const PricingPage: React.FC<PricingPageProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           <div className="space-y-1.5">
             <div className="text-emerald-400 font-extrabold text-sm flex items-center gap-1.5">
-              <Zap className="w-4 h-4" /> Relances WhatsApp & SMS
+              <Zap className="w-4 h-4" /> {FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'Relances WhatsApp & SMS' : 'Relances Automatisées'}
             </div>
             <p className="text-xs text-slate-400 leading-relaxed font-medium">
-              Réduisez vos retards de paiement jusqu’à 70% grâce aux rappels automatisés adaptés à l’Afrique et Haïti.
+              {FEATURE_FLAGS.MULTI_REGION_ENABLED
+                ? 'Réduisez vos retards de paiement jusqu’à 70% grâce aux rappels automatisés adaptés à l’Afrique et Haïti.'
+                : 'Réduisez vos retards de paiement grâce aux rappels courriel automatisés et au suivi des échéances en temps réel.'}
             </p>
           </div>
 
           <div className="space-y-1.5">
             <div className="text-blue-400 font-extrabold text-sm flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" /> Rapport TPS/TVQ (Canada)
+              <ShieldCheck className="w-4 h-4" /> Rapport TPS/TVQ/TVH (Canada)
             </div>
             <p className="text-xs text-slate-400 leading-relaxed font-medium">
               Calcul précis et déclaration simplifiée pour les rapports trimestriels Revenu Québec / ARC sans casse-tête.
@@ -535,10 +538,12 @@ export const PricingPage: React.FC<PricingPageProps> = ({
 
           <div className="space-y-1.5">
             <div className="text-purple-400 font-extrabold text-sm flex items-center gap-1.5">
-              <CreditCard className="w-4 h-4" /> Paiements Mobile Money
+              <CreditCard className="w-4 h-4" /> {FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'Paiements Mobile Money' : 'Encaissements CAD & Stripe'}
             </div>
             <p className="text-xs text-slate-400 leading-relaxed font-medium">
-              Proposez Orange Money, Wave, MTN et MonCash directement sur vos factures avec validation instantanée.
+              {FEATURE_FLAGS.MULTI_REGION_ENABLED
+                ? 'Proposez Orange Money, Wave, MTN et MonCash directement sur vos factures avec validation instantanée.'
+                : 'Proposez le Virement Interac et les cartes de crédit Stripe directement sur vos factures avec suivi automatique.'}
             </p>
           </div>
         </div>

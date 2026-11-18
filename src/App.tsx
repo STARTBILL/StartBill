@@ -22,6 +22,7 @@ import {
 import { RegionalProvider } from './context/RegionalContext';
 import { AuthProvider } from './context/AuthContext';
 import { auth, db } from './firebase/config';
+import { DEFAULT_ACTIVE_REGION, resolveActiveRegion } from './config/featureFlags';
 
 export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
@@ -130,13 +131,13 @@ export default function App() {
         try {
           setIsLoading(true);
           // 1. Charger la région d'inscription de l'utilisateur depuis son document de profil
-          let registeredRegion: 'canada' | 'afrique' | 'haiti' = 'canada';
+          let registeredRegion: 'canada' | 'afrique' | 'haiti' = DEFAULT_ACTIVE_REGION;
           try {
             const userSnap = await getDoc(doc(db, 'users', user.uid));
             if (userSnap.exists()) {
               const reg = userSnap.data()?.region;
               if (reg && ['canada', 'afrique', 'haiti'].includes(reg)) {
-                registeredRegion = reg;
+                registeredRegion = resolveActiveRegion(reg);
               }
             }
           } catch (profileErr) {

@@ -47,6 +47,7 @@ import { useAuth } from '../context/AuthContext';
 import { getStripeConfig, StripeConfigResponse } from '../lib/stripeService';
 import { getRegionalTaxConfig, saveRegionalTaxConfig, RegionalTaxConfig } from '../lib/regionalTaxes';
 import { LEGAL_COMPANY_INFO } from '../data/legalDocuments';
+import { FEATURE_FLAGS } from '../config/featureFlags';
 
 export type SupportedRegion = 'canada' | 'afrique' | 'haiti';
 
@@ -991,14 +992,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setScreen('choose_region')}
-              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5"
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span>Changer de région ou province</span>
-            </button>
+            {FEATURE_FLAGS.MULTI_REGION_ENABLED ? (
+              <button
+                type="button"
+                onClick={() => setScreen('choose_region')}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Changer de région ou province</span>
+              </button>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold px-3.5 py-2 rounded-xl">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Région verrouillée (Lancement Canada V1)</span>
+              </div>
+            )}
           </div>
 
           {/* Tax Rates Configuration */}

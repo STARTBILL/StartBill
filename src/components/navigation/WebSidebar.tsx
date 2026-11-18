@@ -4,6 +4,7 @@ import { ScreenId } from '../../types';
 import { useRegional } from '../../context/RegionalContext';
 import { REGIONS } from '../../data/regions';
 import { StartBillLogo } from '../common/StartBillLogo';
+import { FEATURE_FLAGS } from '../../config/featureFlags';
 
 interface WebSidebarProps {
   currentScreen: ScreenId;
@@ -49,8 +50,14 @@ export const WebSidebar: React.FC<WebSidebarProps> = ({
 
         {/* Region Badge */}
         <div 
-          onClick={() => setScreen('choose_region')}
-          className="bg-slate-800/80 border border-slate-700 hover:border-blue-500/50 p-3 rounded-xl flex items-center justify-between cursor-pointer transition group"
+          onClick={() => {
+            if (FEATURE_FLAGS.MULTI_REGION_ENABLED) {
+              setScreen('choose_region');
+            }
+          }}
+          className={`bg-slate-800/80 border border-slate-700 p-3 rounded-xl flex items-center justify-between transition group ${
+            FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'hover:border-blue-500/50 cursor-pointer' : 'cursor-default'
+          }`}
         >
           <div className="flex items-center gap-2">
             <span className="text-xl">{regionConfig.flag}</span>
@@ -59,7 +66,7 @@ export const WebSidebar: React.FC<WebSidebarProps> = ({
               <div className="text-[10px] text-slate-400">{regionalSettings.currency} ({regionalSettings.currencySymbol})</div>
             </div>
           </div>
-          <Globe className="w-4 h-4 text-slate-400 group-hover:text-blue-400 transition" />
+          <Globe className={`w-4 h-4 text-slate-400 transition ${FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'group-hover:text-blue-400' : ''}`} />
         </div>
 
         {/* Navigation items */}

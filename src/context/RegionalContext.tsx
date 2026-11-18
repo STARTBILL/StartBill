@@ -8,6 +8,7 @@ import {
   INITIAL_REGIONAL_SETTINGS 
 } from '../lib/regionalSettings';
 import { REGIONS } from '../data/regions';
+import { DEFAULT_ACTIVE_REGION, isRegionEnabled, resolveActiveRegion } from '../config/featureFlags';
 
 interface RegionalContextType {
   region: 'canada' | 'afrique' | 'haiti';
@@ -32,10 +33,11 @@ const RegionalContext = createContext<RegionalContextType | undefined>(undefined
 export const RegionalProvider: React.FC<{
   initialRegion?: 'canada' | 'afrique' | 'haiti';
   children: React.ReactNode;
-}> = ({ initialRegion = 'canada', children }) => {
-  const [region, setRegionState] = useState<'canada' | 'afrique' | 'haiti'>(initialRegion);
+}> = ({ initialRegion = DEFAULT_ACTIVE_REGION, children }) => {
+  const safeInitialRegion = resolveActiveRegion(initialRegion);
+  const [region, setRegionState] = useState<'canada' | 'afrique' | 'haiti'>(safeInitialRegion);
   const [regionalSettings, setRegionalSettings] = useState<RegionalSettingsDoc>(
-    INITIAL_REGIONAL_SETTINGS[initialRegion] || INITIAL_REGIONAL_SETTINGS.canada
+    INITIAL_REGIONAL_SETTINGS[safeInitialRegion] || INITIAL_REGIONAL_SETTINGS.canada
   );
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -46,7 +48,7 @@ export const RegionalProvider: React.FC<{
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setLoading(true);
 
-      let targetRegion: 'canada' | 'afrique' | 'haiti' = region;
+      let targetRegion: 'canada' | 'afrique' | 'haiti' = resolveActiveRegion(region);
 
       if (user) {
         try {
@@ -54,7 +56,7 @@ export const RegionalProvider: React.FC<{
           if (userDoc.exists()) {
             const userData = userDoc.data();
             if (userData.region && ['canada', 'afrique', 'haiti'].includes(userData.region)) {
-              targetRegion = userData.region as 'canada' | 'afrique' | 'haiti';
+              targetRegion = resolveActiveRegion(userData.region);
             }
           }
         } catch (error) {
@@ -90,8 +92,14 @@ export const RegionalProvider: React.FC<{
     };
   }, []);
 
-  // Modification de la région : autorisée uniquement pour visiteur hors-ligne ou super-admin
+  // Modification de la région : autorisée uniquement pour visiteur hors-ligne ou super-admin, et si la région est activée par le Feature Flag
   const setRegion = async (newRegion: 'canada' | 'afrique' | 'haiti') => {
+    if (!isRegionEnabled(newRegion)) {
+      console.info(`[FeatureFlag] Région "${newRegion}" désactivée pour cette version. Maintien sur ${DEFAULT_ACTIVE_REGION}.`);
+      setRegionState(DEFAULT_ACTIVE_REGION);
+      return;
+    }
+
     const user = auth.currentUser;
     // Vérification de sécurité : un utilisateur standard ne peut pas changer sa région d'inscription
     if (user && !user.isAnonymous) {

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { doc, getDoc, Firestore } from 'firebase/firestore';
+import { FEATURE_FLAGS, resolveActiveRegion } from '../config/featureFlags';
 
 export interface AuthenticatedRegionRequest extends Request {
   userRegion?: 'canada' | 'afrique' | 'haiti';
@@ -47,9 +48,9 @@ export function createRegionIsolationMiddleware(db: Firestore | null) {
               userData.email.toLowerCase() === 'admin.canada@startbill.com'
             ));
 
-          // Un Super-Admin dispose de la vision consolidée multi-régions pour piloter le SaaS
+          // Un Super-Admin dispose de la vision consolidée multi-régions pour piloter le SaaS (restreinte aux régions activées)
           if (isSuperAdmin) {
-            req.userRegion = (requestedRegion as any) || registeredRegion || 'canada';
+            req.userRegion = resolveActiveRegion((requestedRegion as any) || registeredRegion);
             next();
             return;
           }
@@ -66,10 +67,11 @@ export function createRegionIsolationMiddleware(db: Firestore | null) {
             return;
           }
 
-          // Forcer la région dans la requête pour tous les accès base de données
-          req.userRegion = registeredRegion;
+          // Forcer la région active autorisée dans la requête pour tous les accès base de données
+          const effectiveRegion = FEATURE_FLAGS.MULTI_REGION_ENABLED ? registeredRegion : resolveActiveRegion(registeredRegion);
+          req.userRegion = effectiveRegion;
           if (req.body && typeof req.body === 'object') {
-            req.body.region = registeredRegion;
+            req.body.region = effectiveRegion;
           }
         }
       }

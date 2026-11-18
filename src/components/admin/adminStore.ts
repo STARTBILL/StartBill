@@ -34,6 +34,7 @@ import {
   RbacAction,
   AdminModuleId,
 } from './adminTypes';
+import { FEATURE_FLAGS } from '../../config/featureFlags';
 
 // Initial CEO Profile for Ferline ZOGNI
 export const INITIAL_CEO_PROFILE: AdminProfile = {
@@ -723,6 +724,48 @@ export const INITIAL_FEATURE_FLAGS: FeatureFlagItem[] = [
     updatedAt: '2026-10-08',
     updatedBy: 'Direction Conformité',
   },
+  {
+    id: 'ff-005',
+    key: 'region_canada_launch',
+    name: 'Ouverture Marché Canada (MVP V1)',
+    description: 'Active la facturation CAD, les taxes provinciales TPS/TVQ/TVH (ARC & Revenu Québec) et les règlements Interac/Stripe.',
+    isEnabled: FEATURE_FLAGS.REGIONS.canada,
+    rolloutPercent: FEATURE_FLAGS.REGIONS.canada ? 100 : 0,
+    allowedCountries: ['CA'],
+    allowedPlans: ['ALL'],
+    betaOnly: false,
+    emergencyKillSwitch: false,
+    updatedAt: '2026-11-17',
+    updatedBy: 'Architecture SaaS',
+  },
+  {
+    id: 'ff-006',
+    key: 'region_afrique_launch',
+    name: 'Ouverture Marché Afrique Francophone (V2)',
+    description: 'Verrouillé pour le MVP V1. Contrôle l’activation de la zone FCFA (OHADA) et Mobile Money (Wave, Orange, MTN).',
+    isEnabled: FEATURE_FLAGS.REGIONS.afrique,
+    rolloutPercent: FEATURE_FLAGS.REGIONS.afrique ? 100 : 0,
+    allowedCountries: ['SN', 'CI', 'CM', 'CD'],
+    allowedPlans: ['ALL'],
+    betaOnly: true,
+    emergencyKillSwitch: !FEATURE_FLAGS.REGIONS.afrique,
+    updatedAt: '2026-11-17',
+    updatedBy: 'Architecture SaaS',
+  },
+  {
+    id: 'ff-007',
+    key: 'region_haiti_launch',
+    name: 'Ouverture Marché Haïti (V3)',
+    description: 'Verrouillé pour le MVP V1. Contrôle l’activation de la zone HTG / DGI et des paiements MonCash.',
+    isEnabled: FEATURE_FLAGS.REGIONS.haiti,
+    rolloutPercent: FEATURE_FLAGS.REGIONS.haiti ? 100 : 0,
+    allowedCountries: ['HT'],
+    allowedPlans: ['ALL'],
+    betaOnly: true,
+    emergencyKillSwitch: !FEATURE_FLAGS.REGIONS.haiti,
+    updatedAt: '2026-11-17',
+    updatedBy: 'Architecture SaaS',
+  },
 ];
 
 // Module 11: AI Supervision
@@ -1296,6 +1339,12 @@ export function loadAdminStore(): AdminStoreState {
     const raw = localStorage.getItem(ADMIN_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const savedFlags: FeatureFlagItem[] = Array.isArray(parsed.featureFlags) ? parsed.featureFlags : [];
+      const regionalFlagKeys = new Set(['region_canada_launch', 'region_afrique_launch', 'region_haiti_launch']);
+      const mergedFlags: FeatureFlagItem[] = [
+        ...savedFlags.filter((f) => !regionalFlagKeys.has(f.key)),
+        ...INITIAL_FEATURE_FLAGS.filter((f) => regionalFlagKeys.has(f.key)),
+      ];
       return {
         ceoProfile: parsed.ceoProfile || INITIAL_CEO_PROFILE,
         metrics: parsed.metrics || INITIAL_CEO_METRICS,
@@ -1306,7 +1355,7 @@ export function loadAdminStore(): AdminStoreState {
         foundingCandidates: parsed.foundingCandidates || INITIAL_FOUNDING_100_CANDIDATES,
         prospects: parsed.prospects || INITIAL_PROSPECTS,
         markets: parsed.markets || INITIAL_MARKETS,
-        featureFlags: parsed.featureFlags || INITIAL_FEATURE_FLAGS,
+        featureFlags: mergedFlags.length > 0 ? mergedFlags : INITIAL_FEATURE_FLAGS,
         aiSupervision: parsed.aiSupervision || INITIAL_AI_SUPERVISION,
         fiscalSources: parsed.fiscalSources || INITIAL_FISCAL_SOURCES,
         tickets: parsed.tickets || INITIAL_TICKETS,

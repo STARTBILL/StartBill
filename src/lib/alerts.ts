@@ -11,6 +11,7 @@ import {
 import { db } from './firebase';
 import { SmartAlert, Invoice, AlertSeverity, AlertType } from '../types';
 import { getFreeTrialInfo } from './planAccess';
+import { resolveActiveRegion } from '../config/featureFlags';
 
 /**
  * MASTER STORAGE KEYS:
@@ -370,7 +371,7 @@ export function generateSmartAlerts(
     });
   };
 
-  const activeRegion = (typeof localStorage !== 'undefined' ? (localStorage.getItem('startbill_region') || 'canada') : 'canada');
+  const activeRegion = resolveActiveRegion(typeof localStorage !== 'undefined' ? localStorage.getItem('startbill_region') : 'canada');
 
   // Rule 1 & 2: GST/HST Thresholds (STRICTLY CANADA ONLY - NEVER for Africa or Haiti)
   if (activeRegion === 'canada') {

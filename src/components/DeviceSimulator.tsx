@@ -95,6 +95,7 @@ import { db, auth } from '../lib/firebase';
 import { generateSmartAlerts, isAlertDismissed } from '../lib/alerts';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { FEATURE_FLAGS, isRegionEnabled, resolveActiveRegion } from '../config/featureFlags';
 
 export const PROVINCES_TAXES = [
   { name: 'Québec', gst: 0.05, pst: 0.09975, pstLabel: 'QST (9.975%)', gstLabel: 'GST (5%)' },
@@ -121,7 +122,9 @@ export interface TaxResult {
 
 export function calculateTaxes(provinceOrRate: string | number, subtotal: number, regionOverride?: TaxRegion): TaxResult {
   const safeSubtotal = Math.max(0, subtotal || 0);
-  const activeRegion: TaxRegion = regionOverride || (typeof localStorage !== 'undefined' ? (localStorage.getItem('startbill_region') as TaxRegion) : 'canada') || 'canada';
+  const activeRegion: TaxRegion = resolveActiveRegion(
+    regionOverride || (typeof localStorage !== 'undefined' ? (localStorage.getItem('startbill_region') as TaxRegion) : 'canada') || 'canada'
+  );
 
   if (activeRegion === 'afrique' || activeRegion === 'haiti') {
     const regional = calculateRegionalTaxes(safeSubtotal, activeRegion, provinceOrRate);
@@ -1549,53 +1552,67 @@ export default function DeviceSimulator({
               </div>
 
               {/* Region Indicator: Static Badge for Standard Users vs Multi-region for Super Admin */}
-              {isSuperAdminUser ? (
+              {isSuperAdminUser && FEATURE_FLAGS.MULTI_REGION_ENABLED ? (
                 <div className="flex items-center bg-purple-50 p-1 rounded-xl border border-purple-200 text-xs font-bold" title="Super Admin : Superviseur Multi-Régions">
                   <span className="text-[10px] font-black uppercase text-purple-700 px-1.5 flex items-center gap-1">
                     <ShieldCheck className="w-3 h-3 text-purple-600" /> Super Admin :
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrentRegion('canada');
-                      triggerToast('Super Admin : Vue Canada 🇨🇦 (CAD, TPS/TVQ)');
-                    }}
-                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                      currentRegion === 'canada' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
-                    }`}
-                    title="Canada (CAD $)"
-                  >
-                    <span>🇨🇦</span>
-                    <span className="hidden xl:inline">Canada</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrentRegion('afrique');
-                      triggerToast('Super Admin : Vue Afrique 🌍 (FCFA, Mobile Money)');
-                    }}
-                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                      currentRegion === 'afrique' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
-                    }`}
-                    title="Afrique (FCFA)"
-                  >
-                    <span>🌍</span>
-                    <span className="hidden xl:inline">Afrique</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrentRegion('haiti');
-                      triggerToast('Super Admin : Vue Haïti 🇭🇹 (HTG / USD, MonCash)');
-                    }}
-                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
-                      currentRegion === 'haiti' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
-                    }`}
-                    title="Haïti (HTG)"
-                  >
-                    <span>🇭🇹</span>
-                    <span className="hidden xl:inline">Haïti</span>
-                  </button>
+                  {isRegionEnabled('canada') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentRegion('canada');
+                        triggerToast('Super Admin : Vue Canada 🇨🇦 (CAD, TPS/TVQ)');
+                      }}
+                      className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                        currentRegion === 'canada' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
+                      }`}
+                      title="Canada (CAD $)"
+                    >
+                      <span>🇨🇦</span>
+                      <span className="hidden xl:inline">Canada</span>
+                    </button>
+                  )}
+                  {isRegionEnabled('afrique') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentRegion('afrique');
+                        triggerToast('Super Admin : Vue Afrique 🌍 (FCFA, Mobile Money)');
+                      }}
+                      className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                        currentRegion === 'afrique' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
+                      }`}
+                      title="Afrique (FCFA)"
+                    >
+                      <span>🌍</span>
+                      <span className="hidden xl:inline">Afrique</span>
+                    </button>
+                  )}
+                  {isRegionEnabled('haiti') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentRegion('haiti');
+                        triggerToast('Super Admin : Vue Haïti 🇭🇹 (HTG / USD, MonCash)');
+                      }}
+                      className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                        currentRegion === 'haiti' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
+                      }`}
+                      title="Haïti (HTG)"
+                    >
+                      <span>🇭🇹</span>
+                      <span className="hidden xl:inline">Haïti</span>
+                    </button>
+                  )}
+                </div>
+              ) : isSuperAdminUser ? (
+                <div 
+                  className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-xl text-xs font-bold text-purple-800 shadow-2xs select-none"
+                  title="Lancement MVP V1 verrouillé sur Canada (autres régions désactivées par Feature Flag)"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span>🇨🇦 Canada (MVP V1)</span>
                 </div>
               ) : (
                 <div 
