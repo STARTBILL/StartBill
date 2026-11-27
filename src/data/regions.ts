@@ -15,7 +15,7 @@ export const REGIONS: Record<'canada' | 'afrique' | 'haiti', RegionConfig> = {
   canada: {
     id: 'canada',
     name: 'Canada',
-    flag: '🇨🇦',
+    flag: 'CA',
     platformPriority: 'web_first',
     currency: 'CAD',
     currencySymbol: '$',
@@ -27,7 +27,7 @@ export const REGIONS: Record<'canada' | 'afrique' | 'haiti', RegionConfig> = {
   afrique: {
     id: 'afrique',
     name: 'Afrique francophone',
-    flag: '🌍',
+    flag: 'AF',
     platformPriority: 'mobile_first',
     currency: 'FCFA',
     currencySymbol: 'FCFA',
@@ -39,7 +39,7 @@ export const REGIONS: Record<'canada' | 'afrique' | 'haiti', RegionConfig> = {
   haiti: {
     id: 'haiti',
     name: 'Haïti',
-    flag: '🇭🇹',
+    flag: 'HT',
     platformPriority: 'mobile_first',
     currency: 'HTG',
     currencySymbol: 'HTG',
@@ -51,17 +51,17 @@ export const REGIONS: Record<'canada' | 'afrique' | 'haiti', RegionConfig> = {
 };
 
 export const PAYMENT_PROVIDER_LABELS: Record<string, { label: string; icon: string }> = {
-  manual: { label: 'Virement / Manuel', icon: '🏦' },
-  orange_money: { label: 'Orange Money', icon: '🟧' },
-  wave: { label: 'Wave', icon: '🌊' },
-  mtn_money: { label: 'MTN MoMo', icon: '🟨' },
-  moncash: { label: 'MonCash', icon: '📲' },
-  cash: { label: 'Espèces', icon: '💵' }
+  manual: { label: 'Virement / Manuel', icon: '' },
+  orange_money: { label: 'Orange Money', icon: '' },
+  wave: { label: 'Wave', icon: '' },
+  mtn_money: { label: 'MTN MoMo', icon: '' },
+  moncash: { label: 'MonCash', icon: '' },
+  cash: { label: 'Espèces', icon: '' }
 };
 
 export const CHANNEL_LABELS: Record<string, { label: string; icon: string }> = {
-  email: { label: 'Courriel', icon: '✉️' },
-  pdf: { label: 'PDF téléchargeable', icon: '📄' },
-  whatsapp: { label: 'WhatsApp', icon: '💬' },
-  sms: { label: 'SMS', icon: '📱' }
+  email: { label: 'Courriel', icon: '' },
+  pdf: { label: 'PDF téléchargeable', icon: '' },
+  whatsapp: { label: 'WhatsApp', icon: '' },
+  sms: { label: 'SMS', icon: '' }
 };

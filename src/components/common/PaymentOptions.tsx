@@ -22,7 +22,7 @@ export const PaymentOptions: React.FC<PaymentOptionsProps> = ({
       </label>
       <div className="flex flex-wrap gap-2">
         {paymentProviders.map((providerKey) => {
-          const info = PAYMENT_PROVIDER_LABELS[providerKey] || { label: providerKey, icon: '💳' };
+          const info = PAYMENT_PROVIDER_LABELS[providerKey] || { label: providerKey, icon: '' };
           const isSelected = selectedProvider === providerKey;
 
           return (
@@ -36,7 +36,7 @@ export const PaymentOptions: React.FC<PaymentOptionsProps> = ({
                   : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
-              <span>{info.icon}</span>
+              {info.icon && <span>{info.icon}</span>}
               <span>{info.label}</span>
             </button>
           );

@@ -122,7 +122,7 @@ export default function FinancialAlertsPage({
       description: 'Calcul automatique TPS/TVQ actif. Aucun blocage fiscal détecté.',
       severity: 'Résolue',
       type: 'tax',
-      amount: 'À jour ✓',
+      amount: 'À jour',
       dueDate: 'Déclarations',
       recommendedAction: 'Les données de taxe sont synchronisées pour vos déclarations gouvernementales.',
       impact: 'Sécurité et conformité fiscale assurées.'

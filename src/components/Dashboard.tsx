@@ -359,7 +359,7 @@ export default function Dashboard({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-xs font-extrabold text-primary-600 tracking-wide uppercase bg-primary-50 px-2.5 py-0.5 rounded-md border border-primary-100">
-              Bonjour {userName} 👋
+              Bonjour {userName}
             </span>
           </div>
           <div className="flex items-center flex-wrap gap-2.5">
@@ -879,7 +879,7 @@ export default function Dashboard({
                 </div>
               </div>
               <span className="text-xs font-extrabold text-emerald-700 mt-1 flex items-center gap-1">
-                <span>🙂</span> Bonne santé financière
+                Bonne santé financière
               </span>
             </div>
 
@@ -1221,7 +1221,7 @@ export default function Dashboard({
                   <button
                     onClick={() => {
                       markAlertAsReadInFirestore(alert.id, !alert.isRead);
-                      triggerToast(alert.isRead ? 'Alerte marquée comme non lue' : 'Alerte marquée comme lue ✓');
+                      triggerToast(alert.isRead ? 'Alerte marquée comme non lue' : 'Alerte marquée comme lue');
                     }}
                     className="text-[10px] font-semibold text-slate-500 hover:text-slate-800 ml-auto cursor-pointer"
                   >

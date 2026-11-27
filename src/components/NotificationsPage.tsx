@@ -423,7 +423,7 @@ export default function NotificationsPage({
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Urgences 🚨
+              Urgences
             </button>
 
             <button
@@ -434,7 +434,7 @@ export default function NotificationsPage({
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Avertissements ⚠️
+              Avertissements
             </button>
 
             <button

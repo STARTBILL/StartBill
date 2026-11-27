@@ -562,7 +562,7 @@ export const INITIAL_MARKETS: MarketCountryConfig[] = [
   {
     code: 'CA',
     name: 'Canada',
-    flag: '🇨🇦',
+    flag: 'CA',
     region: 'Americas',
     currency: 'CAD',
     currencySymbol: '$ CAD',
@@ -577,7 +577,7 @@ export const INITIAL_MARKETS: MarketCountryConfig[] = [
   {
     code: 'SN',
     name: 'Sénégal',
-    flag: '🇸🇳',
+    flag: 'SN',
     region: 'West_Africa',
     currency: 'FCFA',
     currencySymbol: 'FCFA (XOF)',
@@ -592,7 +592,7 @@ export const INITIAL_MARKETS: MarketCountryConfig[] = [
   {
     code: 'CI',
     name: 'Côte d’Ivoire',
-    flag: '🇨🇮',
+    flag: 'CI',
     region: 'West_Africa',
     currency: 'FCFA',
     currencySymbol: 'FCFA (XOF)',
@@ -607,7 +607,7 @@ export const INITIAL_MARKETS: MarketCountryConfig[] = [
   {
     code: 'HT',
     name: 'Haïti',
-    flag: '🇭🇹',
+    flag: 'HT',
     region: 'Caribbean',
     currency: 'HTG',
     currencySymbol: 'HTG (Gourde)',
@@ -622,7 +622,7 @@ export const INITIAL_MARKETS: MarketCountryConfig[] = [
   {
     code: 'CM',
     name: 'Cameroun',
-    flag: '🇨🇲',
+    flag: 'CM',
     region: 'Central_Africa',
     currency: 'FCFA',
     currencySymbol: 'FCFA (XAF)',
@@ -637,7 +637,7 @@ export const INITIAL_MARKETS: MarketCountryConfig[] = [
   {
     code: 'CD',
     name: 'Rép. Dém. du Congo (RDC)',
-    flag: '🇨🇩',
+    flag: 'CD',
     region: 'Central_Africa',
     currency: 'USD / CDF',
     currencySymbol: '$ USD / FC',
@@ -652,7 +652,7 @@ export const INITIAL_MARKETS: MarketCountryConfig[] = [
   {
     code: 'BJ',
     name: 'Bénin',
-    flag: '🇧🇯',
+    flag: 'BJ',
     region: 'West_Africa',
     currency: 'FCFA',
     currencySymbol: 'FCFA (XOF)',

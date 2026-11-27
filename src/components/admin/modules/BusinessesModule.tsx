@@ -124,10 +124,10 @@ export const BusinessesModule: React.FC<BusinessesModuleProps> = ({
             className="bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
           >
             <option value="ALL">Tous les pays</option>
-            <option value="Canada">🇨🇦 Canada</option>
-            <option value="Sénégal">🇸🇳 Sénégal</option>
-            <option value="Côte d’Ivoire">🇨🇮 Côte d’Ivoire</option>
-            <option value="Haïti">🇭🇹 Haïti</option>
+            <option value="Canada">Canada</option>
+            <option value="Sénégal">Sénégal</option>
+            <option value="Côte d’Ivoire">Côte d’Ivoire</option>
+            <option value="Haïti">Haïti</option>
           </select>
 
           <select
@@ -171,7 +171,7 @@ export const BusinessesModule: React.FC<BusinessesModuleProps> = ({
 
                   <td className="p-3.5">
                     <span className="font-semibold text-white">
-                      {b.country === 'Canada' ? '🇨🇦 Canada' : b.country === 'Sénégal' ? '🇸🇳 Sénégal' : b.country === 'Côte d’Ivoire' ? '🇨🇮 Côte d’Ivoire' : '🇭🇹 Haïti'}
+                      {b.country}
                     </span>
                     <span className="text-[10px] text-slate-400 block font-mono">Devise : {b.currency}</span>
                   </td>

@@ -169,7 +169,7 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
         {/* Tarifs Fondateurs Rappel */}
         <div className="mt-5 pt-4 border-t border-amber-500/20 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-3">
-            <span className="text-2xl">🇨🇦</span>
+            <span className="px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-black text-blue-300">CA</span>
             <div>
               <div className="text-[10px] text-slate-400 font-bold uppercase">Tarif Fondateur Canada</div>
               <div className="text-sm font-black text-white">5 $ CAD / mois</div>
@@ -178,7 +178,7 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
           </div>
 
           <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-3">
-            <span className="text-2xl">🌍</span>
+            <span className="px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-black text-emerald-300">AF</span>
             <div>
               <div className="text-[10px] text-slate-400 font-bold uppercase">Tarif Fondateur Afrique</div>
               <div className="text-sm font-black text-white">500 FCFA / mois</div>
@@ -187,7 +187,7 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
           </div>
 
           <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center gap-3">
-            <span className="text-2xl">🇭🇹</span>
+            <span className="px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-black text-amber-300">HT</span>
             <div>
               <div className="text-[10px] text-slate-400 font-bold uppercase">Tarif Fondateur Haïti</div>
               <div className="text-sm font-black text-white">50 HTG / mois</div>
@@ -219,10 +219,10 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
             className="bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
           >
             <option value="ALL">Tous les pays ({candidates.length})</option>
-            <option value="Canada">🇨🇦 Canada</option>
-            <option value="Sénégal">🇸🇳 Sénégal</option>
-            <option value="Côte d’Ivoire">🇨🇮 Côte d’Ivoire</option>
-            <option value="Haïti">🇭🇹 Haïti</option>
+            <option value="Canada">Canada</option>
+            <option value="Sénégal">Sénégal</option>
+            <option value="Côte d’Ivoire">Côte d’Ivoire</option>
+            <option value="Haïti">Haïti</option>
           </select>
 
           {/* Status Selector */}
@@ -298,8 +298,8 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
                         <div className="font-bold text-xs text-white group-hover:text-amber-300 transition">
                           {item.companyName}
                         </div>
-                        <span className="text-xs shrink-0">
-                          {item.country === 'Canada' ? '🇨🇦' : item.country === 'Sénégal' ? '🇸🇳' : item.country === 'Côte d’Ivoire' ? '🇨🇮' : '🇭🇹'}
+                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">
+                          {item.country === 'Canada' ? 'CA' : item.country === 'Sénégal' ? 'SN' : item.country === 'Côte d’Ivoire' ? 'CI' : 'HT'}
                         </span>
                       </div>
 
@@ -360,8 +360,10 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
                     <tr key={item.id} className="hover:bg-slate-900/60 transition">
                       <td className="p-3.5">
                         <div className="font-bold text-white text-xs">{item.companyName}</div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                          <span>{item.country === 'Canada' ? '🇨🇦' : item.country === 'Sénégal' ? '🇸🇳' : item.country === 'Côte d’Ivoire' ? '🇨🇮' : '🇭🇹'}</span>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold px-1 py-0.2 rounded bg-slate-800 text-slate-300">
+                            {item.country === 'Canada' ? 'CA' : item.country === 'Sénégal' ? 'SN' : item.country === 'Côte d’Ivoire' ? 'CI' : 'HT'}
+                          </span>
                           <span>{item.city}, {item.country}</span>
                         </div>
                       </td>
@@ -557,7 +559,7 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
                       : 'bg-slate-800 text-slate-400 hover:text-white'
                   }`}
                 >
-                  {activeCandidateModal.participationAgreementSigned ? 'Accord Signé ✓' : 'Marquer comme Signé'}
+                  {activeCandidateModal.participationAgreementSigned ? 'Accord Signé' : 'Marquer comme Signé'}
                 </button>
               </div>
             </div>
@@ -661,13 +663,13 @@ export const Founding100View: React.FC<Founding100ViewProps> = ({
                     onChange={e => setNewForm({ ...newForm, country: e.target.value as any })}
                     className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500"
                   >
-                    <option value="Canada">🇨🇦 Canada (5 $ CAD/m)</option>
-                    <option value="Sénégal">🇸🇳 Sénégal (500 FCFA/m)</option>
-                    <option value="Côte d’Ivoire">🇨🇮 Côte d’Ivoire (500 FCFA/m)</option>
-                    <option value="Haïti">🇭🇹 Haïti (50 HTG/m)</option>
-                    <option value="Cameroun">🇨🇲 Cameroun</option>
-                    <option value="RDC">🇨🇩 RDC</option>
-                    <option value="Bénin">🇧🇯 Bénin</option>
+                    <option value="Canada">Canada (5 $ CAD/m)</option>
+                    <option value="Sénégal">Sénégal (500 FCFA/m)</option>
+                    <option value="Côte d’Ivoire">Côte d’Ivoire (500 FCFA/m)</option>
+                    <option value="Haïti">Haïti (50 HTG/m)</option>
+                    <option value="Cameroun">Cameroun</option>
+                    <option value="RDC">RDC</option>
+                    <option value="Bénin">Bénin</option>
                   </select>
                 </div>
 

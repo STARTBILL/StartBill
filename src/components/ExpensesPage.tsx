@@ -183,8 +183,8 @@ export default function ExpensesPage({
           setIsListening(true);
           triggerToast(
             selectedLang === 'fr-CA' 
-              ? "Dictée vocale (FR 🇨🇦) activée : Parlez maintenant..." 
-              : "Voice dictation (EN 🇨🇦) active: Speak now..."
+              ? "Dictée vocale (FR-CA) activée : Parlez maintenant..." 
+              : "Voice dictation (EN-CA) active: Speak now..."
           );
         };
 
@@ -480,7 +480,7 @@ export default function ExpensesPage({
               }`}
               title="Dictée en Français Canada (fr-CA)"
             >
-              FR 🇨🇦
+              FR-CA
             </button>
             <button
               onClick={() => {
@@ -492,7 +492,7 @@ export default function ExpensesPage({
               }`}
               title="Voice Dictation in English Canada (en-CA)"
             >
-              EN 🇨🇦
+              EN-CA
             </button>
           </div>
 
@@ -533,7 +533,7 @@ export default function ExpensesPage({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-wider bg-purple-500/40 text-purple-200 px-2 py-0.5 rounded-full border border-purple-400/30">
-                  {speechLang === 'fr-CA' ? 'Dictée fr-CA 🇨🇦' : 'Dictation en-CA 🇨🇦'}
+                  {speechLang === 'fr-CA' ? 'Dictée fr-CA' : 'Dictation en-CA'}
                 </span>
                 
                 {/* Audio Waveform Bars Simulation */}

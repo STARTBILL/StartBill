@@ -630,7 +630,7 @@ export default function ReportsPage({
 
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-xl">
-                      Régime Canada 🇨🇦 : TPS (5%) + TVQ (9.975%)
+                      Régime Canada : TPS (5%) + TVQ (9.975%)
                     </span>
                   </div>
                 </div>
@@ -712,7 +712,7 @@ export default function ReportsPage({
 
                 {/* Explanation Note Canada */}
                 <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-1">
-                  <span className="font-bold block">💡 Bon à savoir pour votre déclaration :</span>
+                  <span className="font-bold block">Bon à savoir pour votre déclaration :</span>
                   <p className="text-blue-800">
                     Les CTI (Crédits de Taxe sur les Intrants) pour la TPS et les RTI (Remboursements de Taxe sur les Intrants) pour la TVQ réduisent directement vos montants à payer. Conservez toujours vos justificatifs numérisés dans l'onglet Dépenses en cas d'audit de l'ARC ou de Revenu Québec.
                   </p>
@@ -734,7 +734,7 @@ export default function ReportsPage({
 
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-xl">
-                      {REGIONS[currentRegion]?.flag || '🌍'} Régime {REGIONS[currentRegion]?.name || 'Régional'} : {regionalTaxConfig.taxName || 'TVA'} ({regionalTaxConfig.taxRatePercent}%)
+                      Régime {REGIONS[currentRegion]?.name || 'Régional'} : {regionalTaxConfig.taxName || 'TVA'} ({regionalTaxConfig.taxRatePercent}%)
                     </span>
                   </div>
                 </div>
@@ -814,7 +814,7 @@ export default function ReportsPage({
 
                 {/* Explanation Note Regional */}
                 <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-1">
-                  <span className="font-bold block">💡 Suivi déclaratif régional ({REGIONS[currentRegion]?.name || ''}) :</span>
+                  <span className="font-bold block">Suivi déclaratif régional ({REGIONS[currentRegion]?.name || ''}) :</span>
                   <p className="text-emerald-900">
                     Chaque région dispose de sa propre comptabilité fiscale stricte. Renseignez votre identifiant fiscal ({regionalTaxConfig.taxNumber || 'NIF / RCCM à configurer dans Paramètres'}) pour vos déclarations périodiques. Conservez vos factures fournisseurs pour justifier vos déductions en cas de contrôle fiscal.
                   </p>

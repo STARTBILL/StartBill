@@ -85,7 +85,7 @@ import SessionLockModal from './SessionLockModal';
 import { canCreateInvoice, checkFeatureAccess } from '../lib/planAccess';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { REGIONS } from '../data/regions';
-import { downloadInvoicePdf } from '../lib/pdfGenerator';
+import { downloadInvoicePdf, stripEmojis } from '../lib/pdfGenerator';
 import { useRegionalContext } from '../context/RegionalContext';
 import { useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
@@ -1438,7 +1438,7 @@ export default function DeviceSimulator({
       
       {/* Desktop Sidebar (hidden during onboarding flow) */}
       {showSaaSChrome && (
-        <div className="hidden lg:flex w-[260px] bg-white text-slate-900 flex-col justify-between border-r border-[#E5E7EB] p-5 flex-shrink-0 z-30 h-screen sticky top-0 overflow-y-auto">
+        <div className="hidden lg:flex w-[260px] bg-white text-slate-900 flex-col justify-between border-r border-[#E5E7EB] p-5 flex-shrink-0 z-30 h-screen sticky top-0 overflow-y-auto no-print">
           {renderSidebarContent()}
         </div>
       )}
@@ -1446,14 +1446,14 @@ export default function DeviceSimulator({
       {/* Slide-over Mobile/Tablet Drawer Backdrop */}
       {showSaaSChrome && isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300" 
+          className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300 no-print" 
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Slide-over Drawer Sidebar */}
       {showSaaSChrome && (
-        <div className={`fixed inset-y-0 left-0 w-[280px] bg-white text-slate-900 flex flex-col justify-between border-r border-[#E5E7EB] p-5 z-50 h-screen transform transition-transform duration-300 lg:hidden ${
+        <div className={`fixed inset-y-0 left-0 w-[280px] bg-white text-slate-900 flex flex-col justify-between border-r border-[#E5E7EB] p-5 z-50 h-screen transform transition-transform duration-300 lg:hidden no-print ${
           isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}>
           {renderSidebarContent(() => setIsMobileMenuOpen(false))}
@@ -1497,7 +1497,7 @@ export default function DeviceSimulator({
         
         {/* Toast Notification */}
         {toastMessage && (
-          <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs py-2 px-4 rounded-full shadow-lg z-50 flex items-center gap-2 border border-slate-700 animate-bounce">
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs py-2 px-4 rounded-full shadow-lg z-50 flex items-center gap-2 border border-slate-700 animate-bounce no-print">
             <Check className="w-3.5 h-3.5 text-emerald-400" />
             <span>{toastMessage}</span>
           </div>
@@ -1505,7 +1505,7 @@ export default function DeviceSimulator({
 
         {/* Desktop Sticky Header Bar (SaaS Chrome) */}
         {showSaaSChrome && (
-          <header className="hidden lg:flex h-16 bg-white border-b border-slate-200/90 px-8 items-center justify-between sticky top-0 z-20 shrink-0">
+          <header className="hidden lg:flex h-16 bg-white border-b border-slate-200/90 px-8 items-center justify-between sticky top-0 z-20 shrink-0 no-print">
             {/* Left: Breadcrumbs & Page title */}
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-slate-400">StartBill Pro</span>
@@ -1562,14 +1562,14 @@ export default function DeviceSimulator({
                       type="button"
                       onClick={() => {
                         setCurrentRegion('canada');
-                        triggerToast('Super Admin : Vue Canada 🇨🇦 (CAD, TPS/TVQ)');
+                        triggerToast('Super Admin : Vue Canada (CAD, TPS/TVQ)');
                       }}
                       className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
                         currentRegion === 'canada' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
                       }`}
                       title="Canada (CAD $)"
                     >
-                      <span>🇨🇦</span>
+                      <span>CA</span>
                       <span className="hidden xl:inline">Canada</span>
                     </button>
                   )}
@@ -1578,14 +1578,14 @@ export default function DeviceSimulator({
                       type="button"
                       onClick={() => {
                         setCurrentRegion('afrique');
-                        triggerToast('Super Admin : Vue Afrique 🌍 (FCFA, Mobile Money)');
+                        triggerToast('Super Admin : Vue Afrique (FCFA, Mobile Money)');
                       }}
                       className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
                         currentRegion === 'afrique' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
                       }`}
                       title="Afrique (FCFA)"
                     >
-                      <span>🌍</span>
+                      <span>AF</span>
                       <span className="hidden xl:inline">Afrique</span>
                     </button>
                   )}
@@ -1594,14 +1594,14 @@ export default function DeviceSimulator({
                       type="button"
                       onClick={() => {
                         setCurrentRegion('haiti');
-                        triggerToast('Super Admin : Vue Haïti 🇭🇹 (HTG / USD, MonCash)');
+                        triggerToast('Super Admin : Vue Haïti (HTG / USD, MonCash)');
                       }}
                       className={`px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
                         currentRegion === 'haiti' ? 'bg-purple-600 text-white shadow-xs' : 'text-purple-700 hover:text-purple-900'
                       }`}
                       title="Haïti (HTG)"
                     >
-                      <span>🇭🇹</span>
+                      <span>HT</span>
                       <span className="hidden xl:inline">Haïti</span>
                     </button>
                   )}
@@ -1612,7 +1612,7 @@ export default function DeviceSimulator({
                   title="Lancement MVP V1 verrouillé sur Canada (autres régions désactivées par Feature Flag)"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                  <span>🇨🇦 Canada (MVP V1)</span>
+                  <span>Canada (MVP V1)</span>
                 </div>
               ) : (
                 <div 
@@ -1620,8 +1620,8 @@ export default function DeviceSimulator({
                   title="Région verrouillée à l'inscription (Cloisonnement strict des données)"
                 >
                   <span className="text-[11px] font-semibold text-slate-500">Compte :</span>
-                  <span className="text-sm">
-                    {currentRegion === 'canada' ? '🇨🇦' : currentRegion === 'afrique' ? '🌍' : '🇭🇹'}
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                    {currentRegion === 'canada' ? 'CA' : currentRegion === 'afrique' ? 'AF' : 'HT'}
                   </span>
                   <span className="font-extrabold text-slate-900">
                     {currentRegion === 'canada' ? 'Canada' : currentRegion === 'afrique' ? 'Afrique' : 'Haïti'}
@@ -1812,10 +1812,10 @@ export default function DeviceSimulator({
               </div>
             </div>
 
-            {/* PROFESSIONAL A4-STYLED INVOICE DOCUMENT */}
+            {/* PROFESSIONAL SINGLE-PAGE A4 INVOICE DOCUMENT */}
             <div 
               id="printable-invoice-content"
-              className="bg-white border border-slate-200 shadow-lg rounded-[16px] p-6 md:p-8 text-left text-slate-800 flex flex-col font-sans space-y-6 relative overflow-hidden"
+              className="bg-white border border-slate-200 shadow-lg rounded-[16px] p-5 md:p-6 text-left text-slate-800 flex flex-col font-sans space-y-3.5 relative overflow-hidden"
             >
               {/* Filigrane / Cachet diagonal pour facture Soldée ou Partiellement soldée */}
               {(selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid' || (selectedInvoice.remainingBalance !== undefined && selectedInvoice.remainingBalance === 0)) && (
@@ -1840,46 +1840,41 @@ export default function DeviceSimulator({
                 </div>
               )}
 
-              {/* Decorative side color accent */}
+              {/* Decorative top color accent */}
               <div className={`absolute top-0 left-0 right-0 h-1.5 ${selectedInvoice.status === 'Payée' ? 'bg-emerald-500' : 'bg-[#1F6FEB]'}`}></div>
 
               {/* Header section (Company & Invoice title) */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b border-slate-100 pb-5">
-                <div className="space-y-2">
-                  {/* Company Logo from dynamic state */}
-                  <div className="h-12 w-32 flex items-center justify-start overflow-hidden mb-1">
-                    {companyLogo ? (
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-3 border-b border-slate-100 pb-3">
+                <div className="space-y-1">
+                  {/* Company Logo from dynamic state (no icons or emojis) */}
+                  {companyLogo ? (
+                    <div className="h-10 w-32 flex items-center justify-start overflow-hidden mb-1">
                       <img 
                         src={companyLogo} 
-                        alt={companyName} 
+                        alt={stripEmojis(companyName)} 
                         className="max-h-full max-w-full object-contain" 
                         onError={(e) => { 
-                          // fallback
-                          (e.target as HTMLImageElement).src = "/startbill-logo.svg"; 
+                          (e.target as HTMLImageElement).style.display = 'none';
                         }} 
                         referrerPolicy="no-referrer"
                       />
-                    ) : (
-                      <div className="text-sm font-black text-blue-600 tracking-tight flex items-center gap-1">
-                        <FileText className="w-5 h-5 text-blue-600" /> {companyName}
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
                   <div>
-                    <h1 className="text-sm font-black text-slate-900">{companyName}</h1>
-                    <p className="text-[10px] text-slate-500">{companyAddress}</p>
-                    <p className="text-[10px] text-slate-500">Tél : {companyPhone}</p>
-                    <p className="text-[10px] text-slate-400 font-medium">NE Canada : {companyNE}</p>
+                    <h1 className="text-sm font-black text-slate-900">{stripEmojis(companyName)}</h1>
+                    <p className="text-[10px] text-slate-500 leading-snug">{stripEmojis(companyAddress)}</p>
+                    <p className="text-[10px] text-slate-500 leading-snug">Tél : {stripEmojis(companyPhone)}</p>
+                    <p className="text-[10px] text-slate-400 font-medium leading-snug">NE Canada : {stripEmojis(companyNE)}</p>
                   </div>
                 </div>
 
-                <div className="sm:text-right space-y-1">
+                <div className="sm:text-right space-y-0.5">
                   <h2 className="text-xl font-black text-slate-900 tracking-tight">FACTURE</h2>
-                  <p className="text-xs font-bold text-slate-700">{selectedInvoice.id}</p>
+                  <p className="text-xs font-bold text-slate-700">{stripEmojis(selectedInvoice.id)}</p>
                   <div className="text-[10px] text-slate-500 pt-1 space-y-0.5">
-                    <p><span className="font-semibold text-slate-400">Date d'émission :</span> {selectedInvoice.date}</p>
-                    <p><span className="font-semibold text-slate-400">Date d'échéance :</span> {selectedInvoice.dueDate || selectedInvoice.date}</p>
-                    <p><span className="font-semibold text-slate-400">Province fiscale :</span> {selectedInvoice.province || 'Québec'}</p>
+                    <p><span className="font-semibold text-slate-400">Date d'émission :</span> {stripEmojis(selectedInvoice.date)}</p>
+                    <p><span className="font-semibold text-slate-400">Date d'échéance :</span> {stripEmojis(selectedInvoice.dueDate || selectedInvoice.date)}</p>
+                    <p><span className="font-semibold text-slate-400">Province fiscale :</span> {stripEmojis(selectedInvoice.province || 'Québec')}</p>
                   </div>
                 </div>
               </div>
@@ -1890,23 +1885,23 @@ export default function DeviceSimulator({
                 const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
 
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-100/80 rounded-xl p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 border border-slate-100/80 rounded-xl p-3">
                     <div>
-                      <h3 className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">Facturé à :</h3>
-                      <p className="text-xs font-black text-slate-900">{selectedInvoice.clientName}</p>
-                      <p className="text-[10px] text-slate-600 leading-relaxed mt-0.5">
-                        {clientObj?.address || "Adresse non configurée"}
+                      <h3 className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest mb-0.5">Facturé à :</h3>
+                      <p className="text-xs font-black text-slate-900">{stripEmojis(selectedInvoice.clientName)}</p>
+                      <p className="text-[10px] text-slate-600 leading-snug mt-0.5">
+                        {stripEmojis(clientObj?.address || "Adresse non configurée")}
                       </p>
                       <p className="text-[10px] text-slate-600">
-                        {clientObj?.province || selectedInvoice.province || "Québec"}
+                        {stripEmojis(clientObj?.province || selectedInvoice.province || "Québec")}
                       </p>
                     </div>
                     <div className="md:text-right flex flex-col justify-end text-[10px] text-slate-500 space-y-0.5">
                       {clientObj?.email && (
-                        <p><span className="font-semibold text-slate-400">Courriel :</span> {clientObj.email}</p>
+                        <p><span className="font-semibold text-slate-400">Courriel :</span> {stripEmojis(clientObj.email)}</p>
                       )}
                       {clientObj?.phone && (
-                        <p><span className="font-semibold text-slate-400">Téléphone :</span> {clientObj.phone}</p>
+                        <p><span className="font-semibold text-slate-400">Téléphone :</span> {stripEmojis(clientObj.phone)}</p>
                       )}
                     </div>
                   </div>
@@ -1914,10 +1909,10 @@ export default function DeviceSimulator({
               })()}
 
               {/* Description summary block */}
-              {selectedInvoice.description && (
-                <div className="text-[10px] text-slate-600 bg-slate-50/50 p-2.5 rounded-lg border border-slate-100 text-left">
+              {selectedInvoice.description && stripEmojis(selectedInvoice.description) && (
+                <div className="text-[10px] text-slate-600 bg-slate-50/50 p-2 rounded-lg border border-slate-100 text-left">
                   <p className="font-bold text-slate-400 text-[8px] uppercase tracking-wider mb-0.5">Notes de prestation / Description</p>
-                  <p className="leading-relaxed font-medium">{selectedInvoice.description}</p>
+                  <p className="leading-snug font-medium">{stripEmojis(selectedInvoice.description)}</p>
                 </div>
               )}
 
@@ -1926,28 +1921,28 @@ export default function DeviceSimulator({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="py-2.5 px-3">Description de l'article / service</th>
-                      <th className="py-2.5 px-3 text-center">Quantité</th>
-                      <th className="py-2.5 px-3 text-right">Prix unitaire</th>
-                      <th className="py-2.5 px-3 text-right">Total</th>
+                      <th className="py-2 px-3">Description de l'article / service</th>
+                      <th className="py-2 px-3 text-center">Quantité</th>
+                      <th className="py-2 px-3 text-right">Prix unitaire</th>
+                      <th className="py-2 px-3 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedInvoice.items && selectedInvoice.items.length > 0 ? (
                       selectedInvoice.items.map((it, idx) => (
                         <tr key={idx} className="border-b border-slate-100 last:border-0 text-slate-700">
-                          <td className="py-2 px-3 font-semibold text-slate-900">{it.description || "Prestation de services"}</td>
-                          <td className="py-2 px-3 text-center font-medium">{it.quantity}</td>
-                          <td className="py-2 px-3 text-right font-medium">{it.unitPrice.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
-                          <td className="py-2 px-3 text-right font-black text-slate-950">{it.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
+                          <td className="py-1.5 px-3 font-semibold text-slate-900">{stripEmojis(it.description) || "Prestation de services"}</td>
+                          <td className="py-1.5 px-3 text-center font-medium">{it.quantity}</td>
+                          <td className="py-1.5 px-3 text-right font-medium">{it.unitPrice.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
+                          <td className="py-1.5 px-3 text-right font-black text-slate-950">{it.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
                         </tr>
                       ))
                     ) : (
                       <tr className="border-b border-slate-100 last:border-0 text-slate-700">
-                        <td className="py-2 px-3 font-semibold text-slate-900">Prestation de services standard</td>
-                        <td className="py-2 px-3 text-center font-medium">1</td>
-                        <td className="py-2 px-3 text-right font-medium">{selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
-                        <td className="py-2 px-3 text-right font-black text-slate-950">{selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
+                        <td className="py-1.5 px-3 font-semibold text-slate-900">Prestation de services standard</td>
+                        <td className="py-1.5 px-3 text-center font-medium">1</td>
+                        <td className="py-1.5 px-3 text-right font-medium">{selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
+                        <td className="py-1.5 px-3 text-right font-black text-slate-950">{selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</td>
                       </tr>
                     )}
                   </tbody>
@@ -1955,14 +1950,14 @@ export default function DeviceSimulator({
               </div>
 
               {/* Taxes Breakdown and Grand Total */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pt-4 border-t border-slate-100">
-                <div className="text-[10px] text-slate-500 space-y-1 max-w-sm">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-3 pt-2.5 border-t border-slate-100">
+                <div className="text-[10px] text-slate-500 space-y-0.5 max-w-sm leading-snug">
                   <p className="font-bold text-slate-700">Conditions de paiement :</p>
                   <p>Payable sous 30 jours à réception de la facture.</p>
-                  <p>Veuillez effectuer votre paiement par virement de fonds électronique Interac à <strong>contact.startbill@gmail.com</strong> en indiquant le numéro de facture <strong>{selectedInvoice.id}</strong>.</p>
+                  <p>Veuillez effectuer votre paiement par virement de fonds électronique Interac à <strong>contact.startbill@gmail.com</strong> en indiquant le numéro de facture <strong>{stripEmojis(selectedInvoice.id)}</strong>.</p>
                 </div>
 
-                <div className="w-full sm:w-64 space-y-2 text-xs">
+                <div className="w-full sm:w-64 space-y-1 text-xs">
                   <div className="flex justify-between text-slate-600 font-medium">
                     <span>Sous-total HT</span>
                     <span>{selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
@@ -1977,34 +1972,34 @@ export default function DeviceSimulator({
                       <>
                         {taxRes.gst > 0 && (
                           <div className="flex justify-between text-slate-500">
-                            <span>{activeProvince.gstLabel || 'GST (5%)'}</span>
+                            <span>{stripEmojis(activeProvince.gstLabel) || 'GST (5%)'}</span>
                             <span>{taxRes.gst.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
                           </div>
                         )}
                         {taxRes.pst > 0 && (
                           <div className="flex justify-between text-slate-500">
-                            <span>{activeProvince.pstLabel || 'PST'}</span>
+                            <span>{stripEmojis(activeProvince.pstLabel) || 'PST'}</span>
                             <span>{taxRes.pst.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
                           </div>
                         )}
                         {taxRes.qst > 0 && (
                           <div className="flex justify-between text-slate-500">
-                            <span>{activeProvince.pstLabel || 'QST (9.975%)'}</span>
+                            <span>{stripEmojis(activeProvince.pstLabel) || 'QST (9.975%)'}</span>
                             <span>{taxRes.qst.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
                           </div>
                         )}
                         {taxRes.hst > 0 && (
                           <div className="flex justify-between text-slate-500">
-                            <span>{activeProvince.pstLabel || 'HST'}</span>
+                            <span>{stripEmojis(activeProvince.pstLabel) || 'HST'}</span>
                             <span>{taxRes.hst.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $</span>
                           </div>
                         )}
 
-                        {/* Total TTC Standard Facture (les paiements et encaissements sont gérés dans le Module 5) */}
-                        <div className="mt-3 border-t-2 border-slate-200 pt-3 flex justify-between items-center bg-slate-50/80 px-3 py-2 rounded-xl border border-slate-100">
+                        {/* Total TTC Standard Facture */}
+                        <div className="mt-2 border-t-2 border-slate-200 pt-2 flex justify-between items-center bg-slate-50/80 px-3 py-1.5 rounded-xl border border-slate-100">
                           <span className="text-xs font-black text-slate-800 uppercase tracking-wide">TOTAL TTC :</span>
-                          <span className="text-base font-black text-blue-700">
-                            {taxRes.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ {selectedInvoice.currency || 'CAD'}
+                          <span className="text-sm font-black text-blue-700">
+                            {taxRes.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ {stripEmojis(selectedInvoice.currency || 'CAD')}
                           </span>
                         </div>
                       </>
@@ -2014,7 +2009,7 @@ export default function DeviceSimulator({
               </div>
 
               {/* Signature section */}
-              <div className="flex justify-between items-end pt-6 border-t border-slate-100">
+              <div className="flex justify-between items-end pt-3 border-t border-slate-100">
                 <div className="text-[9px] text-slate-400">
                   <p>Facture générée numériquement par l'application StartBill Canada.</p>
                   <p className="mt-0.5">Merci de votre confiance et de votre fidélité commerciale !</p>
@@ -2024,24 +2019,23 @@ export default function DeviceSimulator({
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pour l'entreprise :</span>
                   
                   {/* Real signature or handwritten fallback */}
-                  <div className="h-12 w-28 flex items-center justify-center overflow-hidden mb-1 relative border border-slate-100 bg-slate-50/50 rounded-lg p-1">
+                  <div className="h-10 w-28 flex items-center justify-center overflow-hidden mb-1 relative border border-slate-100 bg-slate-50/50 rounded-lg p-1">
                     {companySignature ? (
                       <img 
                         src={companySignature} 
                         alt="Signature" 
                         className="max-h-full max-w-full object-contain" 
                         onError={(e) => { 
-                          // fallback
-                          (e.target as HTMLImageElement).src = "https://lh3.googleusercontent.com/d/1B0q88Z-b6RCHH_h_V6f578H8i2VfEw9u"; 
+                          (e.target as HTMLImageElement).style.display = 'none';
                         }} 
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <span className="font-cursive text-slate-700 italic font-bold text-sm tracking-wide">{companyOwner}</span>
+                      <span className="font-cursive text-slate-700 italic font-bold text-sm tracking-wide">{stripEmojis(companyOwner)}</span>
                     )}
                   </div>
                   <div className="w-28 border-t border-slate-300"></div>
-                  <p className="text-[10px] text-slate-600 font-bold mt-1 text-center w-28">{companyOwner}</p>
+                  <p className="text-[10px] text-slate-600 font-bold mt-0.5 text-center w-28">{stripEmojis(companyOwner)}</p>
                 </div>
               </div>
             </div>
@@ -2433,7 +2427,7 @@ export default function DeviceSimulator({
                   <label className="flex-1 bg-white hover:bg-slate-50 border border-dashed border-slate-300 hover:border-blue-500 rounded-lg px-3 py-2.5 text-center cursor-pointer flex flex-col items-center justify-center gap-1 transition">
                     <Upload className="w-4 h-4 text-slate-400" />
                     <span className="text-[10px] font-medium text-slate-600">
-                      {receiptImg ? "Reçu attaché ✓ (Changer)" : "Joindre un reçu (Photo / Fichier)"}
+                      {receiptImg ? "Reçu attaché (Changer)" : "Joindre un reçu (Photo / Fichier)"}
                     </span>
                     <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
                   </label>
@@ -3458,7 +3452,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>📈</span> Analyse détaillée
+                  <TrendingUp className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Analyse détaillée
                 </button>
                 <button
                   onClick={() => {
@@ -3467,7 +3461,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>⚠️</span> Alertes financières
+                  <AlertTriangle className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Alertes financières
                 </button>
                 <button
                   onClick={() => {
@@ -3476,7 +3470,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>📊</span> Tendances
+                  <BarChart3 className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Tendances
                 </button>
                 <button
                   onClick={() => {
@@ -3485,7 +3479,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>🧭</span> Prévisions
+                  <Compass className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Prévisions
                 </button>
                 <button
                   onClick={() => {
@@ -3494,7 +3488,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>🕒</span> Historique
+                  <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Historique
                 </button>
                 <button
                   onClick={() => {
@@ -3503,7 +3497,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>📊</span> Résumé mensuel
+                  <BarChart3 className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Résumé mensuel
                 </button>
                 <button
                   onClick={() => {
@@ -3512,7 +3506,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>🍁</span> Impôts Canada
+                  <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Impôts Canada
                 </button>
                 <button
                   onClick={() => {
@@ -3521,7 +3515,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>👥</span> Clients
+                  <UserPlus className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Clients
                 </button>
                 <button
                   onClick={() => {
@@ -3530,7 +3524,7 @@ export default function DeviceSimulator({
                   }}
                   className="w-full text-left text-[11px] font-medium text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded flex items-center gap-1.5"
                 >
-                  <span>📦</span> Produits & Services
+                  <Package className="w-3.5 h-3.5 text-slate-500 shrink-0" /> Produits & Services
                 </button>
               </div>
             </div>
@@ -4179,7 +4173,7 @@ export default function DeviceSimulator({
                 </div>
 
                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 text-[11px] text-emerald-800 flex items-center justify-between gap-2">
-                  <span>💬 Envoi direct via l'application WhatsApp.</span>
+                  <span>Envoi direct via l'application WhatsApp.</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -4223,7 +4217,7 @@ export default function DeviceSimulator({
                 </div>
 
                 <div className="bg-purple-50 border border-purple-100 rounded-xl p-2.5 text-[11px] text-purple-800 flex items-center justify-between gap-2">
-                  <span>📱 Envoi par SMS direct (compatible tout téléphone).</span>
+                  <span>Envoi par SMS direct (compatible tout téléphone).</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -4322,7 +4316,9 @@ export default function DeviceSimulator({
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-[480px] shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <div className="text-center space-y-1.5">
-              <span className="text-3xl">🚀</span>
+              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto">
+                <Zap className="w-6 h-6 text-[#1F6FEB]" />
+              </div>
               <h3 className="text-lg font-black text-slate-950">Devenez StartBill PRO</h3>
               <p className="text-xs text-slate-500 font-semibold">Le copilote fiscal ultime pour les entrepreneurs canadiens.</p>
             </div>
@@ -4339,14 +4335,14 @@ export default function DeviceSimulator({
 
             <div className="space-y-2.5">
               {[
-                '📁 Export des déclarations de fin d\'année prêtes pour l\'ARC / RQ',
-                '📈 Graphiques de revenus et rapports de marge avancés',
-                '👥 Clients illimités (limité à 5 sur le plan gratuit)',
-                '📱 Reconnaissance automatique des taxes sur reçus photographiques',
-                '💬 Support prioritaire en français et anglais',
+                'Export des déclarations de fin d\'année prêtes pour l\'ARC / RQ',
+                'Graphiques de revenus et rapports de marge avancés',
+                'Clients illimités (limité à 5 sur le plan gratuit)',
+                'Reconnaissance automatique des taxes sur reçus photographiques',
+                'Support prioritaire en français et anglais',
               ].map((feat, idx) => (
                 <div key={idx} className="flex items-start gap-2.5 text-xs text-slate-700 font-bold">
-                  <span className="text-[#1F6FEB] flex-shrink-0">✓</span>
+                  <Check className="w-3.5 h-3.5 text-[#1F6FEB] shrink-0 mt-0.5" strokeWidth={3} />
                   <span>{feat}</span>
                 </div>
               ))}
@@ -4358,7 +4354,7 @@ export default function DeviceSimulator({
                 onClick={() => {
                   setIsPro(true);
                   setShowProUpgradeModal(false);
-                  triggerToast('Félicitations ! Votre Plan PRO est maintenant activé ! 🚀');
+                  triggerToast('Félicitations ! Votre Plan PRO est maintenant activé !');
                 }}
                 className="w-full bg-[#1F6FEB] hover:bg-[#1a5fcd] text-white text-xs font-extrabold py-3 rounded-xl shadow-lg shadow-[#1F6FEB]/20 transition text-center block"
               >

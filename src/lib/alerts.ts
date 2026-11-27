@@ -480,7 +480,7 @@ export function generateSmartAlerts(
       isRead: existingReadState.get(type) ?? existingReadState.get(id) ?? false,
       createdAt: nowStr,
       actionUrl: 'settings',
-      actionLabel: 'Passer au plan Start 🚀'
+      actionLabel: 'Passer au plan Start'
     });
   }
 

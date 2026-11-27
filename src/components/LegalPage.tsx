@@ -13,7 +13,8 @@ import {
   Lock,
   ChevronRight,
   ArrowLeft,
-  Scale
+  Scale,
+  X
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import {
@@ -147,8 +148,9 @@ export const LegalPage: React.FC<LegalPageProps> = ({
                 <button
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                  aria-label="Effacer la recherche"
                 >
-                  ✕
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>

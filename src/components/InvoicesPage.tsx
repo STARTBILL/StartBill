@@ -32,7 +32,7 @@ import { calculateTaxes } from './DeviceSimulator';
 import { getRegionalTaxConfig, calculateRegionalTaxes, CANADIAN_PROVINCES, TaxRegion } from '../lib/regionalTaxes';
 import { REGIONS } from '../data/regions';
 import { DEFAULT_PRODUCTS_CANADA } from '../data/defaultProducts';
-import { downloadInvoicePdf } from '../lib/pdfGenerator';
+import { downloadInvoicePdf, stripEmojis } from '../lib/pdfGenerator';
 import { createInvoiceOnlinePayment } from '../lib/stripeService';
 import { StartBillLogo } from './common/StartBillLogo';
 import { Button } from './ui/Button';
@@ -512,9 +512,9 @@ export default function InvoicesPage({
           </div>
         </div>
 
-        {/* Printable Invoice Document */}
+        {/* Printable Single-Page Invoice Document */}
         <div id="printable-invoice-content">
-          <Card className="bg-white border-secondary-200 shadow-lg p-6 md:p-8 space-y-6 relative overflow-hidden">
+          <Card className="bg-white border-secondary-200 shadow-lg p-5 md:p-6 space-y-3.5 relative overflow-hidden">
             {/* Filigrane / Cachet diagonal pour facture Soldée ou Partiellement soldée */}
             {(selectedInvoice.status === 'Payée' || selectedInvoice.status === 'paid' || (selectedInvoice.remainingBalance !== undefined && selectedInvoice.remainingBalance === 0)) && (
               <div 
@@ -543,79 +543,99 @@ export default function InvoicesPage({
               selectedInvoice.status === 'Payée' ? 'bg-emerald-500' : 'bg-primary-600'
             }`} />
 
-            {/* Header: Seller Logo & Company Info */}
-            <div className="flex flex-col md:flex-row justify-between items-start border-b border-secondary-100 pb-6 gap-4">
+            {/* Header: Seller Company Info (strictly emoji-free & icon-free) */}
+            <div className="flex flex-col md:flex-row justify-between items-start border-b border-secondary-100 pb-3.5 gap-3">
               <div>
-                <div className="mb-2">
-                  <StartBillLogo variant="horizontal" size="sm" showTagline={false} />
-                </div>
-                <div className="text-xs text-secondary-500 leading-relaxed">
-                  <p className="font-semibold text-secondary-800">Startbill Services Numériques Inc.</p>
-                  <p>1000 Rue de la Gauchetière O, Suite 2400</p>
-                  <p>Montréal, QC H3B 4W5, Canada</p>
-                  <p className="mt-1">TPS/NE : 123456789 RT0001 • TVQ : 1234567890 TQ0001</p>
+                {activeCompany?.logoUrl ? (
+                  <div className="h-10 w-32 flex items-center justify-start overflow-hidden mb-1.5">
+                    <img
+                      src={activeCompany.logoUrl}
+                      alt={stripEmojis(activeCompany?.companyName || 'Entreprise')}
+                      className="max-h-full max-w-full object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : null}
+                <div className="text-xs text-secondary-500 leading-snug">
+                  <p className="text-sm font-black text-secondary-900">
+                    {stripEmojis(activeCompany?.companyName || 'Startbill Services Numériques Inc.')}
+                  </p>
+                  <p>{stripEmojis(activeCompany?.address || '1000 Rue de la Gauchetière O, Suite 2400')}</p>
+                  {!activeCompany?.address && <p>Montréal, QC H3B 4W5, Canada</p>}
+                  {activeCompany?.phone && <p>Tél : {stripEmojis(activeCompany.phone)}</p>}
+                  <p className="mt-0.5">
+                    TPS/NE : {stripEmojis(activeCompany?.taxId1 || '123456789 RT0001')} • TVQ : {stripEmojis(activeCompany?.taxId2 || '1234567890 TQ0001')}
+                  </p>
                 </div>
               </div>
 
               <div className="text-left md:text-right">
-                <h1 className="text-2xl font-black text-secondary-900 tracking-tight uppercase">FACTURE</h1>
-                <p className="text-sm font-bold text-primary-600 font-mono mt-0.5">{selectedInvoice.id}</p>
-                <div className="text-xs text-secondary-500 mt-2 space-y-0.5">
-                  <p><span className="font-semibold text-secondary-700">Date d'émission :</span> {selectedInvoice.date}</p>
-                  <p><span className="font-semibold text-secondary-700">Date d'échéance :</span> {selectedInvoice.dueDate || selectedInvoice.date}</p>
-                  <p><span className="font-semibold text-secondary-700">Province fiscale :</span> {selectedInvoice.province || 'Québec'}</p>
+                <h1 className="text-xl font-black text-secondary-900 tracking-tight uppercase">FACTURE</h1>
+                <p className="text-xs font-bold text-primary-600 font-mono mt-0.5">{stripEmojis(selectedInvoice.id)}</p>
+                <div className="text-[11px] text-secondary-500 mt-1.5 space-y-0.5">
+                  <p><span className="font-semibold text-secondary-700">Date d'émission :</span> {stripEmojis(selectedInvoice.date)}</p>
+                  <p><span className="font-semibold text-secondary-700">Date d'échéance :</span> {stripEmojis(selectedInvoice.dueDate || selectedInvoice.date)}</p>
+                  <p><span className="font-semibold text-secondary-700">Province fiscale :</span> {stripEmojis(selectedInvoice.province || 'Québec')}</p>
                 </div>
               </div>
             </div>
 
             {/* Client Info Banner */}
-            <div className="bg-secondary-50/70 border border-secondary-200/80 rounded-2xl p-4 flex flex-col md:flex-row justify-between gap-4">
+            <div className="bg-secondary-50/70 border border-secondary-200/80 rounded-xl p-3 flex flex-col md:flex-row justify-between gap-3">
               <div>
-                <span className="text-[10px] font-bold text-secondary-400 uppercase tracking-wider block mb-1">FACTURÉ À :</span>
-                <p className="text-sm font-black text-secondary-900">{selectedInvoice.clientName}</p>
-                <p className="text-xs text-secondary-600 font-medium">Canada</p>
+                <span className="text-[10px] font-bold text-secondary-400 uppercase tracking-wider block mb-0.5">FACTURÉ À :</span>
+                <p className="text-xs font-black text-secondary-900">{stripEmojis(selectedInvoice.clientName)}</p>
+                <p className="text-[11px] text-secondary-600 font-medium">Canada</p>
               </div>
 
               <div className="text-left md:text-right">
-                <span className="text-[10px] font-bold text-secondary-400 uppercase tracking-wider block mb-1">DÉTAILS DU PAIEMENT :</span>
-                <p className="text-xs text-secondary-700 font-semibold">Virement Interac / Bancaire</p>
-                <p className="text-xs text-secondary-500">Devise : {selectedInvoice.currency || 'CAD'} ($)</p>
+                <span className="text-[10px] font-bold text-secondary-400 uppercase tracking-wider block mb-0.5">DÉTAILS DU PAIEMENT :</span>
+                <p className="text-[11px] text-secondary-700 font-semibold">{stripEmojis(activeCompany?.defaultPaymentMethod || 'Virement Interac / Bancaire')}</p>
+                <p className="text-[11px] text-secondary-500">Devise : {stripEmojis(selectedInvoice.currency || 'CAD')} ($)</p>
               </div>
             </div>
+
+            {selectedInvoice.description && stripEmojis(selectedInvoice.description) && (
+              <div className="text-[11px] text-secondary-600 bg-secondary-50/50 p-2 rounded-lg border border-secondary-100">
+                <span className="font-bold text-secondary-400 text-[9px] uppercase tracking-wider block mb-0.5">Description</span>
+                <p className="leading-snug">{stripEmojis(selectedInvoice.description)}</p>
+              </div>
+            )}
 
             {/* Items Table */}
             <div className="border border-secondary-200 rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
                 <thead className="bg-secondary-100/70 border-b border-secondary-200 text-secondary-700 font-bold uppercase text-[10px] tracking-wider">
                   <tr>
-                    <th className="py-2.5 px-4">Description</th>
-                    <th className="py-2.5 px-3 text-center">Qté</th>
-                    <th className="py-2.5 px-3 text-right">Prix Unitaire</th>
-                    <th className="py-2.5 px-4 text-right">Total ($)</th>
+                    <th className="py-2 px-4">Description</th>
+                    <th className="py-2 px-3 text-center">Qté</th>
+                    <th className="py-2 px-3 text-right">Prix Unitaire</th>
+                    <th className="py-2 px-4 text-right">Total ($)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-secondary-100">
                   {selectedInvoice.items && selectedInvoice.items.length > 0 ? (
                     selectedInvoice.items.map((item, idx) => (
                       <tr key={idx} className="hover:bg-secondary-50/50">
-                        <td className="py-3 px-4 font-semibold text-secondary-800">{item.description}</td>
-                        <td className="py-3 px-3 text-center text-secondary-600 font-medium">{item.quantity}</td>
-                        <td className="py-3 px-3 text-right text-secondary-600 font-medium">
+                        <td className="py-2 px-4 font-semibold text-secondary-800">{stripEmojis(item.description) || 'Prestation de services'}</td>
+                        <td className="py-2 px-3 text-center text-secondary-600 font-medium">{item.quantity}</td>
+                        <td className="py-2 px-3 text-right text-secondary-600 font-medium">
                           $ {item.unitPrice.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}
                         </td>
-                        <td className="py-3 px-4 text-right font-bold text-secondary-900">
+                        <td className="py-2 px-4 text-right font-bold text-secondary-900">
                           $ {item.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td className="py-3 px-4 font-semibold text-secondary-800">Prestation de services professionnels</td>
-                      <td className="py-3 px-3 text-center text-secondary-600 font-medium">1</td>
-                      <td className="py-3 px-3 text-right text-secondary-600 font-medium">
+                      <td className="py-2 px-4 font-semibold text-secondary-800">Prestation de services professionnels</td>
+                      <td className="py-2 px-3 text-center text-secondary-600 font-medium">1</td>
+                      <td className="py-2 px-3 text-right text-secondary-600 font-medium">
                         $ {selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="py-3 px-4 text-right font-bold text-secondary-900">
+                      <td className="py-2 px-4 text-right font-bold text-secondary-900">
                         $ {selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -625,8 +645,8 @@ export default function InvoicesPage({
             </div>
 
             {/* Subtotal & Taxes Summary Box */}
-            <div className="flex justify-end pt-2">
-              <div className="w-full md:w-72 bg-secondary-50/80 border border-secondary-200 rounded-2xl p-4 space-y-2 text-xs">
+            <div className="flex justify-end pt-1">
+              <div className="w-full md:w-72 bg-secondary-50/80 border border-secondary-200 rounded-xl p-3 space-y-1.5 text-xs">
                 <div className="flex justify-between text-secondary-600">
                   <span>Sous-total HT :</span>
                   <span className="font-bold text-secondary-900">$ {selectedInvoice.subtotal.toLocaleString('fr-CA', { minimumFractionDigits: 2 })}</span>
@@ -653,9 +673,9 @@ export default function InvoicesPage({
                   </div>
                 )}
 
-                <div className="border-t border-secondary-200 pt-2 flex justify-between font-black text-sm text-secondary-900">
+                <div className="border-t border-secondary-200 pt-1.5 flex justify-between font-black text-sm text-secondary-900">
                   <span>TOTAL TTC :</span>
-                  <span className="text-primary-700">$ {taxRes.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} {selectedInvoice.currency || 'CAD'}</span>
+                  <span className="text-primary-700">$ {taxRes.total.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} {stripEmojis(selectedInvoice.currency || 'CAD')}</span>
                 </div>
               </div>
             </div>
@@ -870,7 +890,7 @@ export default function InvoicesPage({
                   </div>
 
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-[11px] text-blue-800">
-                    ℹ️ L'envoi marquera la facture comme envoyée (dans la section <strong>Paiements</strong>, elle apparaîtra sous <strong>Non payé</strong> ou <strong>En retard</strong> selon la date d'échéance).
+                    L'envoi marquera la facture comme envoyée (dans la section <strong>Paiements</strong>, elle apparaîtra sous <strong>Non payé</strong> ou <strong>En retard</strong> selon la date d'échéance).
                   </div>
                 </div>
               ) : sendChannel === 'whatsapp' ? (
@@ -901,7 +921,7 @@ export default function InvoicesPage({
                   </div>
 
                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-[11px] text-emerald-800 flex items-center justify-between gap-2">
-                    <span>💬 Ouverture directe de l'application WhatsApp en 1 clic.</span>
+                    <span>Ouverture directe de l'application WhatsApp en 1 clic.</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -944,7 +964,7 @@ export default function InvoicesPage({
                   </div>
 
                   <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-[11px] text-purple-800 flex items-center justify-between gap-2">
-                    <span>📱 Envoi par SMS direct (compatible mobile et réseau cellulaire).</span>
+                    <span>Envoi par SMS direct (compatible mobile et réseau cellulaire).</span>
                     <button
                       type="button"
                       onClick={() => {

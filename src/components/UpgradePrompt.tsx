@@ -22,7 +22,7 @@ export const UpgradePrompt: React.FC<UpgradePromptProps> = ({
   const requiredPlan = getRequiredPlan(feature, plan);
   const featureLabel = feature ? (FEATURE_LABELS[feature] || feature) : 'cette fonctionnalité avancée';
 
-  const planBadgeText = requiredPlan === 'pro' ? 'Plan Pro Requis 🚀' : 'Plan Start Requis 🔥';
+  const planBadgeText = requiredPlan === 'pro' ? 'Plan Pro Requis' : 'Plan Start Requis';
   const planColorClass = requiredPlan === 'pro' 
     ? 'bg-purple-100 text-purple-700 border-purple-200'
     : 'bg-amber-100 text-amber-700 border-amber-200';

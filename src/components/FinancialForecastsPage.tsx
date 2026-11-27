@@ -226,7 +226,7 @@ export default function FinancialForecastsPage({
                   </div>
                 </div>
                 <div className={`flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-md ${totalProjectedNet >= 0 ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50'}`}>
-                  <span>{totalProjectedNet >= 0 ? 'Positif ✓' : 'Négatif ⚠'}</span>
+                  <span>{totalProjectedNet >= 0 ? 'Positif' : 'Négatif'}</span>
                 </div>
               </div>
 

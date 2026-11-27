@@ -154,7 +154,7 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({
                     className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white font-medium opacity-80 cursor-not-allowed font-mono text-[11px]"
                   />
                   <span className="text-[10px] text-emerald-400 font-medium mt-0.5 block">
-                    ✓ Authentification Firebase & Google vérifiée
+                    Authentification Firebase & Google vérifiée
                   </span>
                 </div>
 
@@ -283,7 +283,7 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({
                         : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    <div className="text-sm">🇫🇷 Français (Officiel)</div>
+                    <div className="text-sm">Français (Officiel)</div>
                     <span className="text-[10px] text-slate-400 block mt-0.5 font-normal">
                       Français québécois et international
                     </span>
@@ -301,7 +301,7 @@ export const AdminProfileModal: React.FC<AdminProfileModalProps> = ({
                         : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    <div className="text-sm">🇬🇧 English</div>
+                    <div className="text-sm">English</div>
                     <span className="text-[10px] text-slate-400 block mt-0.5 font-normal">
                       Standard English interface
                     </span>

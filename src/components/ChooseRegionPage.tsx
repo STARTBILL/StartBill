@@ -40,7 +40,7 @@ export default function ChooseRegionPage({
   const regionDetails = [
     {
       id: 'canada' as const,
-      flag: '🇨🇦',
+      flag: 'CA',
       name: 'Canada',
       currency: 'CAD ($)',
       taxSystem: 'TPS / TVQ / TVH',
@@ -51,7 +51,7 @@ export default function ChooseRegionPage({
     },
     {
       id: 'afrique' as const,
-      flag: '🌍',
+      flag: 'AF',
       name: 'Afrique',
       currency: 'FCFA (XOF / XAF)',
       taxSystem: 'TVA Standard OHADA',
@@ -62,7 +62,7 @@ export default function ChooseRegionPage({
     },
     {
       id: 'haiti' as const,
-      flag: '🇭🇹',
+      flag: 'HT',
       name: 'Haïti',
       currency: 'HTG (Gourde) & USD',
       taxSystem: 'TCA / Fiscalité DGI',
@@ -150,7 +150,7 @@ export default function ChooseRegionPage({
                 {/* Top Flag & Checkmark */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-2xl shadow-2xs">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-sm font-black tracking-wider text-slate-700 shadow-2xs">
                       {reg.flag}
                     </div>
 

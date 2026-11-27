@@ -52,7 +52,7 @@ export default function WelcomeDashboardPage({
       <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col justify-start">
         
         {/* ======================================================== */}
-        {/* 1. CANADA REGION VARIANT 🇨🇦                                */}
+        {/* 1. CANADA REGION VARIANT                                  */}
         {/* ======================================================== */}
         {activeRegion === 'canada' && (
           <div className="space-y-5 animate-fadeIn">
@@ -83,7 +83,7 @@ export default function WelcomeDashboardPage({
                   <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">START</span>
                   <span className="text-2xl sm:text-3xl font-black text-[#0284C7] tracking-tight">BILL</span>
                   <span className="text-xl sm:text-2xl font-black text-red-600 flex items-center gap-1 ml-1">
-                    Canada 🍁
+                    Canada
                   </span>
                 </div>
               </div>
@@ -229,7 +229,7 @@ export default function WelcomeDashboardPage({
         )}
 
         {/* ======================================================== */}
-        {/* 2. AFRIQUE REGION VARIANT 🌍                                */}
+        {/* 2. AFRIQUE REGION VARIANT                                 */}
         {/* ======================================================== */}
         {activeRegion === 'afrique' && (
           <div className="space-y-5 animate-fadeIn">
@@ -250,7 +250,7 @@ export default function WelcomeDashboardPage({
                   StartBill
                 </span>
                 <span className="text-2xl sm:text-3xl font-black text-[#16A34A] flex items-center gap-1">
-                  Afrique <span className="text-xl">🌍</span>
+                  Afrique
                 </span>
               </div>
 
@@ -370,7 +370,7 @@ export default function WelcomeDashboardPage({
         )}
 
         {/* ======================================================== */}
-        {/* 3. HAÏTI REGION VARIANT 🇭🇹                                 */}
+        {/* 3. HAÏTI REGION VARIANT                                   */}
         {/* ======================================================== */}
         {activeRegion === 'haiti' && (
           <div className="space-y-5 animate-fadeIn">
@@ -385,7 +385,7 @@ export default function WelcomeDashboardPage({
                   StartBill
                 </span>
                 <span className="text-2xl sm:text-3xl font-black text-[#16A34A] flex items-center gap-1.5">
-                  Haïti <span className="text-xl">🇭🇹</span>
+                  Haïti
                 </span>
               </div>
 

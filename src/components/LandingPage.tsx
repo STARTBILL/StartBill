@@ -102,7 +102,6 @@ export default function LandingPage({
             </button>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-slate-700 bg-slate-100/80 border border-slate-200/80 px-2.5 py-1 rounded-full">
-              <span>🇨🇦</span>
               <span>Édition Canada (CAD • ARC / Revenu Québec)</span>
             </span>
           )}
@@ -174,26 +173,26 @@ export default function LandingPage({
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 pt-1 text-xs">
               {isRegionEnabled('canada') && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                  🇨🇦 Canada (CAD • ARC/RQ)
+                  Canada (CAD • ARC/RQ)
                 </span>
               )}
               {isRegionEnabled('afrique') && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                  🌍 Afrique (FCFA • Mobile Money)
+                  Afrique (FCFA • Mobile Money)
                 </span>
               )}
               {isRegionEnabled('haiti') && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                  🇭🇹 Haïti (HTG • MonCash)
+                  Haïti (HTG • MonCash)
                 </span>
               )}
               {!FEATURE_FLAGS.MULTI_REGION_ENABLED && (
                 <>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                    ✓ TPS / TVQ / TVH Automatisées
+                    TPS / TVQ / TVH Automatisées
                   </span>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-                    💳 Virement Interac & Stripe
+                    Virement Interac & Stripe
                   </span>
                 </>
               )}

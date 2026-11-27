@@ -60,7 +60,7 @@ export const WebSidebar: React.FC<WebSidebarProps> = ({
           }`}
         >
           <div className="flex items-center gap-2">
-            <span className="text-xl">{regionConfig.flag}</span>
+            <span className="px-1.5 py-0.5 rounded bg-slate-700 text-[11px] font-black text-blue-300">{regionConfig.flag}</span>
             <div>
               <div className="text-xs font-black text-white">{regionConfig.name}</div>
               <div className="text-[10px] text-slate-400">{regionalSettings.currency} ({regionalSettings.currencySymbol})</div>

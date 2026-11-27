@@ -219,15 +219,15 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
                 <div className="mt-4 p-3 rounded-xl bg-slate-900 border border-slate-750 space-y-1.5 text-xs">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">Tarifs par devise :</div>
                   <div className="flex justify-between text-slate-200">
-                    <span>🇨🇦 Canada</span>
+                    <span>Canada</span>
                     <span className="font-mono font-bold text-white">{p.monthlyPrices.CAD} $ CAD / m</span>
                   </div>
                   <div className="flex justify-between text-slate-200">
-                    <span>🌍 Afrique (UEMOA/CEMAC)</span>
+                    <span>Afrique (UEMOA/CEMAC)</span>
                     <span className="font-mono font-bold text-emerald-400">{p.monthlyPrices.FCFA} FCFA / m</span>
                   </div>
                   <div className="flex justify-between text-slate-200">
-                    <span>🇭🇹 Haïti</span>
+                    <span>Haïti</span>
                     <span className="font-mono font-bold text-amber-400">{p.monthlyPrices.HTG} HTG / m</span>
                   </div>
                 </div>
@@ -320,7 +320,7 @@ export const ComprehensiveModulesView: React.FC<ComprehensiveModulesViewProps> =
             <div key={m.code} className="p-4 rounded-2xl bg-[#0B1528] border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">{m.flag}</span>
+                  <span className="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-black text-blue-300">{m.flag}</span>
                   <div>
                     <h4 className="font-bold text-white text-sm">{m.name}</h4>
                     <span className="text-[10px] text-slate-400 font-mono">Code: {m.code}</span>

@@ -496,7 +496,7 @@ export default function AiAdvisorPage({
                 {formatMoney(cashFlow)}
               </div>
               <div className={`text-xs font-bold mt-1 ${hasData ? (cashFlow >= 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-400'}`}>
-                {hasData ? (cashFlow >= 0 ? 'Positive ✓' : 'Déficitaire ⚠') : 'Neutre'}
+                {hasData ? (cashFlow >= 0 ? 'Positive' : 'Déficitaire') : 'Neutre'}
               </div>
             </div>
             <div className="w-16 h-8 select-none">
@@ -554,7 +554,7 @@ export default function AiAdvisorPage({
                 {overdueCount}
               </div>
               <div className={`text-xs font-bold mt-1 ${overdueCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                {overdueCount > 0 ? formatMoney(overdueTotal) : '0 retard ✓'}
+                {overdueCount > 0 ? formatMoney(overdueTotal) : '0 retard'}
               </div>
             </div>
             {/* Small vertical bar chart */}
@@ -1466,7 +1466,7 @@ export default function AiAdvisorPage({
                 <div className="flex justify-between font-semibold mb-1">
                   <span>Trésorerie nette conservée ({formatMoney(cashFlow)})</span>
                   <span className={`font-bold ${cashFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {cashFlow >= 0 ? 'Positive ✓' : 'Négative ⚠'}
+                    {cashFlow >= 0 ? 'Positive' : 'Négative'}
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">

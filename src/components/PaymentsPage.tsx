@@ -29,7 +29,7 @@ import { Invoice, Client, ScreenId, InvoiceStatus } from '../types';
 import { PaymentSectionStatus, getPaymentSectionStatus, getPaymentStatusBadgeStyle } from '../lib/paymentStatus';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
-import { downloadInvoicePdf } from '../lib/pdfGenerator';
+import { downloadInvoicePdf, stripEmojis } from '../lib/pdfGenerator';
 import { StartBillLogo } from './common/StartBillLogo';
 
 interface PaymentsPageProps {
@@ -480,10 +480,10 @@ export default function PaymentsPage({
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition font-medium"
             >
               <option value="all">Tous les statuts de paiement (4)</option>
-              <option value="Non payé">⏳ Non payé</option>
-              <option value="Payé">✅ Payé</option>
-              <option value="Payé partiellement">🔷 Payé partiellement</option>
-              <option value="En retard">🚨 En retard</option>
+              <option value="Non payé">Non payé</option>
+              <option value="Payé">Payé</option>
+              <option value="Payé partiellement">Payé partiellement</option>
+              <option value="En retard">En retard</option>
             </select>
           </div>
 
@@ -1056,11 +1056,11 @@ export default function PaymentsPage({
               <div className="flex justify-between items-start border-b border-slate-200 pb-4">
                 <div className="space-y-1">
                   <StartBillLogo variant="horizontal" size="xs" showTagline={false} />
-                  <p className="text-[10px] text-slate-500 font-semibold">{companyName}</p>
+                  <p className="text-[10px] text-slate-500 font-semibold">{stripEmojis(companyName)}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Reçu #</span>
-                  <span className="text-xs font-black text-blue-600">REC-{receiptInvoice.id}</span>
+                  <span className="text-xs font-black text-blue-600">REC-{stripEmojis(receiptInvoice.id)}</span>
                 </div>
               </div>
 
@@ -1078,19 +1078,19 @@ export default function PaymentsPage({
               <div className="space-y-2 border-t border-b border-slate-100 py-3">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Client :</span>
-                  <span className="font-bold text-slate-900">{receiptInvoice.clientName}</span>
+                  <span className="font-bold text-slate-900">{stripEmojis(receiptInvoice.clientName)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Facture de référence :</span>
-                  <span className="font-bold text-blue-600">{receiptInvoice.id}</span>
+                  <span className="font-bold text-blue-600">{stripEmojis(receiptInvoice.id)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Date de règlement :</span>
-                  <span className="font-semibold text-slate-800">{receiptInvoice.paymentDate || receiptInvoice.date}</span>
+                  <span className="font-semibold text-slate-800">{stripEmojis(receiptInvoice.paymentDate || receiptInvoice.date)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Mode de paiement :</span>
-                  <span className="font-semibold text-slate-800">{receiptInvoice.paymentMethod || 'Virement Interac'}</span>
+                  <span className="font-semibold text-slate-800">{stripEmojis(receiptInvoice.paymentMethod || 'Virement Interac')}</span>
                 </div>
                 {receiptInvoice.remainingBalance !== undefined && (
                   <div className="flex justify-between pt-1 border-t border-slate-100 text-slate-600">

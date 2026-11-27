@@ -5,7 +5,6 @@ import {
   AlertCircle, 
   Check, 
   ShieldCheck, 
-  Lock,
   Sparkles,
   ArrowRight,
   ChevronLeft,
@@ -14,13 +13,14 @@ import {
   User,
   Building2,
   Zap,
-  Globe
+  Globe,
+  Star
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { useRegional } from '../context/RegionalContext';
 import { REGIONS } from '../data/regions';
 import { useAuth } from '../context/AuthContext';
-import { SUPER_ADMIN_EMAIL, CANADA_ADMIN_EMAIL, isSuperAdminEmail } from '../lib/authSecurity';
+import { isSuperAdminEmail } from '../lib/authSecurity';
 import { StartBillLogo } from './common/StartBillLogo';
 import { FEATURE_FLAGS, isRegionEnabled, resolveActiveRegion } from '../config/featureFlags';
 
@@ -189,7 +189,7 @@ export default function LoginPage({
           <ChevronLeft className="w-4 h-4" strokeWidth={1.75} />
           <span>
             {FEATURE_FLAGS.MULTI_REGION_ENABLED
-              ? `Région : ${REGIONS[activeRegion].name} ${REGIONS[activeRegion].flag}`
+              ? `Région : ${REGIONS[activeRegion].name}`
               : 'Retour à l’accueil'}
           </span>
         </button>
@@ -275,8 +275,12 @@ export default function LoginPage({
 
             {/* Testimonial */}
             <div className="relative z-10 pt-6 border-t border-slate-800 space-y-2">
-              <div className="flex items-center gap-1 text-amber-400 text-xs">
-                ★★★★★
+              <div className="flex items-center gap-1 text-amber-400">
+                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                <Star className="w-3.5 h-3.5 fill-amber-400" />
               </div>
               <p className="text-[11px] text-slate-300 italic">
                 « StartBill m'évite les erreurs de taxes et me fait gagner 3 heures chaque semaine. Indispensable ! »
@@ -294,7 +298,7 @@ export default function LoginPage({
             <div className="text-center sm:text-left space-y-1.5 mb-6">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold mb-1">
                 <span>Région active :</span>
-                <strong>{REGIONS[activeRegion].flag} {REGIONS[activeRegion].name}</strong>
+                <strong>{REGIONS[activeRegion].name}</strong>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                 {authMode === 'signup' ? 'Créer votre compte' : 'Connexion à votre compte'}
@@ -433,9 +437,6 @@ export default function LoginPage({
                         <span>RÉGION D'EXPLOITATION (OBLIGATOIRE)</span>
                         <span className="text-rose-500 font-black">*</span>
                       </label>
-                      <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-blue-100">
-                        <Lock className="w-2.5 h-2.5" /> Cloisonnement strict
-                      </span>
                     </div>
 
                     <div className={`grid gap-2 ${FEATURE_FLAGS.MULTI_REGION_ENABLED ? 'grid-cols-3' : 'grid-cols-1'}`}>
@@ -450,7 +451,7 @@ export default function LoginPage({
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="text-xl">🇨🇦</span>
+                            <span className="text-xs font-black px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">CA</span>
                             {signupRegion === 'canada' && <Check className="w-4 h-4 text-blue-600 stroke-[3]" />}
                           </div>
                           <div className="mt-2">
@@ -471,7 +472,7 @@ export default function LoginPage({
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="text-xl">🌍</span>
+                            <span className="text-xs font-black px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">AF</span>
                             {signupRegion === 'afrique' && <Check className="w-4 h-4 text-blue-600 stroke-[3]" />}
                           </div>
                           <div className="mt-2">
@@ -492,7 +493,7 @@ export default function LoginPage({
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="text-xl">🇭🇹</span>
+                            <span className="text-xs font-black px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">HT</span>
                             {signupRegion === 'haiti' && <Check className="w-4 h-4 text-blue-600 stroke-[3]" />}
                           </div>
                           <div className="mt-2">
@@ -589,7 +590,7 @@ export default function LoginPage({
                         passwordCriteriaCount >= 2 ? 'text-amber-600 font-bold' :
                         'text-rose-500 font-bold'
                       }>
-                        {passwordCriteriaCount >= 4 ? 'Robuste ✓' : passwordCriteriaCount >= 2 ? 'Moyen' : 'Faible'}
+                        {passwordCriteriaCount >= 4 ? 'Robuste' : passwordCriteriaCount >= 2 ? 'Moyen' : 'Faible'}
                       </span>
                     </div>
                     
@@ -606,25 +607,25 @@ export default function LoginPage({
                     <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1 text-[10px]">
                       <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
                         <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasMinLength ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
-                          {hasMinLength ? '✓' : '•'}
+                          {hasMinLength ? <Check className="w-2.5 h-2.5" strokeWidth={3} /> : '•'}
                         </span>
                         <span>8+ caractères</span>
                       </div>
                       <div className={`flex items-center gap-1.5 ${hasUpperCase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
                         <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasUpperCase ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
-                          {hasUpperCase ? '✓' : '•'}
+                          {hasUpperCase ? <Check className="w-2.5 h-2.5" strokeWidth={3} /> : '•'}
                         </span>
                         <span>1 Majuscule (A-Z)</span>
                       </div>
                       <div className={`flex items-center gap-1.5 ${hasLowerCase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
                         <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasLowerCase ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
-                          {hasLowerCase ? '✓' : '•'}
+                          {hasLowerCase ? <Check className="w-2.5 h-2.5" strokeWidth={3} /> : '•'}
                         </span>
                         <span>1 Minuscule (a-z)</span>
                       </div>
                       <div className={`flex items-center gap-1.5 ${hasSpecialChar ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
                         <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${hasSpecialChar ? 'bg-emerald-100 text-emerald-700 font-bold' : 'bg-slate-200 text-slate-400'}`}>
-                          {hasSpecialChar ? '✓' : '•'}
+                          {hasSpecialChar ? <Check className="w-2.5 h-2.5" strokeWidth={3} /> : '•'}
                         </span>
                         <span>1 Spécial (!?#@)</span>
                       </div>
@@ -688,72 +689,6 @@ export default function LoginPage({
                 )}
               </button>
             </form>
-
-            {/* Quick Demo Pre-fill Bar */}
-            <div className="mt-5 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('login');
-                  setActiveRegion('canada');
-                  setEmail(CANADA_ADMIN_EMAIL);
-                  setPassword('StartbillAdmin2026!');
-                  setErrorMessage('');
-                  triggerToast('Identifiants Admin Canada (CAD) préremplis');
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-[11px] font-bold transition cursor-pointer"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" strokeWidth={1.75} />
-                <span>🇨🇦 Admin Canada ({CANADA_ADMIN_EMAIL})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('login');
-                  setEmail(SUPER_ADMIN_EMAIL);
-                  setPassword('StartbillAdmin2026!');
-                  setErrorMessage('');
-                  triggerToast('Identifiants Super Admin HQ préremplis');
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold transition cursor-pointer"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" strokeWidth={1.75} />
-                <span>Admin HQ ({SUPER_ADMIN_EMAIL})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('login');
-                  setActiveRegion('canada');
-                  setEmail('demo.canada@startbill.com');
-                  setPassword('StartbillDemo2026!');
-                  setErrorMessage('');
-                  triggerToast('Compte Démo Canada prérempli');
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold transition cursor-pointer"
-              >
-                <span>🇨🇦 Démo CAD</span>
-              </button>
-
-              {isRegionEnabled('afrique') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('login');
-                    setActiveRegion('afrique');
-                    setEmail('demo.afrique@startbill.com');
-                    setPassword('StartbillDemo2026!');
-                    setErrorMessage('');
-                    triggerToast('Compte Démo Afrique prérempli');
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold transition cursor-pointer"
-                >
-                  <span>🌍 Démo FCFA</span>
-                </button>
-              )}
-            </div>
 
           </div>
 

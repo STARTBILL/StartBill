@@ -967,7 +967,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
 
             <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
-              💡 <strong>Astuce StartBill</strong> : Le logo et la signature sont automatiquement intégrés dans le générateur de PDF conforme pour Revenu Québec et l'ARC.
+              <strong>Astuce StartBill</strong> : Le logo et la signature sont automatiquement intégrés dans le générateur de PDF conforme pour Revenu Québec et l'ARC.
             </div>
           </div>
         </div>
@@ -982,7 +982,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           {/* Active Region Switcher Card */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <span className="text-3xl">{REGIONS[currentRegion]?.flag || '🇨🇦'}</span>
+              <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-black text-slate-700">{REGIONS[currentRegion]?.flag || 'CA'}</span>
               <div>
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Région fiscale active</div>
                 <div className="text-base font-black text-slate-900">{REGIONS[currentRegion]?.name || 'Canada (Québec)'}</div>
@@ -1121,7 +1121,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             /* ========================================================================= */
             <div className="space-y-6">
               <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-                <span className="text-xl">⚙️</span>
+                <Settings className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
                 <div className="text-xs text-amber-900 leading-relaxed">
                   <strong>Configuration Manuelle Stricte ({currentRegion === 'afrique' ? 'Région Afrique' : 'Région Haïti'}) :</strong><br />
                   Chaque région dispose de ses propres paramètres isolés. Définissez manuellement le nom et les taux de taxes appliqués à vos factures et dépenses (ex : TVA 18%, TCA 10%, ou tout taux local adapté à vos déclarations).
@@ -2267,7 +2267,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     type="button"
                     onClick={() => {
                       setIsPro(true);
-                      triggerToast('Félicitations ! Votre compte a été mis à niveau vers le Plan PRO 🚀');
+                      triggerToast('Félicitations ! Votre compte a été mis à niveau vers le Plan PRO.');
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold px-4 py-2 rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5"
                   >

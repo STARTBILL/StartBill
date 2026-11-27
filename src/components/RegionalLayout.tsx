@@ -53,7 +53,7 @@ export const MobileLayout: React.FC<RegionalLayoutProps> = ({ children }) => {
       {/* Mobile-First Header Pill Strip */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 py-2.5 flex items-center justify-between shadow-2xs">
         <div className="flex items-center gap-2">
-          <span className="text-2xl leading-none select-none">{regionConfig.flag}</span>
+          <span className="px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs font-black text-slate-700 leading-none select-none">{regionConfig.flag}</span>
           <div>
             <div className="text-xs font-black text-slate-900 flex items-center gap-1">
               <span>{regionConfig.name}</span>

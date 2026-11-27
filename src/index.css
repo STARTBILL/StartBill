@@ -67,23 +67,62 @@
    ========================================================================== */
 @media print {
   @page {
-    margin: 0;
+    margin: 8mm 10mm;
     size: A4 portrait;
   }
 
-  html, body {
+  html,
+  body,
+  #root {
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
     color: #1e293b !important;
     width: 100% !important;
     height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
+  /* Collapse layout wrappers around printable invoice/receipt so they never force a 2nd page */
+  body:has(#printable-invoice-content) *,
+  body:has(#printable-receipt) * {
+    min-height: 0 !important;
+  }
+
+  body:has(#printable-invoice-content) > #root,
+  body:has(#printable-invoice-content) > #root > div,
+  body:has(#printable-invoice-content) > #root > div > div,
+  body:has(#printable-invoice-content) > #root > div > div > div:not(#printable-invoice-content),
+  body:has(#printable-receipt) > #root,
+  body:has(#printable-receipt) > #root > div,
+  body:has(#printable-receipt) > #root > div > div {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
   /* Hide everything on the page by default */
   body * {
+    visibility: hidden !important;
+  }
+
+  /* Explicitly remove all navigation, app bars, sidebars, back buttons, action bars, widgets, toasts */
+  header,
+  nav,
+  aside,
+  footer,
+  button,
+  .no-print,
+  [data-no-print] {
+    display: none !important;
     visibility: hidden !important;
   }
 
@@ -97,30 +136,33 @@
 
   #printable-invoice-content,
   #printable-receipt {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
     width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 24px 32px !important;
+    max-width: 190mm !important;
+    max-height: 277mm !important;
+    overflow: hidden !important;
+    margin: 0 auto !important;
+    padding: 10px 14px !important;
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
     background: #ffffff !important;
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
 
-  /* Explicitly remove all navigation, app bars, back buttons, action bars, widgets, toasts, floating elements */
-  header,
-  nav,
-  aside,
-  footer,
-  button,
-  .no-print,
-  [data-no-print] {
-    display: none !important;
-    visibility: hidden !important;
+  #printable-invoice-content > * {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 

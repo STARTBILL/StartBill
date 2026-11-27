@@ -64,7 +64,7 @@ export const CeoDashboardView: React.FC<CeoDashboardViewProps> = ({
               </span>
             </div>
             <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">
-              Bonjour Ferline 👋 • Centre de Commandement Général
+              Bonjour Ferline • Centre de Commandement Général
             </h2>
             <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
               Supervisez la croissance de STARTBILL, les revenus récurrents (MRR), la conversion client et le déploiement du programme <strong className="text-amber-300 font-bold">FOUNDING 100</strong> (J-11 avant le lancement officiel).
@@ -136,10 +136,10 @@ export const CeoDashboardView: React.FC<CeoDashboardViewProps> = ({
                 className="bg-transparent text-white font-medium focus:outline-none cursor-pointer text-xs"
               >
                 <option value="ALL" className="bg-slate-900">Tous les pays</option>
-                <option value="CA" className="bg-slate-900">🇨🇦 Canada</option>
-                <option value="SN" className="bg-slate-900">🇸🇳 Sénégal</option>
-                <option value="CI" className="bg-slate-900">🇨🇮 Côte d’Ivoire</option>
-                <option value="HT" className="bg-slate-900">🇭🇹 Haïti</option>
+                <option value="CA" className="bg-slate-900">Canada</option>
+                <option value="SN" className="bg-slate-900">Sénégal</option>
+                <option value="CI" className="bg-slate-900">Côte d’Ivoire</option>
+                <option value="HT" className="bg-slate-900">Haïti</option>
               </select>
             </div>
 
@@ -396,7 +396,7 @@ export const CeoDashboardView: React.FC<CeoDashboardViewProps> = ({
             <div>
               <div className="flex justify-between text-xs font-semibold text-slate-200 mb-1">
                 <span className="flex items-center gap-1.5">
-                  <span>🇨🇦</span>
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-800 text-blue-300">CA</span>
                   <span>Canada (QC, ON, BC)</span>
                 </span>
                 <span className="font-mono text-blue-400 font-bold">64% (91 entreprises)</span>
@@ -409,7 +409,7 @@ export const CeoDashboardView: React.FC<CeoDashboardViewProps> = ({
             <div>
               <div className="flex justify-between text-xs font-semibold text-slate-200 mb-1">
                 <span className="flex items-center gap-1.5">
-                  <span>🇸🇳</span>
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300">SN</span>
                   <span>Sénégal (Dakar, Thiès)</span>
                 </span>
                 <span className="font-mono text-emerald-400 font-bold">18% (26 entreprises)</span>
@@ -422,7 +422,7 @@ export const CeoDashboardView: React.FC<CeoDashboardViewProps> = ({
             <div>
               <div className="flex justify-between text-xs font-semibold text-slate-200 mb-1">
                 <span className="flex items-center gap-1.5">
-                  <span>🇨🇮</span>
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-800 text-amber-300">CI</span>
                   <span>Côte d’Ivoire (Abidjan)</span>
                 </span>
                 <span className="font-mono text-amber-400 font-bold">11% (16 entreprises)</span>
@@ -435,7 +435,7 @@ export const CeoDashboardView: React.FC<CeoDashboardViewProps> = ({
             <div>
               <div className="flex justify-between text-xs font-semibold text-slate-200 mb-1">
                 <span className="flex items-center gap-1.5">
-                  <span>🇭🇹</span>
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-800 text-purple-300">HT</span>
                   <span>Haïti (Port-au-Prince, Cap)</span>
                 </span>
                 <span className="font-mono text-purple-400 font-bold">7% (9 entreprises)</span>

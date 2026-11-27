@@ -12,9 +12,6 @@ import {
   Globe,
   CreditCard,
   CheckCircle2,
-  Lock,
-  ExternalLink,
-  KeyRound,
   Info,
   Loader2
 } from 'lucide-react';
@@ -65,7 +62,6 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [stripeConfig, setStripeConfig] = useState<StripeConfigResponse | null>(null);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState<boolean>(false);
-  const [showStripeSetupModal, setShowStripeSetupModal] = useState<boolean>(false);
 
   useEffect(() => {
     if (currentPlan) {
@@ -144,7 +140,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
       return;
     }
 
-    triggerToast(`Félicitations ! Votre forfait ${planName.toUpperCase()} est désormais activé avec succès 🚀 Vous bénéficiez de tous les accès illimités.`);
+    triggerToast(`Félicitations ! Votre forfait ${planName.toUpperCase()} est désormais activé avec succès. Vous bénéficiez de tous les accès illimités.`);
 
     // 5. If Stripe keys are configured and active, offer online checkout sync
     if (stripeConfig?.isConfigured && stripeConfig?.keyType !== 'none') {
@@ -175,7 +171,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
     {
       id: 'free' as const,
       name: 'Gratuit',
-      badge: trialInfo.isActive ? `Essai 5 jours actif (${trialInfo.daysRemaining}j) 🎁` : '5 jours d’essai offerts 🎁',
+      badge: trialInfo.isActive ? `Essai 5 jours actif (${trialInfo.daysRemaining}j)` : '5 jours d’essai offerts',
       popular: false,
       price: 0,
       currencyDisplay: currentPricing.currency,
@@ -201,7 +197,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
     {
       id: 'start' as const,
       name: 'Start',
-      badge: 'Le plus populaire 🔥',
+      badge: 'Le plus populaire',
       popular: true,
       price: startMonthlyPrice,
       currencyDisplay: currentPricing.currency,
@@ -300,7 +296,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
         <div className="pt-2 flex items-center justify-center gap-2 text-xs text-slate-500 font-bold">
           <span className="flex items-center gap-1 bg-slate-100 border border-slate-200 px-3 py-1 rounded-xl text-slate-700">
             <Globe className="w-3.5 h-3.5 text-blue-600" />
-            Région : {regionConfig.flag} <strong>{regionConfig.name}</strong> ({currency})
+            Région : <strong>{regionConfig.name}</strong> ({currency})
           </span>
           {setScreen && FEATURE_FLAGS.MULTI_REGION_ENABLED && (
             <button 
@@ -317,7 +313,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
           <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200 rounded-2xl p-3.5 text-center shadow-2xs">
             <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-800">
               <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>🎁 Version Gratuite : Factures illimitées pendant 5 jours d'essai !</span>
+              <span>Version Gratuite : Factures illimitées pendant 5 jours d'essai !</span>
             </span>
             <p className="text-[11px] text-emerald-700/90 mt-0.5 font-medium">
               Créez autant de factures que nécessaire pour tester StartBill en conditions réelles sans restriction.
@@ -472,36 +468,6 @@ export const PricingPage: React.FC<PricingPageProps> = ({
         })}
       </div>
 
-      {/* Stripe Security & Access Policy Badge */}
-      <div className="bg-slate-100/90 border border-slate-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#635BFF]/10 text-[#635BFF] flex items-center justify-center shrink-0">
-            <Lock className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black text-slate-900">Paiements sécurisés via Stripe</span>
-              <span className="text-[10px] bg-[#635BFF]/15 text-[#635BFF] font-extrabold px-2 py-0.5 rounded-full">
-                {stripeConfig?.keyType === 'restricted' ? 'Clé Restreinte Active' : 'Stripe Access Policy Ready'}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Chiffrement bancaire TLS 256 bits • Architecture sécurisée selon les Politiques d'Accès Restreintes Stripe.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowStripeSetupModal(true)}
-          className="text-xs font-bold text-[#635BFF] hover:text-[#5046e5] flex items-center gap-1.5 underline decoration-[#635BFF]/30 underline-offset-4 cursor-pointer shrink-0"
-        >
-          <KeyRound className="w-3.5 h-3.5" />
-          <span>Politiques d'Accès Stripe</span>
-          <ExternalLink className="w-3 h-3" />
-        </button>
-      </div>
-
       {/* Feature Comparison Highlights */}
       <div className="bg-slate-900 text-white rounded-2xl p-6 sm:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
@@ -584,103 +550,6 @@ export const PricingPage: React.FC<PricingPageProps> = ({
           })}
         </div>
       </div>
-
-      {/* Stripe Access Policies Security Modal */}
-      {showStripeSetupModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 sm:p-7 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#635BFF]/10 text-[#635BFF] flex items-center justify-center font-bold shrink-0">
-                  <KeyRound className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">
-                    Politiques d'Accès Stripe (Access Policies)
-                  </h3>
-                  <span className="text-[10px] text-slate-500 font-semibold block">
-                    Norme de sécurité : Principe du Moindre Privilège (PoLP)
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowStripeSetupModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs text-slate-600">
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                  <Lock className="w-4 h-4 text-indigo-600" />
-                  <span>Isolation Totale & Données Bancaires Protégées</span>
-                </div>
-                <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
-                  StartBill SaaS n'enregistre jamais vos numéros de cartes de crédit. Les transactions sont exécutées via des sessions hébergées sur l'infrastructure PCI-DSS Niveau 1 de Stripe.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider block">
-                  Permissions de la Clé Restreinte (rk_...)
-                </span>
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100 flex items-center gap-2 font-bold text-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Checkout Sessions (Écriture)</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100 flex items-center gap-2 font-bold text-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Customers (Écriture/Lecture)</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100 flex items-center gap-2 font-bold text-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Subscriptions (Abonnements)</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100 flex items-center gap-2 font-bold text-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Customer Portal (Facturation)</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100 flex items-center gap-2 font-bold text-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Invoices (Factures Stripe)</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-rose-50/80 border border-rose-100 flex items-center gap-2 font-bold text-rose-800">
-                    <X className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                    <span>Virements & Soldes (Bloqué)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-1 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                <span>Statut : {stripeConfig?.keyType === 'restricted' ? 'Clé Restreinte Active' : 'Mode Sécurisé'}</span>
-                <a
-                  href="https://docs.stripe.com/keys#access-policies"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-indigo-600 hover:text-indigo-700 font-bold inline-flex items-center gap-1 underline underline-offset-2"
-                >
-                  <span>Consulter la doc officielle</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowStripeSetupModal(false)}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition cursor-pointer"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

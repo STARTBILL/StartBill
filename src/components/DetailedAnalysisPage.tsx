@@ -569,7 +569,7 @@ export default function DetailedAnalysisPage({
           { label: 'Factures créées', value: `${invoices.length}`, badge: 'Excellent' },
           { label: 'Dépenses documentées', value: `${expenses.length}`, badge: 'Excellent' },
           { label: 'Taux de conformité pièces', value: '100%', badge: 'Excellent' },
-          { label: 'Rapprochement des créances', value: overdueInvoices.length === 0 ? 'À jour ✓' : 'Suivi requis', badge: overdueInvoices.length === 0 ? 'Excellent' : 'Moyen' },
+          { label: 'Rapprochement des créances', value: overdueInvoices.length === 0 ? 'À jour' : 'Suivi requis', badge: overdueInvoices.length === 0 ? 'Excellent' : 'Moyen' },
           { label: 'État des déclarations', value: 'Conforme', badge: 'Excellent' },
         ],
         history: [
