@@ -146,15 +146,32 @@ export default function CompanySetupPage({
 
     // Try loading from Firestore for authenticated user
     const user = auth.currentUser;
-    if (user) {
+    if (user && !user.isAnonymous) {
       getDoc(doc(db, 'users', user.uid)).then((docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (data.email) setEmail(data.email);
-          if (data.fullName) setOwnerName(data.fullName);
-          if (data.companyName) setCompanyName(data.companyName);
-          if (data.phone) setPhone(data.phone);
-          if (data.logoUrl) setLogoUrl(data.logoUrl);
+          if (Array.isArray(data.companies) && data.companies.length > 0) {
+            const fsCompanies = data.companies as CompanyProfile[];
+            setCompanies(fsCompanies);
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(fsCompanies));
+            } catch {}
+            const activeId = (data.activeCompanyId as string) || fsCompanies[0].id;
+            const found = fsCompanies.find(c => c.id === activeId) || fsCompanies[0];
+            setActiveCompanyId(found.id);
+            populateForm(found);
+            try {
+              localStorage.setItem('startbill_active_company', JSON.stringify(found));
+              window.dispatchEvent(new CustomEvent('startbill-companies-updated', { detail: fsCompanies }));
+              window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: found }));
+            } catch {}
+          } else {
+            if (data.email) setEmail(data.email);
+            if (data.fullName) setOwnerName(data.fullName);
+            if (data.companyName) setCompanyName(data.companyName);
+            if (data.phone) setPhone(data.phone);
+            if (data.logoUrl) setLogoUrl(data.logoUrl);
+          }
         }
       }).catch((e) => console.warn('Notice Firestore user sync:', e));
     }
@@ -217,6 +234,7 @@ export default function CompanySetupPage({
     setActiveCompanyId(newComp.id);
     populateForm(newComp);
     localStorage.setItem(`startbill_companies_${activeRegion}`, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('startbill-companies-updated', { detail: updated }));
     if (triggerToast) {
       triggerToast(`Nouvelle entreprise "${newComp.companyName}" ajoutée.`);
     }
@@ -266,8 +284,8 @@ export default function CompanySetupPage({
       phone: phone.trim(),
       address: address.trim(),
       city: city.trim(),
-      taxId1: activeRegion === 'canada' ? taxId1.trim() : undefined,
-      taxId2: activeRegion === 'canada' ? taxId2.trim() : undefined,
+      taxId1: activeRegion === 'canada' ? taxId1.trim() : '',
+      taxId2: activeRegion === 'canada' ? taxId2.trim() : '',
       defaultPaymentMethod,
       paymentTerms,
       region: activeRegion,
@@ -280,26 +298,29 @@ export default function CompanySetupPage({
     try {
       localStorage.setItem(`startbill_companies_${activeRegion}`, JSON.stringify(updatedList));
       localStorage.setItem('startbill_active_company', JSON.stringify(updatedCompany));
+      window.dispatchEvent(new CustomEvent('startbill-companies-updated', { detail: updatedList }));
       window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: updatedCompany }));
     } catch {}
 
     try {
       const user = auth.currentUser;
-      if (user) {
+      if (user && !user.isAnonymous) {
         await setDoc(doc(db, 'users', user.uid), {
           companyName: updatedCompany.companyName,
           fullName: updatedCompany.ownerName || user.displayName || 'Entrepreneur',
           legalStatus: updatedCompany.legalStatus,
           industry: updatedCompany.industry,
           logoUrl: updatedCompany.logoUrl || '',
-          email: updatedCompany.email || user.email,
-          phone: updatedCompany.phone,
-          address: updatedCompany.address,
-          city: updatedCompany.city,
+          email: updatedCompany.email || user.email || '',
+          phone: updatedCompany.phone || '',
+          address: updatedCompany.address || '',
+          city: updatedCompany.city || '',
           taxId1: updatedCompany.taxId1 || '',
           taxId2: updatedCompany.taxId2 || '',
           defaultPaymentMethod: updatedCompany.defaultPaymentMethod,
           paymentTerms: updatedCompany.paymentTerms,
+          companies: updatedList,
+          activeCompanyId: updatedCompany.id,
           region: activeRegion,
           currency: regionConfig.currency,
           currencySymbol: regionConfig.currencySymbol,

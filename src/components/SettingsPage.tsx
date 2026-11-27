@@ -48,6 +48,7 @@ import { getStripeConfig, StripeConfigResponse } from '../lib/stripeService';
 import { getRegionalTaxConfig, saveRegionalTaxConfig, RegionalTaxConfig } from '../lib/regionalTaxes';
 import { LEGAL_COMPANY_INFO } from '../data/legalDocuments';
 import { FEATURE_FLAGS } from '../config/featureFlags';
+import { auth, saveUserCompaniesToFirestore } from '../lib/firebase';
 
 export type SupportedRegion = 'canada' | 'afrique' | 'haiti';
 
@@ -531,7 +532,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         list = [updatedCompany];
       }
       localStorage.setItem(storageKey, JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent('startbill-companies-updated', { detail: list }));
       window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: updatedCompany }));
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        void saveUserCompaniesToFirestore(auth.currentUser.uid, list, updatedCompany.id);
+      }
     } catch (e) {
       console.warn('Error saving company update:', e);
     }

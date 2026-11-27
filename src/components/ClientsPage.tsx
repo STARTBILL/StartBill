@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Users, 
   Search, 
@@ -46,9 +46,9 @@ interface ClientsPageProps {
   dbLoading?: boolean;
   dbError?: string | null;
   fetchFirestoreData?: () => void;
-  onAddClient: (client: Client) => void;
-  onUpdateClient?: (client: Client) => void;
-  onDeleteClient?: (id: string) => void;
+  onAddClient: (client: Client) => void | Promise<void>;
+  onUpdateClient?: (client: Client) => void | Promise<void>;
+  onDeleteClient?: (id: string) => void | Promise<void>;
   triggerToast: (msg: string) => void;
   setScreen: (screen: ScreenId) => void;
   setSelectedInvoiceId: (id: string | null) => void;
@@ -84,11 +84,30 @@ export default function ClientsPage({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
-  // Selected Client for Drawer (Right Panel) - strictly null or first client if exists
+  // Selected Client for Drawer (Right Panel)
   const [selectedClient, setSelectedClient] = useState<Client | null>(() => {
     return allClients[0] || null;
   });
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // Keep selectedClient synced when allClients hydrates or changes
+  useEffect(() => {
+    if (allClients.length === 0) {
+      setSelectedClient(null);
+      setIsDrawerOpen(false);
+      return;
+    }
+    if (!selectedClient) {
+      setSelectedClient(allClients[0]);
+      return;
+    }
+    const fresh = allClients.find(c => c.id === selectedClient.id);
+    if (fresh) {
+      setSelectedClient(fresh);
+    } else {
+      setSelectedClient(allClients[0]);
+    }
+  }, [allClients]);
 
   // Modals & form state
   const [showModal, setShowModal] = useState(false);
@@ -206,67 +225,83 @@ export default function ClientsPage({
     setShowModal(true);
   };
 
-  const handleSubmitClient = (e: React.FormEvent) => {
+  const handleSubmitClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
-    if (editingClient) {
-      const updated: Client = {
-        ...editingClient,
-        name: formData.name.trim(),
-        company: formData.company.trim() || undefined,
-        email: formData.email.trim() || undefined,
-        phone: formData.phone.trim() || undefined,
-        address: formData.address.trim() || undefined,
-        province: formData.province,
-        type: formData.type,
-        status: formData.status,
-        notes: formData.notes.trim() || undefined,
-        companyId: editingClient.companyId || activeCompany?.id || 'comp_sante',
-        companyName: editingClient.companyName || activeCompany?.companyName || 'Santé.Inc'
-      };
-      if (onUpdateClient) onUpdateClient(updated);
-      triggerToast(`Client "${updated.name}" mis à jour avec succès !`);
-      if (selectedClient?.id === updated.id) {
-        setSelectedClient(updated);
-      }
-    } else {
-      const newClient: Client = {
-        id: `CLI-${Date.now().toString().slice(-4)}`,
-        name: formData.name.trim(),
-        company: formData.company.trim() || undefined,
-        email: formData.email.trim() || undefined,
-        phone: formData.phone.trim() || undefined,
-        address: formData.address.trim() || undefined,
-        province: formData.province,
-        type: formData.type,
-        status: formData.status,
-        amountDue: 0,
-        clientSince: 'Aujourd\'hui',
-        totalInvoiced: 0,
-        paymentsReceived: 0,
-        lastPaymentDate: '-',
-        companyId: activeCompany?.id || 'comp_sante',
-        companyName: activeCompany?.companyName || 'Santé.Inc'
-      };
-      onAddClient(newClient);
-      triggerToast(`Client "${newClient.name}" créé avec succès !`);
-      setSelectedClient(newClient);
-      setIsDrawerOpen(true);
-    }
+    const optionalFields: Partial<Client> = {};
+    if (formData.company.trim()) optionalFields.company = formData.company.trim();
+    if (formData.email.trim()) optionalFields.email = formData.email.trim();
+    if (formData.phone.trim()) optionalFields.phone = formData.phone.trim();
+    if (formData.address.trim()) optionalFields.address = formData.address.trim();
+    if (formData.notes.trim()) optionalFields.notes = formData.notes.trim();
 
-    setShowModal(false);
+    try {
+      if (editingClient) {
+        const updated: Client = {
+          ...editingClient,
+          name: formData.name.trim(),
+          province: formData.province,
+          type: formData.type,
+          status: formData.status,
+          ...optionalFields,
+          companyId: editingClient.companyId || activeCompany?.id || 'comp_sante',
+          companyName: editingClient.companyName || activeCompany?.companyName || 'Santé.Inc'
+        };
+        if (!formData.company.trim()) delete updated.company;
+        if (!formData.email.trim()) delete updated.email;
+        if (!formData.phone.trim()) delete updated.phone;
+        if (!formData.address.trim()) delete updated.address;
+        if (!formData.notes.trim()) delete updated.notes;
+
+        if (onUpdateClient) await onUpdateClient(updated);
+        triggerToast(`Client "${updated.name}" mis à jour avec succès !`);
+        if (selectedClient?.id === updated.id) {
+          setSelectedClient(updated);
+        }
+      } else {
+        const newClient: Client = {
+          id: `CLI-${Date.now().toString(36).toUpperCase().slice(-4)}${Math.floor(10 + Math.random() * 89)}`,
+          name: formData.name.trim(),
+          province: formData.province,
+          type: formData.type,
+          status: formData.status,
+          ...optionalFields,
+          amountDue: 0,
+          clientSince: new Date().toLocaleDateString('fr-CA', { day: 'numeric', month: 'short', year: 'numeric' }),
+          totalInvoiced: 0,
+          paymentsReceived: 0,
+          lastPaymentDate: '-',
+          companyId: activeCompany?.id || 'comp_sante',
+          companyName: activeCompany?.companyName || 'Santé.Inc'
+        };
+        await onAddClient(newClient);
+        triggerToast(`Client "${newClient.name}" créé avec succès !`);
+        setSelectedClient(newClient);
+        setIsDrawerOpen(true);
+      }
+
+      setShowModal(false);
+    } catch (err) {
+      console.error('Erreur sauvegarde client:', err);
+      triggerToast('Erreur lors de la sauvegarde du client. Veuillez réessayer.');
+    }
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!clientToDelete) return;
-    if (onDeleteClient) onDeleteClient(clientToDelete.id);
-    triggerToast(`Client "${clientToDelete.name}" supprimé.`);
-    if (selectedClient?.id === clientToDelete.id) {
-      setSelectedClient(null);
-      setIsDrawerOpen(false);
+    try {
+      if (onDeleteClient) await onDeleteClient(clientToDelete.id);
+      triggerToast(`Client "${clientToDelete.name}" supprimé.`);
+      if (selectedClient?.id === clientToDelete.id) {
+        setSelectedClient(null);
+        setIsDrawerOpen(false);
+      }
+      setClientToDelete(null);
+    } catch (err) {
+      console.error('Erreur suppression client:', err);
+      triggerToast('Erreur lors de la suppression du client.');
     }
-    setClientToDelete(null);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -612,7 +647,11 @@ export default function ClientsPage({
 
                           {/* 7. Dernière facture */}
                           <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
-                            {client.lastPaymentDate || '12 juil. 2026'}
+                            {(() => {
+                              const clientInvs = (invoices || []).filter(inv => (inv.clientName || '').toLowerCase().trim() === (client.name || '').toLowerCase().trim());
+                              if (clientInvs.length > 0 && clientInvs[0].date) return clientInvs[0].date;
+                              return client.lastPaymentDate || '-';
+                            })()}
                           </td>
 
                           {/* 8. Statut */}
@@ -681,29 +720,19 @@ export default function ClientsPage({
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
 
-                  <button className="w-7 h-7 bg-blue-600 text-white rounded-lg font-bold text-xs flex items-center justify-center">
-                    1
-                  </button>
-                  {totalPages > 1 && (
-                    <button 
-                      onClick={() => setCurrentPage(2)} 
-                      className="w-7 h-7 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg font-bold text-xs flex items-center justify-center"
+                  {Array.from({ length: totalPages }, (_, idx) => idx + 1).map(pageNum => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-7 h-7 rounded-lg font-bold text-xs flex items-center justify-center transition ${
+                        currentPage === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
                     >
-                      2
+                      {pageNum}
                     </button>
-                  )}
-                  {totalPages > 2 && (
-                    <button 
-                      onClick={() => setCurrentPage(3)} 
-                      className="w-7 h-7 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg font-bold text-xs flex items-center justify-center"
-                    >
-                      3
-                    </button>
-                  )}
-                  <span className="px-1 text-slate-400">...</span>
-                  <button className="w-7 h-7 border border-slate-200 text-slate-700 rounded-lg font-bold text-xs flex items-center justify-center">
-                    32
-                  </button>
+                  ))}
 
                   <button
                     disabled={currentPage >= totalPages}
@@ -897,51 +926,66 @@ export default function ClientsPage({
               <div className="space-y-2 text-xs text-slate-600 border-b border-slate-100 pb-3.5">
                 <div className="flex items-center gap-2">
                   <Mail className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span className="truncate">{selectedClient.email || 'sarah@email.com'}</span>
+                  <span className="truncate">{selectedClient.email || 'Aucun courriel renseigné'}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Phone className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span>{selectedClient.phone || '(438) 555-2222'}</span>
+                  <span>{selectedClient.phone || 'Aucun téléphone renseigné'}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span className="truncate">{selectedClient.address || 'Montréal, Québec'}</span>
+                  <span className="truncate">{selectedClient.address || selectedClient.province || 'Adresse non renseignée'}</span>
                 </div>
               </div>
 
-              {/* Client Metrics / Stats Overview */}
-              <div className="space-y-2 text-xs border-b border-slate-100 pb-3.5">
-                <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-medium">Client depuis</span>
-                  <span className="font-bold text-slate-800">{selectedClient.clientSince || 'Mars 2025'}</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-medium">Factures</span>
-                  <span className="font-bold text-slate-800">8</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-medium">Montant facturé</span>
-                  <span className="font-bold text-slate-900">
-                    {(selectedClient.totalInvoiced || 12450).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-medium">Paiements reçus</span>
-                  <span className="font-bold text-emerald-600">
-                    {(selectedClient.paymentsReceived || 12030).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                  <span className="text-[11px] font-bold text-slate-700">Solde dû</span>
-                  <span className="font-black text-sm text-amber-600">
-                    {(selectedClient.amountDue || 420).toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-medium">Dernier paiement</span>
-                  <span className="font-bold text-blue-600">{selectedClient.lastPaymentDate || '20 juin 2026'}</span>
-                </div>
-              </div>
+              {/* Client Metrics / Stats Overview computed from real client invoices */}
+              {(() => {
+                const realTotalInvoiced = clientInvoices.reduce((s, inv) => s + (inv.total || 0), 0);
+                const realPaymentsReceived = clientInvoices.reduce((s, inv) => {
+                  if (inv.status === 'Payée' || inv.status === 'paid') return s + (inv.amountPaid !== undefined ? inv.amountPaid : (inv.total || 0));
+                  return s + (inv.amountPaid || 0);
+                }, 0);
+                const realAmountDue = clientInvoices.length > 0
+                  ? Math.max(0, realTotalInvoiced - realPaymentsReceived)
+                  : (selectedClient.amountDue || 0);
+                const paidInvoices = clientInvoices.filter(inv => inv.status === 'Payée' || inv.status === 'paid' || (inv.amountPaid || 0) > 0);
+                const realLastPaymentDate = paidInvoices[0]?.paymentDate || paidInvoices[0]?.date || selectedClient.lastPaymentDate || '-';
+
+                return (
+                  <div className="space-y-2 text-xs border-b border-slate-100 pb-3.5">
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span className="text-[11px] font-medium">Client depuis</span>
+                      <span className="font-bold text-slate-800">{selectedClient.clientSince || '-'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span className="text-[11px] font-medium">Factures</span>
+                      <span className="font-bold text-slate-800">{clientInvoices.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span className="text-[11px] font-medium">Montant facturé</span>
+                      <span className="font-bold text-slate-900">
+                        {realTotalInvoiced.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span className="text-[11px] font-medium">Paiements reçus</span>
+                      <span className="font-bold text-emerald-600">
+                        {realPaymentsReceived.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                      <span className="text-[11px] font-bold text-slate-700">Solde dû</span>
+                      <span className={`font-black text-sm ${realAmountDue > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {realAmountDue.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span className="text-[11px] font-medium">Dernier paiement</span>
+                      <span className="font-bold text-blue-600">{realLastPaymentDate}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Actions Section in Drawer */}
               <div className="space-y-2">

@@ -88,7 +88,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isAuthenticated() && 
         resource.data.ownerRef == request.auth.uid &&
-        (!('region' in request.resource.data) || request.resource.data.region == resource.data.region)
+        (!('region' in request.resource.data) || !('region' in resource.data) || request.resource.data.region == resource.data.region)
       );
       allow delete: if isAdmin() || (
         isAuthenticated() && 
@@ -120,7 +120,7 @@ service cloud.firestore {
         isAuthenticated() && 
         (resource.data.userId == request.auth.uid || (resource.data.businessRef != null && isOwner(resource.data.businessRef))) &&
         matchesUserRegion(resource.data.region) &&
-        (!('region' in request.resource.data) || request.resource.data.region == resource.data.region)
+        (!('region' in request.resource.data) || !('region' in resource.data) || request.resource.data.region == resource.data.region)
       );
       allow delete: if isAdmin() || (
         isAuthenticated() && 
@@ -144,7 +144,7 @@ service cloud.firestore {
         isAuthenticated() && 
         (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
         matchesUserRegion(resource.data.region) &&
-        (!('region' in request.resource.data) || request.resource.data.region == resource.data.region)
+        (!('region' in request.resource.data) || !('region' in resource.data) || request.resource.data.region == resource.data.region)
       );
       allow delete: if isAdmin() || (
         isAuthenticated() && 
@@ -168,7 +168,7 @@ service cloud.firestore {
         isAuthenticated() && 
         (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
         matchesUserRegion(resource.data.region) &&
-        (!('region' in request.resource.data) || request.resource.data.region == resource.data.region)
+        (!('region' in request.resource.data) || !('region' in resource.data) || request.resource.data.region == resource.data.region)
       );
       allow delete: if isAdmin() || (
         isAuthenticated() && 
@@ -192,7 +192,7 @@ service cloud.firestore {
         isAuthenticated() && 
         (resource.data.userId == request.auth.uid || resource.data.ownerRef == request.auth.uid) &&
         matchesUserRegion(resource.data.region) &&
-        (!('region' in request.resource.data) || request.resource.data.region == resource.data.region)
+        (!('region' in request.resource.data) || !('region' in resource.data) || request.resource.data.region == resource.data.region)
       );
       allow delete: if isAdmin() || (
         isAuthenticated() && 

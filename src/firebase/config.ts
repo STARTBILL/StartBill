@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence } from 'firebase/auth';
-import { getFirestore, initializeFirestore, setLogLevel } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, setLogLevel, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import appletConfig from '../../firebase-applet-config.json';
 
@@ -57,7 +57,8 @@ let firestoreInstance;
 
 try {
   firestoreInstance = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true
+    experimentalAutoDetectLongPolling: true,
+    ignoreUndefinedProperties: true
   }, firestoreDbId);
 } catch {
   firestoreInstance = getFirestore(app, firestoreDbId);
@@ -65,6 +66,22 @@ try {
 
 export const db = firestoreInstance;
 export const storage = getStorage(app);
+
+export async function testConnection(): Promise<boolean> {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration.');
+    }
+    return false;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  testConnection();
+}
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');

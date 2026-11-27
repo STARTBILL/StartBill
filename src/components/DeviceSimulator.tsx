@@ -91,10 +91,8 @@ import { useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../lib/authSecurity';
 import { getRegionalTaxConfig, calculateRegionalTaxes, TaxRegion } from '../lib/regionalTaxes';
 import { StartBillLogo, StartBillIcon } from './common/StartBillLogo';
-import { db, auth } from '../lib/firebase';
+import { getUserCompaniesFromFirestore, saveUserCompaniesToFirestore } from '../lib/firebase';
 import { generateSmartAlerts, isAlertDismissed } from '../lib/alerts';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { FEATURE_FLAGS, isRegionEnabled, resolveActiveRegion } from '../config/featureFlags';
 
 export const PROVINCES_TAXES = [
@@ -179,19 +177,21 @@ interface DeviceSimulatorProps {
   setSelectedInvoiceId: (id: string | null) => void;
   selectedExpenseId: string | null;
   setSelectedExpenseId: (id: string | null) => void;
-  onAddInvoice: (invoice: Invoice) => void;
-  onAddExpense: (expense: Expense) => void;
-  onAddClient: (client: Client) => void;
-  onUpdateClient?: (client: Client) => void;
-  onDeleteClient?: (id: string) => void;
-  onUpdateInvoiceStatus: (id: string, status: InvoiceStatus) => void;
-  onDeleteInvoice: (id: string) => void;
-  onDeleteExpense: (id: string) => void;
-  onUpdateInvoice: (invoice: Invoice) => void;
-  onUpdateExpense: (expense: Expense) => void;
+  onAddInvoice: (invoice: Invoice) => void | Promise<void>;
+  onAddExpense: (expense: Expense) => void | Promise<void>;
+  onAddClient: (client: Client) => void | Promise<void>;
+  onUpdateClient?: (client: Client) => void | Promise<void>;
+  onDeleteClient?: (id: string) => void | Promise<void>;
+  onUpdateInvoiceStatus: (id: string, status: InvoiceStatus) => void | Promise<void>;
+  onDeleteInvoice: (id: string) => void | Promise<void>;
+  onDeleteExpense: (id: string) => void | Promise<void>;
+  onUpdateInvoice: (invoice: Invoice) => void | Promise<void>;
+  onUpdateExpense: (expense: Expense) => void | Promise<void>;
   isDbConnected?: boolean;
   isLoading?: boolean;
-  onResetData?: () => void;
+  dbError?: string | null;
+  onRetrySync?: () => void | Promise<void>;
+  onResetData?: () => void | Promise<void>;
 }
 
 export default function DeviceSimulator({
@@ -216,6 +216,8 @@ export default function DeviceSimulator({
   onUpdateExpense,
   isDbConnected = true,
   isLoading = false,
+  dbError: propDbError = null,
+  onRetrySync,
   onResetData
 }: DeviceSimulatorProps) {
 
@@ -275,15 +277,19 @@ export default function DeviceSimulator({
   const [customAmountPaid, setCustomAmountPaid] = useState<string>('');
   const [lastInvoiceId, setLastInvoiceId] = useState<string>('');
 
-  // Firestore Dynamic Dashboard States
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [dbInvoices, setDbInvoices] = useState<any[]>([]);
-  const [dbClients, setDbClients] = useState<any[]>([]);
-  const [dbExpenses, setDbExpenses] = useState<any[]>([]);
-  const [dbLoading, setDbLoading] = useState<boolean>(true);
-  const [dbError, setDbError] = useState<string | null>(null);
+  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin, userPlan, userRole, canAccess, loginWithEmail } = useAuth();
 
-  // Module 4: Produits et services - strictly empty for new users
+  // Single source of truth derived from App.tsx and AuthContext
+  const currentUser = firebaseUser && !firebaseUser.isAnonymous ? firebaseUser : (authUser && !authUser.isAnonymous ? authUser : null);
+  const dbLoading = isLoading;
+  const dbError = propDbError ?? null;
+  const fetchFirestoreData = React.useCallback((_uid?: string) => {
+    if (onRetrySync) {
+      return onRetrySync();
+    }
+  }, [onRetrySync]);
+
+  // Module 4: Produits et services
   const [products, setProducts] = useState<ProductItem[]>(() => {
     try {
       const saved = localStorage.getItem('startbill_products');
@@ -330,88 +336,6 @@ export default function DeviceSimulator({
     setProducts(prev => prev.filter(p => p.id !== id));
   };
 
-  const fetchFirestoreData = async (uid: string) => {
-    try {
-      setDbLoading(true);
-      setDbError(null);
-
-      const defaultInvoices: any[] = [];
-      const defaultClients: any[] = [];
-      const defaultExpenses: any[] = [];
-
-      const timeoutMs = 3500; // 3.5s timeout for initial load
-
-      const fetchInvoicesPromise = new Promise<any[]>(async (resolve) => {
-        try {
-          const invoicesRef = collection(db, 'invoices');
-          const qInvoices = query(invoicesRef, where('userId', '==', uid));
-          const snap = await getDocs(qInvoices);
-          if (snap.empty) {
-            resolve([]);
-          } else {
-            const list: any[] = [];
-            snap.forEach((docSnap) => list.push(docSnap.data()));
-            resolve(list);
-          }
-        } catch {
-          resolve([]);
-        }
-      });
-
-      const fetchClientsPromise = new Promise<any[]>(async (resolve) => {
-        try {
-          const clientsRef = collection(db, 'clients');
-          const qClients = query(clientsRef, where('userId', '==', uid));
-          const snap = await getDocs(qClients);
-          if (snap.empty) {
-            resolve([]);
-          } else {
-            const list: any[] = [];
-            snap.forEach((docSnap) => list.push(docSnap.data()));
-            resolve(list);
-          }
-        } catch {
-          resolve([]);
-        }
-      });
-
-      const fetchExpensesPromise = new Promise<any[]>(async (resolve) => {
-        try {
-          const expensesRef = collection(db, 'expenses');
-          const qExpenses = query(expensesRef, where('userId', '==', uid));
-          const snap = await getDocs(qExpenses);
-          if (snap.empty) {
-            resolve([]);
-          } else {
-            const list: any[] = [];
-            snap.forEach((docSnap) => list.push(docSnap.data()));
-            resolve(list);
-          }
-        } catch {
-          resolve([]);
-        }
-      });
-
-      const timeoutPromise = (fallback: any) => new Promise<any>((resolve) => setTimeout(() => resolve(fallback), timeoutMs));
-
-      const [invoicesRes, clientsRes, expensesRes] = await Promise.all([
-        Promise.race([fetchInvoicesPromise, timeoutPromise(defaultInvoices)]),
-        Promise.race([fetchClientsPromise, timeoutPromise(defaultClients)]),
-        Promise.race([fetchExpensesPromise, timeoutPromise(defaultExpenses)])
-      ]);
-
-      setDbInvoices(invoicesRes);
-      setDbClients(clientsRes);
-      setDbExpenses(expensesRes);
-    } catch (err: any) {
-      console.error("Error loading Firestore data:", err);
-    } finally {
-      setDbLoading(false);
-    }
-  };
-
-  const { user: authUser, firebaseUser, signOutUser, isSuperAdmin, userPlan, userRole, canAccess, loginWithEmail } = useAuth();
-
   // Determine active email and Super Admin status (contact.startbill@gmail.com)
   const currentActiveEmail = (
     authUser?.email || 
@@ -429,7 +353,6 @@ export default function DeviceSimulator({
   // Determine if there is an authenticated user session
   const isAuthenticated = Boolean(
     (firebaseUser && !firebaseUser.isAnonymous) || 
-    (currentUser && currentUser.email && !currentUser.isAnonymous) ||
     (authUser && !authUser.isAnonymous)
   );
 
@@ -517,25 +440,13 @@ export default function DeviceSimulator({
   }, [isAuthenticated, currentScreen, isSessionLocked, handleLockSession]);
 
   React.useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user && !user.isAnonymous) {
-        setCurrentUser(user);
-        await fetchFirestoreData(user.uid);
-      } else {
-        // User is not logged in - reset lock state
-        setCurrentUser(null);
-        setDbInvoices([]);
-        setDbExpenses([]);
-        setDbClients([]);
-        setDbLoading(false);
-        setIsSessionLocked(false);
-        try {
-          localStorage.removeItem('startbill_session_locked');
-        } catch {}
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+    if (!isAuthenticated) {
+      setIsSessionLocked(false);
+      try {
+        localStorage.removeItem('startbill_session_locked');
+      } catch {}
+    }
+  }, [isAuthenticated]);
 
   const [, setNotifEventCount] = React.useState(0);
   React.useEffect(() => {
@@ -543,19 +454,6 @@ export default function DeviceSimulator({
     window.addEventListener('startbill-notifications-updated', handleNotifUpdate);
     return () => window.removeEventListener('startbill-notifications-updated', handleNotifUpdate);
   }, []);
-
-  // Synchronize internal db states with App props
-  React.useEffect(() => {
-    if (invoices) setDbInvoices(invoices);
-  }, [invoices]);
-
-  React.useEffect(() => {
-    if (expenses) setDbExpenses(expenses);
-  }, [expenses]);
-
-  React.useEffect(() => {
-    if (clients) setDbClients(clients);
-  }, [clients]);
 
 
   // Forms states for Expenses
@@ -632,6 +530,11 @@ export default function DeviceSimulator({
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
+      const savedActive = localStorage.getItem('startbill_active_company');
+      if (savedActive) {
+        const parsedActive = JSON.parse(savedActive);
+        if (parsedActive && parsedActive.id) return [parsedActive];
+      }
     } catch {}
     return DEFAULT_COMPANIES;
   });
@@ -643,9 +546,36 @@ export default function DeviceSimulator({
         const parsed = JSON.parse(savedActive);
         if (parsed && parsed.id) return parsed;
       }
+      const saved = localStorage.getItem(`startbill_companies_${currentRegion}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+      }
     } catch {}
     return DEFAULT_COMPANIES[0];
   });
+
+  // Load user's saved companies from Firestore on sign-in
+  useEffect(() => {
+    const uid = firebaseUser && !firebaseUser.isAnonymous ? firebaseUser.uid : null;
+    if (!uid) return;
+    let cancelled = false;
+    getUserCompaniesFromFirestore(uid).then((remote) => {
+      if (cancelled || !remote || remote.companies.length === 0) return;
+      setCompanies(remote.companies);
+      try {
+        localStorage.setItem(`startbill_companies_${currentRegion}`, JSON.stringify(remote.companies));
+      } catch {}
+      const preferred = remote.companies.find(c => c.id === remote.activeCompanyId) || remote.companies[0];
+      if (preferred) {
+        setActiveCompany(preferred);
+        try {
+          localStorage.setItem('startbill_active_company', JSON.stringify(preferred));
+        } catch {}
+      }
+    });
+    return () => { cancelled = true; };
+  }, [firebaseUser?.uid, currentRegion]);
 
   // Company state variables (strictly synchronized with activeCompany)
   const [companyName, setCompanyName] = useState(() => activeCompany?.companyName || localStorage.getItem('company_name') || authUser?.companyName || '');
@@ -674,27 +604,52 @@ export default function DeviceSimulator({
       if (comp.phone) localStorage.setItem('company_phone', comp.phone);
       if (comp.logoUrl) localStorage.setItem('company_logo', comp.logoUrl);
     } catch {}
+    if (firebaseUser && !firebaseUser.isAnonymous) {
+      saveUserCompaniesToFirestore(firebaseUser.uid, companies, comp.id);
+    }
     window.dispatchEvent(new CustomEvent('startbill-company-changed', { detail: comp }));
     triggerToast(`Entreprise active : ${comp.companyName}`);
-  }, [triggerToast]);
+  }, [triggerToast, firebaseUser, companies]);
 
-  // Synchronize company changes dispatched by other components (Dashboard, Settings, etc.)
+  // Synchronize company changes & list updates dispatched by other components (Dashboard, Settings, CompanySetup)
   useEffect(() => {
+    const syncCompaniesFromStorage = () => {
+      try {
+        const saved = localStorage.getItem(`startbill_companies_${currentRegion}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCompanies(parsed);
+          }
+        }
+      } catch {}
+    };
+
     const handleCompanyEvent = (e: any) => {
+      syncCompaniesFromStorage();
       const comp = e.detail as CompanyProfile;
-      if (comp && comp.id && comp.id !== activeCompany?.id) {
+      if (comp && comp.id) {
         setActiveCompany(comp);
-        setCompanyName(comp.companyName);
+        setCompanyName(comp.companyName || '');
         setCompanyOwner(comp.ownerName || '');
         setCompanyNE(comp.companyNE || comp.taxId2 || '');
         setCompanyAddress(comp.address || '');
         setCompanyPhone(comp.phone || '');
         setCompanyLogo(comp.logoUrl || '');
+        setCompanies(prev => {
+          const exists = prev.some(c => c.id === comp.id);
+          return exists ? prev.map(c => (c.id === comp.id ? comp : c)) : [...prev, comp];
+        });
       }
     };
+
     window.addEventListener('startbill-company-changed', handleCompanyEvent);
-    return () => window.removeEventListener('startbill-company-changed', handleCompanyEvent);
-  }, [activeCompany?.id]);
+    window.addEventListener('startbill-companies-updated', syncCompaniesFromStorage);
+    return () => {
+      window.removeEventListener('startbill-company-changed', handleCompanyEvent);
+      window.removeEventListener('startbill-companies-updated', syncCompaniesFromStorage);
+    };
+  }, [currentRegion]);
 
   // Multi-channel Send Modal (Email, WhatsApp & SMS options)
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -739,27 +694,34 @@ export default function DeviceSimulator({
     return true;
   };
 
-  // Helper function to strictly match records against active company
+  // Helper function to strictly match records against active company (without hiding records in single-company setups)
   const matchesActiveCompany = (item: any) => {
     if (!item) return false;
-    if (!activeCompany) return true;
+    if (!activeCompany || companies.length <= 1) return true;
     const currentCompId = activeCompany.id;
     const currentCompName = activeCompany.companyName?.trim().toLowerCase();
 
     if (item.companyId) {
-      return item.companyId === currentCompId;
+      if (item.companyId === currentCompId) return true;
+      const belongsToKnownCompany = companies.some(c => c.id === item.companyId);
+      if (!belongsToKnownCompany) {
+        if (item.companyName && currentCompName && item.companyName.trim().toLowerCase() === currentCompName) {
+          return true;
+        }
+        return Boolean(activeCompany.isDefault || companies[0]?.id === currentCompId);
+      }
+      return false;
     }
     if (item.companyName && currentCompName) {
       return item.companyName.trim().toLowerCase() === currentCompName;
     }
-    // Only legacy untagged items fallback to initial company 'comp_sante', never to other companies
-    return currentCompId === 'comp_sante';
+    return Boolean(activeCompany.isDefault || currentCompId === 'comp_sante' || companies[0]?.id === currentCompId);
   };
 
-  // Calculate actual total values from active user state, strictly segregated by active company
-  const allInvoices = (invoices && invoices.length > 0) ? invoices : dbInvoices;
-  const allExpenses = (expenses && expenses.length > 0) ? expenses : dbExpenses;
-  const allClients = (clients && clients.length > 0) ? clients : dbClients;
+  // Single source of truth directly from App.tsx props
+  const allInvoices = invoices || [];
+  const allExpenses = expenses || [];
+  const allClients = clients || [];
   const allProducts = products;
 
   const activeInvoicesList = allInvoices.filter(matchesActiveCompany);
@@ -860,7 +822,7 @@ export default function DeviceSimulator({
 
   // Open New Invoice Modal with fully reset 2-step state
   const openNewInvoiceModal = () => {
-    if (!canCreateInvoice(userPlan, invoices.length, currentUser?.createdAt) && !isSuperAdmin) {
+    if (!canCreateInvoice(userPlan, invoices.length, (currentUser as any)?.createdAt) && !isSuperAdmin) {
       triggerToast("Votre période d'essai de 5 jours est terminée (limite de 5 factures atteinte). Passez au plan Start pour continuer à facturer en illimité !");
       setScreen('pricing');
       return;
@@ -868,7 +830,7 @@ export default function DeviceSimulator({
     setFormStep(1);
     setIsEditingInvoice(false);
     setEditingInvoiceId(null);
-    setInvClientName(clients[0]?.name || 'Client A');
+    setInvClientName(activeClientsList[0]?.name || '');
     setInvDate(new Date().toISOString().split('T')[0]);
     setInvDueDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     setInvProvince('Québec');
@@ -879,10 +841,9 @@ export default function DeviceSimulator({
   };
 
   // Handler for adding or editing an invoice
-  const handleCreateInvoiceSubmit = (e: React.FormEvent) => {
+  const handleCreateInvoiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Strictly enforce non-negative values
     const sanitizedItems = invItems.map(it => {
       const q = Math.max(0, it.quantity || 0);
       const p = Math.max(0, it.unitPrice || 0);
@@ -903,57 +864,60 @@ export default function DeviceSimulator({
     const scopedCompanyId = activeCompany?.id || 'comp_sante';
     const scopedCompanyName = activeCompany?.companyName || companyName || 'Santé.Inc';
 
-    if (isEditingInvoice && editingInvoiceId) {
-      const updatedInv: Invoice = {
-        id: editingInvoiceId,
-        clientName: invClientName,
-        date: invDate,
-        status: invStatus,
-        subtotal: sub,
-        tps: tpsVal,
-        tvq: tvqVal,
-        total: tot,
-        province: invProvince,
-        dueDate: invDueDate,
-        currency: invCurrency,
-        description: invDescription,
-        items: sanitizedItems,
-        companyId: scopedCompanyId,
-        companyName: scopedCompanyName
-      };
-      onUpdateInvoice(updatedInv);
-      setDbInvoices(prev => prev.map(inv => inv.id === updatedInv.id ? updatedInv : inv));
-      setIsEditingInvoice(false);
-      setEditingInvoiceId(null);
-      setShowNewInvoiceModal(false);
-      triggerToast(`Facture ${updatedInv.id} modifiée avec succès !`);
-      setScreen('invoice_detail');
-    } else {
-      const newId = `FACT-2026-0${invoices.length + 40}`;
-      const newInv: Invoice = {
-        id: newId,
-        clientName: invClientName,
-        date: invDate,
-        status: 'Envoyée',
-        subtotal: sub,
-        tps: tpsVal,
-        tvq: tvqVal,
-        total: tot,
-        province: invProvince,
-        dueDate: invDueDate,
-        currency: invCurrency,
-        description: invDescription,
-        items: sanitizedItems,
-        companyId: scopedCompanyId,
-        companyName: scopedCompanyName
-      };
+    try {
+      if (isEditingInvoice && editingInvoiceId) {
+        const updatedInv: Invoice = {
+          id: editingInvoiceId,
+          clientName: invClientName,
+          date: invDate,
+          status: invStatus,
+          subtotal: sub,
+          tps: tpsVal,
+          tvq: tvqVal,
+          total: tot,
+          province: invProvince,
+          dueDate: invDueDate,
+          currency: invCurrency,
+          description: invDescription,
+          items: sanitizedItems,
+          companyId: scopedCompanyId,
+          companyName: scopedCompanyName
+        };
+        await onUpdateInvoice(updatedInv);
+        setIsEditingInvoice(false);
+        setEditingInvoiceId(null);
+        setShowNewInvoiceModal(false);
+        triggerToast(`Facture ${updatedInv.id} modifiée avec succès !`);
+        setScreen('invoice_detail');
+      } else {
+        const newId = `FACT-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`;
+        const newInv: Invoice = {
+          id: newId,
+          clientName: invClientName,
+          date: invDate,
+          status: 'Envoyée',
+          subtotal: sub,
+          tps: tpsVal,
+          tvq: tvqVal,
+          total: tot,
+          province: invProvince,
+          dueDate: invDueDate,
+          currency: invCurrency,
+          description: invDescription,
+          items: sanitizedItems,
+          companyId: scopedCompanyId,
+          companyName: scopedCompanyName
+        };
 
-      onAddInvoice(newInv);
-      setDbInvoices(prev => [newInv, ...prev]);
-      setSelectedInvoiceId(newId);
-      setShowNewInvoiceModal(false);
-      triggerToast(`Facture ${newInv.id} créée avec succès !`);
-      setScreen('invoice_detail');
+        await onAddInvoice(newInv);
+        setSelectedInvoiceId(newId);
+        setShowNewInvoiceModal(false);
+        triggerToast(`Facture ${newInv.id} créée avec succès !`);
+        setScreen('invoice_detail');
+      }
+    } catch (err) {
+      console.error('Erreur lors de la sauvegarde de la facture:', err);
+      triggerToast('Erreur lors de la sauvegarde de la facture. Veuillez réessayer.');
     }
   };
 
@@ -972,7 +936,7 @@ export default function DeviceSimulator({
   };
 
   // Handler for recording a payment in Module 5 (Payments & Collections)
-  const handleRecordPayment = (invoiceId: string, amount: number, method: string, date: string, reference?: string) => {
+  const handleRecordPayment = async (invoiceId: string, amount: number, method: string, date: string, _reference?: string) => {
     const inv = activeInvoicesList.find(i => i.id === invoiceId);
     if (!inv) return;
 
@@ -993,13 +957,17 @@ export default function DeviceSimulator({
       companyName: inv.companyName || activeCompany?.companyName
     };
 
-    onUpdateInvoice(updatedInv);
-    setDbInvoices(prev => prev.map(i => i.id === invoiceId ? updatedInv : i));
-    triggerToast(`Encaissement de ${amount.toFixed(2)} $ CAD enregistré avec succès sur la facture ${invoiceId} !`);
+    try {
+      await onUpdateInvoice(updatedInv);
+      triggerToast(`Encaissement de ${amount.toFixed(2)} $ CAD enregistré avec succès sur la facture ${invoiceId} !`);
+    } catch (err) {
+      console.error('Erreur encaissement:', err);
+      triggerToast("Erreur lors de l'enregistrement du paiement.");
+    }
   };
 
   // Handler for adding or editing an expense
-  const handleCreateExpenseSubmit = (e: React.FormEvent) => {
+  const handleCreateExpenseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const sub = parseFloat(Math.max(0, parseFloat(newExpenseAmountHt) || 0).toFixed(2));
     if (sub <= 0) {
@@ -1012,85 +980,91 @@ export default function DeviceSimulator({
     const scopedCompanyId = activeCompany?.id || 'comp_sante';
     const scopedCompanyName = activeCompany?.companyName || companyName || 'Santé.Inc';
 
-    if (isEditingExpense && editingExpenseId) {
-      const updatedExp: Expense = {
-        id: editingExpenseId,
-        category: newExpenseCategory,
-        provider: newExpenseProvider || newExpenseTitle || 'Fournisseur',
-        date: newExpenseDate,
-        amountHt: sub,
-        tps: tpsVal,
-        tvq: tvqVal,
-        total: tot,
-        province: newExpenseProvince,
-        paymentMethod: newExpensePayment,
-        notes: newExpenseNotes,
-        receiptUrl: receiptImg || undefined,
-        isEligible: newExpenseDeductible,
-        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0,
-        companyId: scopedCompanyId,
-        companyName: scopedCompanyName
-      };
-      onUpdateExpense(updatedExp);
-      setDbExpenses(prev => prev.map(exp => exp.id === updatedExp.id ? updatedExp : exp));
-      setIsEditingExpense(false);
-      setEditingExpenseId(null);
-      triggerToast(`Dépense modifiée avec succès !`);
-      // Reset form
-      setNewExpenseProvider('');
-      setNewExpenseNotes('');
-      setReceiptImg(null);
-      setScreen('expense_detail');
-    } else {
-      const newExp: Expense = {
-        id: `EXP-0${expenses.length + 8}`,
-        category: newExpenseCategory,
-        provider: newExpenseProvider || newExpenseTitle || 'Fournisseur',
-        date: newExpenseDate,
-        amountHt: sub,
-        tps: tpsVal,
-        tvq: tvqVal,
-        total: tot,
-        province: newExpenseProvince,
-        paymentMethod: newExpensePayment,
-        notes: newExpenseNotes,
-        receiptUrl: receiptImg || undefined,
-        isEligible: newExpenseDeductible,
-        taxDeductiblePercentage: newExpenseDeductible ? 100 : 0,
-        companyId: scopedCompanyId,
-        companyName: scopedCompanyName
-      };
+    try {
+      if (isEditingExpense && editingExpenseId) {
+        const updatedExp: Expense = {
+          id: editingExpenseId,
+          category: newExpenseCategory,
+          provider: newExpenseProvider || newExpenseTitle || 'Fournisseur',
+          date: newExpenseDate,
+          amountHt: sub,
+          tps: tpsVal,
+          tvq: tvqVal,
+          total: tot,
+          province: newExpenseProvince,
+          paymentMethod: newExpensePayment,
+          notes: newExpenseNotes,
+          ...(receiptImg ? { receiptUrl: receiptImg } : {}),
+          isEligible: newExpenseDeductible,
+          taxDeductiblePercentage: newExpenseDeductible ? 100 : 0,
+          companyId: scopedCompanyId,
+          companyName: scopedCompanyName
+        };
+        await onUpdateExpense(updatedExp);
+        setIsEditingExpense(false);
+        setEditingExpenseId(null);
+        triggerToast(`Dépense modifiée avec succès !`);
+        setNewExpenseProvider('');
+        setNewExpenseNotes('');
+        setReceiptImg(null);
+        setScreen('expense_detail');
+      } else {
+        const newExp: Expense = {
+          id: `EXP-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`,
+          category: newExpenseCategory,
+          provider: newExpenseProvider || newExpenseTitle || 'Fournisseur',
+          date: newExpenseDate,
+          amountHt: sub,
+          tps: tpsVal,
+          tvq: tvqVal,
+          total: tot,
+          province: newExpenseProvince,
+          paymentMethod: newExpensePayment,
+          notes: newExpenseNotes,
+          ...(receiptImg ? { receiptUrl: receiptImg } : {}),
+          isEligible: newExpenseDeductible,
+          taxDeductiblePercentage: newExpenseDeductible ? 100 : 0,
+          companyId: scopedCompanyId,
+          companyName: scopedCompanyName
+        };
 
-      onAddExpense(newExp);
-      setDbExpenses(prev => [newExp, ...prev]);
-      triggerToast(`Dépense de ${tot.toFixed(2)} $ enregistrée !`);
-      // Reset form
-      setNewExpenseProvider('');
-      setNewExpenseNotes('');
-      setReceiptImg(null);
-      setScreen('expenses');
+        await onAddExpense(newExp);
+        triggerToast(`Dépense de ${tot.toFixed(2)} $ enregistrée !`);
+        setNewExpenseProvider('');
+        setNewExpenseNotes('');
+        setReceiptImg(null);
+        setScreen('expenses');
+      }
+    } catch (err) {
+      console.error('Erreur sauvegarde dépense:', err);
+      triggerToast('Erreur lors de la sauvegarde de la dépense.');
     }
   };
 
   // Handler for adding client
-  const handleCreateClientSubmit = (e: React.FormEvent) => {
+  const handleCreateClientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientNameInput.trim()) return;
 
     const newCli: Client = {
-      id: `CLI-0${clients.length + 1}`,
-      name: clientNameInput,
+      id: `CLI-${Date.now().toString(36).toUpperCase().slice(-4)}${Math.floor(10 + Math.random() * 89)}`,
+      name: clientNameInput.trim(),
       amountDue: 0.00,
+      status: 'Actif',
       companyId: activeCompany?.id || 'comp_sante',
       companyName: activeCompany?.companyName || companyName || 'Santé.Inc'
     };
 
-    onAddClient(newCli);
-    setDbClients(prev => [...prev, newCli]);
-    setInvClientName(newCli.name);
-    setClientNameInput('');
-    setShowNewClientModal(false);
-    triggerToast(`Client "${newCli.name}" ajouté avec succès !`);
+    try {
+      await onAddClient(newCli);
+      setInvClientName(newCli.name);
+      setClientNameInput('');
+      setShowNewClientModal(false);
+      triggerToast(`Client "${newCli.name}" ajouté avec succès !`);
+    } catch (err) {
+      console.error('Erreur ajout client:', err);
+      triggerToast("Erreur lors de l'enregistrement du client.");
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1107,19 +1081,27 @@ export default function DeviceSimulator({
   };
 
   // Duplicate invoice
-  const handleDuplicateInvoice = (invoice: Invoice) => {
+  const handleDuplicateInvoice = async (invoice: Invoice) => {
+    const newId = `FACT-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`;
     const newInv: Invoice = {
       ...invoice,
-      id: `FACT-2026-0${invoices.length + 41}`,
-      date: '2026-05-12',
+      id: newId,
+      date: new Date().toISOString().split('T')[0],
       status: 'Brouillon',
+      amountPaid: 0,
+      remainingBalance: invoice.total,
       companyId: invoice.companyId || activeCompany?.id,
       companyName: invoice.companyName || activeCompany?.companyName
     };
-    onAddInvoice(newInv);
-    setDbInvoices(prev => [newInv, ...prev]);
-    triggerToast(`Facture ${invoice.id} dupliquée en ${newInv.id} (Brouillon)`);
-    setSelectedInvoiceId(newInv.id);
+    delete newInv.paymentStatus;
+    try {
+      await onAddInvoice(newInv);
+      triggerToast(`Facture ${invoice.id} dupliquée en ${newInv.id} (Brouillon)`);
+      setSelectedInvoiceId(newInv.id);
+    } catch (err) {
+      console.error('Erreur duplication facture:', err);
+      triggerToast('Erreur lors de la duplication de la facture.');
+    }
   };
 
   // Export files
@@ -1730,50 +1712,24 @@ export default function DeviceSimulator({
             onAddProduct={handleAddProduct}
             dbLoading={dbLoading}
             dbError={dbError}
+            fetchFirestoreData={() => fetchFirestoreData(currentUser?.uid)}
             activeCompany={activeCompany}
-            onAddInvoice={(inv) => {
+            onAddInvoice={async (inv) => {
               const scopedInv = {
                 ...inv,
                 companyId: inv.companyId || activeCompany?.id || 'comp_sante',
                 companyName: inv.companyName || activeCompany?.companyName || 'Santé.Inc'
               };
-              onAddInvoice(scopedInv);
-              setDbInvoices(prev => [scopedInv, ...prev]);
+              await onAddInvoice(scopedInv);
             }}
-            onUpdateInvoice={(inv) => {
-              onUpdateInvoice(inv);
-              setDbInvoices(prev => prev.map(i => i.id === inv.id ? inv : i));
+            onUpdateInvoice={async (inv) => {
+              await onUpdateInvoice(inv);
             }}
-            onUpdateInvoiceStatus={(id, status) => {
-              onUpdateInvoiceStatus(id, status);
-              setDbInvoices(prev => prev.map(inv => {
-                if (inv.id === id) {
-                  let updatedRemaining = inv.remainingBalance;
-                  let updatedAmountPaid = inv.amountPaid;
-                  if (status === 'Payée' || status === 'paid') {
-                    updatedRemaining = 0;
-                    updatedAmountPaid = inv.total;
-                  } else if (status === 'Envoyée' || status === 'Brouillon') {
-                    updatedRemaining = inv.total;
-                    updatedAmountPaid = 0;
-                  } else if (status === 'Partiellement payée' || status === 'partial') {
-                    updatedAmountPaid = (inv.amountPaid !== undefined && inv.amountPaid > 0) ? inv.amountPaid : parseFloat((inv.total / 2).toFixed(2));
-                    updatedRemaining = parseFloat(Math.max(0, inv.total - updatedAmountPaid).toFixed(2));
-                  }
-                  return { 
-                    ...inv, 
-                    status, 
-                    amountPaid: updatedAmountPaid, 
-                    remainingBalance: updatedRemaining,
-                    paymentStatus: (status === 'Payée' || status === 'paid') ? 'paid' : (status === 'Partiellement payée' || status === 'partial') ? 'partial' : undefined
-                  };
-                }
-                return inv;
-              }));
+            onUpdateInvoiceStatus={async (id, status) => {
+              await onUpdateInvoiceStatus(id, status);
             }}
-            onDeleteInvoice={(id) => {
-              onDeleteInvoice(id);
-              setDbInvoices(prev => prev.filter(inv => inv.id !== id));
+            onDeleteInvoice={async (id) => {
+              await onDeleteInvoice(id);
             }}
             triggerToast={triggerToast}
             setScreen={setScreen}
@@ -1881,7 +1837,7 @@ export default function DeviceSimulator({
 
               {/* Bill To / Client Section */}
               {(() => {
-                const activeClients = clients && clients.length > 0 ? clients : dbClients;
+                const activeClients = activeClientsList;
                 const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
 
                 return (
@@ -2056,7 +2012,7 @@ export default function DeviceSimulator({
                 <button
                   type="button"
                   onClick={() => {
-                    const activeClients = clients && clients.length > 0 ? clients : dbClients;
+                    const activeClients = activeClientsList;
                     const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
                     const recipient = clientObj?.email || '';
                     setEmailRecipient(recipient);
@@ -2080,7 +2036,7 @@ export default function DeviceSimulator({
                 <button
                   type="button"
                   onClick={() => {
-                    const activeClients = clients && clients.length > 0 ? clients : dbClients;
+                    const activeClients = activeClientsList;
                     const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
                     setWhatsappRecipient(clientObj?.phone || '');
                     setWhatsappMessage(
@@ -2103,7 +2059,7 @@ export default function DeviceSimulator({
                 <button
                   type="button"
                   onClick={() => {
-                    const activeClients = clients && clients.length > 0 ? clients : dbClients;
+                    const activeClients = activeClientsList;
                     const clientObj = activeClients.find(c => c.name === selectedInvoice.clientName);
                     setWhatsappRecipient(clientObj?.phone || '');
                     setWhatsappMessage(
@@ -2476,23 +2432,21 @@ export default function DeviceSimulator({
             expenses={activeExpensesList}
             dbLoading={dbLoading}
             dbError={dbError}
+            fetchFirestoreData={() => fetchFirestoreData(currentUser?.uid)}
             activeCompany={activeCompany}
-            onAddExpense={(exp) => {
+            onAddExpense={async (exp) => {
               const scopedExp = {
                 ...exp,
                 companyId: exp.companyId || activeCompany?.id || 'comp_sante',
                 companyName: exp.companyName || activeCompany?.companyName || 'Santé.Inc'
               };
-              onAddExpense(scopedExp);
-              setDbExpenses(prev => [scopedExp, ...prev]);
+              await onAddExpense(scopedExp);
             }}
-            onUpdateExpense={(exp) => {
-              onUpdateExpense(exp);
-              setDbExpenses(prev => prev.map(e => e.id === exp.id ? exp : e));
+            onUpdateExpense={async (exp) => {
+              await onUpdateExpense(exp);
             }}
-            onDeleteExpense={(id) => {
-              onDeleteExpense(id);
-              setDbExpenses(prev => prev.filter(exp => exp.id !== id));
+            onDeleteExpense={async (id) => {
+              await onDeleteExpense(id);
             }}
             triggerToast={triggerToast}
             setScreen={setScreen}
@@ -2586,6 +2540,9 @@ export default function DeviceSimulator({
             <FinancialHistoryPage
               setScreen={setScreen}
               triggerToast={triggerToast}
+              invoices={activeInvoicesList}
+              expenses={activeExpensesList}
+              clients={activeClientsList}
             />
           </div>
         )}
@@ -2693,11 +2650,14 @@ export default function DeviceSimulator({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onDeleteExpense(selectedExpense.id);
-                  setDbExpenses(prev => prev.filter(exp => exp.id !== selectedExpense.id));
-                  triggerToast(`Dépense supprimée !`);
-                  setScreen('expenses');
+                onClick={async () => {
+                  try {
+                    await onDeleteExpense(selectedExpense.id);
+                    triggerToast(`Dépense supprimée !`);
+                    setScreen('expenses');
+                  } catch {
+                    triggerToast('Erreur lors de la suppression de la dépense.');
+                  }
                 }}
                 className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs py-2 px-3 rounded-lg font-medium text-center transition"
               >
@@ -3052,20 +3012,20 @@ export default function DeviceSimulator({
             clients={activeClientsList}
             invoices={activeInvoicesList}
             dbLoading={dbLoading}
+            dbError={dbError}
+            fetchFirestoreData={() => fetchFirestoreData(currentUser?.uid)}
             activeCompany={activeCompany}
-            onAddClient={(cli) => {
+            onAddClient={async (cli) => {
               const scopedCli = {
                 ...cli,
                 companyId: cli.companyId || activeCompany?.id || 'comp_sante',
                 companyName: cli.companyName || activeCompany?.companyName || 'Santé.Inc'
               };
-              onAddClient(scopedCli);
-              setDbClients(prev => [...prev, scopedCli]);
+              await onAddClient(scopedCli);
             }}
             onUpdateClient={onUpdateClient}
-            onDeleteClient={(id) => {
-              onDeleteClient(id);
-              setDbClients(prev => prev.filter(c => c.id !== id));
+            onDeleteClient={async (id) => {
+              await onDeleteClient(id);
             }}
             triggerToast={triggerToast}
             setScreen={setScreen}
@@ -3264,7 +3224,7 @@ export default function DeviceSimulator({
             setScreen={setScreen}
             invoices={activeInvoicesList}
             expenses={activeExpensesList}
-            clients={clients}
+            clients={activeClientsList}
             triggerToast={triggerToast}
           />
         )}
@@ -3611,7 +3571,10 @@ export default function DeviceSimulator({
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition"
                     >
-                      {clients.map(cli => (
+                      {activeClientsList.length === 0 && (
+                        <option value="">-- Sélectionner ou créer un client --</option>
+                      )}
+                      {activeClientsList.map(cli => (
                         <option key={cli.id} value={cli.name}>{cli.name}</option>
                       ))}
                       <option value="_new_client" className="text-blue-600 font-extrabold">+ Nouveau client</option>
@@ -4246,7 +4209,7 @@ export default function DeviceSimulator({
               {sendChannel === 'email' ? (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     if (!emailRecipient || !emailRecipient.includes('@')) {
                       triggerToast("Veuillez saisir une adresse courriel valide.");
                       return;
@@ -4255,9 +4218,7 @@ export default function DeviceSimulator({
                     const subj = encodeURIComponent(emailSubject || `Facture #${selectedInvoice.id}`);
                     const body = encodeURIComponent(emailMessage);
                     window.open(`mailto:${to}?subject=${subj}&body=${body}`, '_blank');
-                    // Mark as Envoyée
-                    onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-                    setDbInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'Envoyée' } : inv));
+                    await onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
                     setShowEmailModal(false);
                     triggerToast(`Facture ${selectedInvoice.id} envoyée avec succès par courriel à ${to} !`);
                   }}
@@ -4268,16 +4229,14 @@ export default function DeviceSimulator({
               ) : sendChannel === 'whatsapp' ? (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const cleanPhone = whatsappRecipient.replace(/[^0-9]/g, '');
                     const encodedText = encodeURIComponent(whatsappMessage);
                     const url = cleanPhone
                       ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
                       : `https://api.whatsapp.com/send?text=${encodedText}`;
                     window.open(url, '_blank');
-                    // Mark as Envoyée
-                    onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-                    setDbInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'Envoyée' } : inv));
+                    await onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
                     setShowEmailModal(false);
                     triggerToast(`Ouverture de WhatsApp pour la facture ${selectedInvoice.id} !`);
                   }}
@@ -4288,14 +4247,12 @@ export default function DeviceSimulator({
               ) : (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const cleanPhone = whatsappRecipient.replace(/[^0-9]/g, '');
                     const encodedText = encodeURIComponent(whatsappMessage);
                     const url = cleanPhone ? `sms:${cleanPhone}?body=${encodedText}` : `sms:?body=${encodedText}`;
                     window.open(url, '_blank');
-                    // Mark as Envoyée
-                    onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-                    setDbInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'Envoyée' } : inv));
+                    await onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
                     setShowEmailModal(false);
                     triggerToast(`Application SMS ouverte pour la facture ${selectedInvoice.id} !`);
                   }}
@@ -4381,20 +4338,23 @@ export default function DeviceSimulator({
         confirmLabel="Réinitialiser"
         cancelLabel="Annuler"
         variant="warning"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (selectedInvoice) {
             const updatedInv: Invoice = {
               ...selectedInvoice,
               amountPaid: 0,
               remainingBalance: selectedInvoice.total,
-              paymentStatus: undefined,
               status: 'Envoyée'
             };
-            onUpdateInvoice(updatedInv);
-            setDbInvoices(prev => prev.map(inv => inv.id === updatedInv.id ? updatedInv : inv));
-            setPaymentOption('partial');
-            setCustomAmountPaid('0');
-            triggerToast("Historique de paiement réinitialisé !");
+            delete updatedInv.paymentStatus;
+            try {
+              await onUpdateInvoice(updatedInv);
+              setPaymentOption('partial');
+              setCustomAmountPaid('0');
+              triggerToast("Historique de paiement réinitialisé !");
+            } catch {
+              triggerToast("Erreur lors de la réinitialisation du paiement.");
+            }
           }
           setShowResetPaymentConfirm(false);
         }}
@@ -4409,12 +4369,15 @@ export default function DeviceSimulator({
         confirmLabel="Supprimer"
         cancelLabel="Annuler"
         variant="danger"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (selectedInvoice) {
-            onDeleteInvoice(selectedInvoice.id);
-            setDbInvoices(prev => prev.filter(inv => inv.id !== selectedInvoice.id));
-            triggerToast(`Facture ${selectedInvoice.id} supprimée`);
-            setScreen('invoices');
+            try {
+              await onDeleteInvoice(selectedInvoice.id);
+              triggerToast(`Facture ${selectedInvoice.id} supprimée`);
+              setScreen('invoices');
+            } catch {
+              triggerToast("Erreur lors de la suppression de la facture.");
+            }
           }
           setShowDeleteInvoiceConfirm(false);
         }}
@@ -4447,7 +4410,13 @@ export default function DeviceSimulator({
           currentScreen !== 'login' &&
           currentScreen !== 'landing'
         )}
-        user={authUser || currentUser}
+        user={authUser || (firebaseUser ? {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          fullName: firebaseUser.displayName || undefined,
+          plan: 'free',
+          role: 'user'
+        } : null)}
         onUnlock={handleUnlockSession}
         onSignOut={async () => {
           setIsSessionLocked(false);

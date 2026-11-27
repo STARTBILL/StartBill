@@ -2,14 +2,16 @@ import {
   collection, 
   doc, 
   getDocs, 
+  getDoc,
   setDoc, 
   deleteDoc, 
   writeBatch,
   query,
-  where
+  where,
+  onSnapshot
 } from 'firebase/firestore';
 import { auth, db, storage, googleProvider } from '../firebase/config';
-import { Invoice, Expense, Client } from '../types';
+import { Invoice, Expense, Client, CompanyProfile } from '../types';
 
 export { auth, db, storage, googleProvider };
 
@@ -60,7 +62,27 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-
+/**
+ * Recursively removes undefined values from objects/arrays before passing to Firestore,
+ * preventing "Unsupported field value: undefined" rejections on setDoc/updateDoc.
+ */
+export function sanitizeForFirestore<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    const cleaned: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, val]) => {
+      if (val !== undefined) {
+        cleaned[key] = sanitizeForFirestore(val);
+      }
+    });
+    return cleaned as T;
+  }
+  return value;
+}
 
 // Invoices collection helper - Strictly isolated by authenticated userId and registered region
 export async function getInvoicesFromFirestore(userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<Invoice[]> {
@@ -75,7 +97,6 @@ export async function getInvoicesFromFirestore(userId?: string, region?: 'canada
     const invoices: Invoice[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as Invoice;
-      // Afficher les factures de la région ou sans région assignée pour l'utilisateur
       if (!region || !data.region || data.region === region) {
         invoices.push({
           ...data,
@@ -86,19 +107,54 @@ export async function getInvoicesFromFirestore(userId?: string, region?: 'canada
     return invoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   } catch (error) {
     console.warn('Error fetching user invoices from Firestore:', error);
-    return [];
+    throw error;
   }
 }
 
+export function subscribeUserInvoices(
+  userId: string,
+  region: 'canada' | 'afrique' | 'haiti' | string | undefined,
+  onData: (invoices: Invoice[], fromCache: boolean) => void,
+  onError?: (err: unknown) => void
+): () => void {
+  const qInvoices = query(collection(db, 'invoices'), where('userId', '==', userId));
+  return onSnapshot(
+    qInvoices,
+    (querySnapshot) => {
+      const invoices: Invoice[] = [];
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Invoice;
+        if (!region || !data.region || data.region === region) {
+          invoices.push({
+            ...data,
+            id: data.id || docSnap.id
+          });
+        }
+      });
+      invoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      onData(invoices, querySnapshot.metadata.fromCache);
+    },
+    (error) => {
+      console.warn('Firestore invoices listener warning:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
 export async function saveInvoiceToFirestore(invoice: Invoice, userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<void> {
+  const targetUid = userId || auth.currentUser?.uid || invoice.userId;
+  if (!targetUid) {
+    // Guest / unauthenticated mode persists locally in scoped localStorage cache
+    return;
+  }
   try {
-    const targetUid = userId || invoice.userId || auth.currentUser?.uid;
     const targetRegion = region || invoice.region || 'canada';
-    const invoiceToSave: Invoice = {
+    const invoiceToSave = sanitizeForFirestore({
       ...invoice,
-      userId: targetUid || invoice.userId || '',
-      region: targetRegion as any
-    };
+      userId: targetUid,
+      region: targetRegion,
+      updatedAt: new Date().toISOString()
+    });
     await setDoc(doc(db, 'invoices', invoice.id), invoiceToSave, { merge: true });
   } catch (error) {
     console.error('Error saving invoice:', error);
@@ -107,20 +163,21 @@ export async function saveInvoiceToFirestore(invoice: Invoice, userId?: string, 
 }
 
 export async function deleteInvoiceFromFirestore(invoiceId: string): Promise<void> {
-  if (!invoiceId) return;
+  if (!invoiceId || !auth.currentUser?.uid) return;
   try {
-    // 1. Suppression directe par ID de document
     await deleteDoc(doc(db, 'invoices', invoiceId));
 
-    // 2. Nettoyage de sécurité : si le document a été enregistré avec un identifiant interne 'id'
-    const q = query(collection(db, 'invoices'), where('id', '==', invoiceId));
+    const q = query(
+      collection(db, 'invoices'),
+      where('userId', '==', auth.currentUser.uid),
+      where('id', '==', invoiceId)
+    );
     const snap = await getDocs(q);
     if (!snap.empty) {
       const batch = writeBatch(db);
       snap.forEach(d => batch.delete(d.ref));
       await batch.commit();
     }
-    console.log(`[Firestore] Facture ${invoiceId} définitivement supprimée.`);
   } catch (error) {
     console.error(`[Firestore] Échec de la suppression de la facture ${invoiceId}:`, error);
     handleFirestoreError(error, OperationType.DELETE, `invoices/${invoiceId}`);
@@ -150,19 +207,53 @@ export async function getExpensesFromFirestore(userId?: string, region?: 'canada
     return expenses.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   } catch (error) {
     console.warn('Error fetching user expenses from Firestore:', error);
-    return [];
+    throw error;
   }
 }
 
+export function subscribeUserExpenses(
+  userId: string,
+  region: 'canada' | 'afrique' | 'haiti' | string | undefined,
+  onData: (expenses: Expense[], fromCache: boolean) => void,
+  onError?: (err: unknown) => void
+): () => void {
+  const qExpenses = query(collection(db, 'expenses'), where('userId', '==', userId));
+  return onSnapshot(
+    qExpenses,
+    (querySnapshot) => {
+      const expenses: Expense[] = [];
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Expense;
+        if (!region || !data.region || data.region === region) {
+          expenses.push({
+            ...data,
+            id: data.id || docSnap.id
+          });
+        }
+      });
+      expenses.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      onData(expenses, querySnapshot.metadata.fromCache);
+    },
+    (error) => {
+      console.warn('Firestore expenses listener warning:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
 export async function saveExpenseToFirestore(expense: Expense, userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<void> {
+  const targetUid = userId || auth.currentUser?.uid || expense.userId;
+  if (!targetUid) {
+    return;
+  }
   try {
-    const targetUid = userId || expense.userId || auth.currentUser?.uid;
     const targetRegion = region || expense.region || 'canada';
-    const expenseToSave: Expense = {
+    const expenseToSave = sanitizeForFirestore({
       ...expense,
-      userId: targetUid || expense.userId || '',
-      region: targetRegion as any
-    };
+      userId: targetUid,
+      region: targetRegion,
+      updatedAt: new Date().toISOString()
+    });
     await setDoc(doc(db, 'expenses', expense.id), expenseToSave, { merge: true });
   } catch (error) {
     console.error('Error saving expense:', error);
@@ -171,20 +262,21 @@ export async function saveExpenseToFirestore(expense: Expense, userId?: string, 
 }
 
 export async function deleteExpenseFromFirestore(expenseId: string): Promise<void> {
-  if (!expenseId) return;
+  if (!expenseId || !auth.currentUser?.uid) return;
   try {
-    // 1. Suppression directe par ID de document
     await deleteDoc(doc(db, 'expenses', expenseId));
 
-    // 2. Nettoyage de sécurité : si le document a été enregistré avec un identifiant interne 'id'
-    const q = query(collection(db, 'expenses'), where('id', '==', expenseId));
+    const q = query(
+      collection(db, 'expenses'),
+      where('userId', '==', auth.currentUser.uid),
+      where('id', '==', expenseId)
+    );
     const snap = await getDocs(q);
     if (!snap.empty) {
       const batch = writeBatch(db);
       snap.forEach(d => batch.delete(d.ref));
       await batch.commit();
     }
-    console.log(`[Firestore] Dépense ${expenseId} définitivement supprimée.`);
   } catch (error) {
     console.error(`[Firestore] Échec de la suppression de la dépense ${expenseId}:`, error);
     handleFirestoreError(error, OperationType.DELETE, `expenses/${expenseId}`);
@@ -214,19 +306,53 @@ export async function getClientsFromFirestore(userId?: string, region?: 'canada'
     return clients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   } catch (error) {
     console.warn('Error fetching user clients from Firestore:', error);
-    return [];
+    throw error;
   }
 }
 
+export function subscribeUserClients(
+  userId: string,
+  region: 'canada' | 'afrique' | 'haiti' | string | undefined,
+  onData: (clients: Client[], fromCache: boolean) => void,
+  onError?: (err: unknown) => void
+): () => void {
+  const qClients = query(collection(db, 'clients'), where('userId', '==', userId));
+  return onSnapshot(
+    qClients,
+    (querySnapshot) => {
+      const clients: Client[] = [];
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Client;
+        if (!region || !data.region || data.region === region) {
+          clients.push({
+            ...data,
+            id: data.id || docSnap.id
+          });
+        }
+      });
+      clients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      onData(clients, querySnapshot.metadata.fromCache);
+    },
+    (error) => {
+      console.warn('Firestore clients listener warning:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
 export async function saveClientToFirestore(client: Client, userId?: string, region?: 'canada' | 'afrique' | 'haiti' | string): Promise<void> {
+  const targetUid = userId || auth.currentUser?.uid || client.userId;
+  if (!targetUid) {
+    return;
+  }
   try {
-    const targetUid = userId || client.userId || auth.currentUser?.uid;
     const targetRegion = region || client.region || 'canada';
-    const clientToSave: Client = {
+    const clientToSave = sanitizeForFirestore({
       ...client,
-      userId: targetUid || client.userId || '',
-      region: targetRegion as any
-    };
+      userId: targetUid,
+      region: targetRegion,
+      updatedAt: new Date().toISOString()
+    });
     await setDoc(doc(db, 'clients', client.id), clientToSave, { merge: true });
   } catch (error) {
     console.error('Error saving client:', error);
@@ -235,23 +361,62 @@ export async function saveClientToFirestore(client: Client, userId?: string, reg
 }
 
 export async function deleteClientFromFirestore(clientId: string): Promise<void> {
-  if (!clientId) return;
+  if (!clientId || !auth.currentUser?.uid) return;
   try {
-    // 1. Suppression directe par ID de document
     await deleteDoc(doc(db, 'clients', clientId));
 
-    // 2. Nettoyage de sécurité : si le document a été enregistré avec un identifiant interne 'id'
-    const q = query(collection(db, 'clients'), where('id', '==', clientId));
+    const q = query(
+      collection(db, 'clients'),
+      where('userId', '==', auth.currentUser.uid),
+      where('id', '==', clientId)
+    );
     const snap = await getDocs(q);
     if (!snap.empty) {
       const batch = writeBatch(db);
       snap.forEach(d => batch.delete(d.ref));
       await batch.commit();
     }
-    console.log(`[Firestore] Client ${clientId} définitivement supprimé.`);
   } catch (error) {
     console.error(`[Firestore] Échec de la suppression du client ${clientId}:`, error);
     handleFirestoreError(error, OperationType.DELETE, `clients/${clientId}`);
+  }
+}
+
+export async function saveUserCompaniesToFirestore(
+  userId: string,
+  companies: CompanyProfile[],
+  activeCompanyId?: string
+): Promise<void> {
+  if (!userId) return;
+  try {
+    const payload = sanitizeForFirestore({
+      companies,
+      activeCompanyId: activeCompanyId || companies[0]?.id || '',
+      updatedAt: new Date().toISOString()
+    });
+    await setDoc(doc(db, 'users', userId), payload, { merge: true });
+  } catch (error) {
+    console.warn('Notice saving user companies to Firestore:', error);
+  }
+}
+
+export async function getUserCompaniesFromFirestore(userId: string): Promise<{ companies: CompanyProfile[]; activeCompanyId?: string } | null> {
+  if (!userId) return null;
+  try {
+    const snap = await getDoc(doc(db, 'users', userId));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data?.companies) && data.companies.length > 0) {
+        return {
+          companies: data.companies as CompanyProfile[],
+          activeCompanyId: data.activeCompanyId as string | undefined
+        };
+      }
+    }
+    return null;
+  } catch (error) {
+    console.warn('Notice reading user companies from Firestore:', error);
+    return null;
   }
 }
 
@@ -261,7 +426,6 @@ export async function resetFirestoreData(userId?: string): Promise<void> {
   if (!targetUid) return;
 
   try {
-    // Delete only user's invoices
     const invSnap = await getDocs(query(collection(db, 'invoices'), where('userId', '==', targetUid)));
     const batch1 = writeBatch(db);
     invSnap.forEach((docSnap) => {
@@ -269,7 +433,6 @@ export async function resetFirestoreData(userId?: string): Promise<void> {
     });
     await batch1.commit();
 
-    // Delete only user's expenses
     const expSnap = await getDocs(query(collection(db, 'expenses'), where('userId', '==', targetUid)));
     const batch2 = writeBatch(db);
     expSnap.forEach((docSnap) => {
@@ -277,7 +440,6 @@ export async function resetFirestoreData(userId?: string): Promise<void> {
     });
     await batch2.commit();
 
-    // Delete only user's clients
     const cliSnap = await getDocs(query(collection(db, 'clients'), where('userId', '==', targetUid)));
     const batch3 = writeBatch(db);
     cliSnap.forEach((docSnap) => {

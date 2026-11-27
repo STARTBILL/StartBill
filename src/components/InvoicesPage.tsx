@@ -52,10 +52,10 @@ interface InvoicesPageProps {
   dbLoading?: boolean;
   dbError?: string | null;
   fetchFirestoreData?: () => void;
-  onAddInvoice: (invoice: Invoice) => void;
-  onUpdateInvoice: (invoice: Invoice) => void;
-  onUpdateInvoiceStatus: (id: string, status: InvoiceStatus) => void;
-  onDeleteInvoice: (id: string) => void;
+  onAddInvoice: (invoice: Invoice) => void | Promise<void>;
+  onUpdateInvoice: (invoice: Invoice) => void | Promise<void>;
+  onUpdateInvoiceStatus: (id: string, status: InvoiceStatus) => void | Promise<void>;
+  onDeleteInvoice: (id: string) => void | Promise<void>;
   triggerToast: (msg: string) => void;
   setScreen: (screen: ScreenId) => void;
   selectedInvoiceId: string | null;
@@ -181,7 +181,7 @@ export default function InvoicesPage({
   const openNewInvoiceModal = (presetClient?: string) => {
     setIsEditing(false);
     setFormStep(1);
-    setEditingId(`FACT-2026-${Math.floor(100 + Math.random() * 900)}`);
+    setEditingId(`FACT-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`);
     setInvClientName(presetClient || clients[0]?.name || 'Client A');
     setInvDate(new Date().toISOString().split('T')[0]);
     
@@ -246,7 +246,7 @@ export default function InvoicesPage({
     triggerToast(`Ouverture de votre messagerie pour la facture ${inv.id}...`);
   };
 
-  const handleShareSms = (inv: Invoice, e?: React.MouseEvent) => {
+  const handleShareSms = async (inv: Invoice, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const clientObj = clients.find(c => c.name === inv.clientName);
     const clientPhone = clientObj?.phone ? clientObj.phone.replace(/[^0-9]/g, '') : '';
@@ -255,8 +255,12 @@ export default function InvoicesPage({
     );
     const url = clientPhone ? `sms:${clientPhone}?body=${text}` : `sms:?body=${text}`;
     window.open(url, '_blank');
-    onUpdateInvoiceStatus(inv.id, 'Envoyée');
-    triggerToast(`Ouverture de l'application SMS pour la facture ${inv.id}...`);
+    try {
+      await onUpdateInvoiceStatus(inv.id, 'Envoyée');
+      triggerToast(`Ouverture de l'application SMS pour la facture ${inv.id}...`);
+    } catch {
+      triggerToast("Erreur lors de la mise à jour du statut de la facture.");
+    }
   };
 
   const handleShareFacebook = (inv: Invoice, e?: React.MouseEvent) => {
@@ -343,7 +347,7 @@ export default function InvoicesPage({
     invTaxMode === 'exempt'
   );
 
-  const handleSaveInvoiceSubmit = (e: React.FormEvent) => {
+  const handleSaveInvoiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const scopedCompanyId = activeCompany?.id || 'comp_sante';
     const scopedCompanyName = activeCompany?.companyName || 'Santé.Inc';
@@ -368,19 +372,22 @@ export default function InvoicesPage({
       region: currentRegion
     };
 
-    if (isEditing) {
-      onUpdateInvoice(newInvoiceObj);
-      triggerToast(`Facture ${editingId} mise à jour avec succès !`);
-    } else {
-      onAddInvoice(newInvoiceObj);
-      triggerToast(`Nouvelle facture ${editingId} créée avec succès !`);
+    try {
+      if (isEditing) {
+        await onUpdateInvoice(newInvoiceObj);
+        triggerToast(`Facture ${editingId} mise à jour avec succès !`);
+      } else {
+        await onAddInvoice(newInvoiceObj);
+        triggerToast(`Nouvelle facture ${editingId} créée avec succès !`);
+      }
+      setShowModal(false);
+    } catch {
+      triggerToast("Erreur lors de l'enregistrement de la facture.");
     }
-
-    setShowModal(false);
   };
 
-  const handleDuplicateInvoice = (inv: Invoice) => {
-    const duplId = `FACT-2026-${Math.floor(100 + Math.random() * 900)}`;
+  const handleDuplicateInvoice = async (inv: Invoice) => {
+    const duplId = `FACT-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`;
     const duplInv: Invoice = {
       ...inv,
       id: duplId,
@@ -389,8 +396,12 @@ export default function InvoicesPage({
       companyId: inv.companyId || activeCompany?.id || 'comp_sante',
       companyName: inv.companyName || activeCompany?.companyName || 'Santé.Inc'
     };
-    onAddInvoice(duplInv);
-    triggerToast(`Facture ${inv.id} dupliquée en sous le numéro ${duplId}`);
+    try {
+      await onAddInvoice(duplInv);
+      triggerToast(`Facture ${inv.id} dupliquée sous le numéro ${duplId}`);
+    } catch {
+      triggerToast("Erreur lors de la duplication de la facture.");
+    }
   };
 
   // Status helper class
@@ -464,7 +475,7 @@ export default function InvoicesPage({
       ? selectedInvoice.remainingBalance 
       : (total - amountPaid);
 
-    const handleSavePayment = () => {
+    const handleSavePayment = async () => {
       const finalAmountPaid = paymentOption === 'total' ? total : (parseFloat(customAmountPaid) || 0);
       const finalRemaining = parseFloat(Math.max(0, total - finalAmountPaid).toFixed(2));
       
@@ -483,12 +494,22 @@ export default function InvoicesPage({
         ...selectedInvoice,
         amountPaid: finalAmountPaid,
         remainingBalance: finalRemaining,
-        paymentStatus: finalAmountPaid >= total ? 'paid' : (finalAmountPaid > 0 ? 'partial' : undefined),
         status: finalStatus
       };
+      if (finalAmountPaid >= total) {
+        updatedInv.paymentStatus = 'paid';
+      } else if (finalAmountPaid > 0) {
+        updatedInv.paymentStatus = 'partial';
+      } else {
+        delete updatedInv.paymentStatus;
+      }
 
-      onUpdateInvoice(updatedInv);
-      triggerToast(`Paiement de ${finalAmountPaid.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ enregistré !`);
+      try {
+        await onUpdateInvoice(updatedInv);
+        triggerToast(`Paiement de ${finalAmountPaid.toLocaleString('fr-CA', { minimumFractionDigits: 2 })} $ enregistré !`);
+      } catch {
+        triggerToast("Erreur lors de l'enregistrement du paiement.");
+      }
     };
 
     return (
@@ -989,7 +1010,7 @@ export default function InvoicesPage({
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!emailRecipient || !emailRecipient.includes('@')) {
                         triggerToast("Veuillez saisir une adresse courriel valide.");
                         return;
@@ -998,9 +1019,13 @@ export default function InvoicesPage({
                       const subj = encodeURIComponent(emailSubject || `Facture #${selectedInvoice.id}`);
                       const body = encodeURIComponent(emailMessage);
                       window.open(`mailto:${to}?subject=${subj}&body=${body}`, '_blank');
-                      onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-                      setShowEmailModal(false);
-                      triggerToast(`Facture ${selectedInvoice.id} transmise par courriel à ${to} !`);
+                      try {
+                        await onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                        setShowEmailModal(false);
+                        triggerToast(`Facture ${selectedInvoice.id} transmise par courriel à ${to} !`);
+                      } catch {
+                        triggerToast("Erreur lors de la mise à jour du statut de la facture.");
+                      }
                     }}
                   >
                     <Mail className="w-3.5 h-3.5" /> Envoyer par courriel
@@ -1008,16 +1033,20 @@ export default function InvoicesPage({
                 ) : sendChannel === 'whatsapp' ? (
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const cleanPhone = whatsappRecipient.replace(/[^0-9]/g, '');
                       const encodedText = encodeURIComponent(whatsappMessage);
                       const url = cleanPhone
                         ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
                         : `https://api.whatsapp.com/send?text=${encodedText}`;
                       window.open(url, '_blank');
-                      onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-                      setShowEmailModal(false);
-                      triggerToast(`Ouverture de WhatsApp pour la facture ${selectedInvoice.id} !`);
+                      try {
+                        await onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                        setShowEmailModal(false);
+                        triggerToast(`Ouverture de WhatsApp pour la facture ${selectedInvoice.id} !`);
+                      } catch {
+                        triggerToast("Erreur lors de la mise à jour du statut de la facture.");
+                      }
                     }}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                   >
@@ -1026,14 +1055,18 @@ export default function InvoicesPage({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const cleanPhone = whatsappRecipient.replace(/[^0-9]/g, '');
                       const encodedText = encodeURIComponent(whatsappMessage);
                       const url = cleanPhone ? `sms:${cleanPhone}?body=${encodedText}` : `sms:?body=${encodedText}`;
                       window.open(url, '_blank');
-                      onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-                      setShowEmailModal(false);
-                      triggerToast(`Ouverture de l'application SMS pour la facture ${selectedInvoice.id} !`);
+                      try {
+                        await onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+                        setShowEmailModal(false);
+                        triggerToast(`Ouverture de l'application SMS pour la facture ${selectedInvoice.id} !`);
+                      } catch {
+                        triggerToast("Erreur lors de la mise à jour du statut de la facture.");
+                      }
                     }}
                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                   >
@@ -1620,13 +1653,17 @@ export default function InvoicesPage({
         confirmLabel="Supprimer"
         cancelLabel="Annuler"
         variant="danger"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (invoiceToDelete) {
-            onDeleteInvoice(invoiceToDelete);
-            triggerToast(`Facture ${invoiceToDelete} supprimée avec succès`);
-            setInvoiceToDelete(null);
-            if (currentScreen === 'invoice_detail') {
-              setScreen('invoices');
+            try {
+              await onDeleteInvoice(invoiceToDelete);
+              triggerToast(`Facture ${invoiceToDelete} supprimée avec succès`);
+              setInvoiceToDelete(null);
+              if (currentScreen === 'invoice_detail') {
+                setScreen('invoices');
+              }
+            } catch {
+              triggerToast("Erreur lors de la suppression de la facture.");
             }
           }
         }}
@@ -1641,14 +1678,20 @@ export default function InvoicesPage({
         confirmLabel="Réinitialiser"
         cancelLabel="Annuler"
         variant="warning"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (selectedInvoice) {
-            onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
-            setPaymentOption('total');
-            setCustomAmountPaid('0');
-            triggerToast("Statut de la facture réinitialisé.");
+            try {
+              await onUpdateInvoiceStatus(selectedInvoice.id, 'Envoyée');
+              setPaymentOption('total');
+              setCustomAmountPaid('0');
+              triggerToast("Statut de la facture réinitialisé.");
+              setShowResetConfirm(false);
+            } catch {
+              triggerToast("Erreur lors de la réinitialisation du paiement.");
+            }
+          } else {
+            setShowResetConfirm(false);
           }
-          setShowResetConfirm(false);
         }}
         onCancel={() => setShowResetConfirm(false)}
       />

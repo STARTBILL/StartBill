@@ -214,7 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: isSuper ? 'admin' : 'user',
           plan: isSuper ? 'enterprise' : 'free',
           region: initialRegion,
-          fullName: isSuper ? 'Ferline ZOGNI' : undefined,
+          fullName: isSuper ? 'Ferline ZOGNI' : '',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };

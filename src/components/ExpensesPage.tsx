@@ -45,9 +45,9 @@ interface ExpensesPageProps {
   dbLoading?: boolean;
   dbError?: string | null;
   fetchFirestoreData?: () => void;
-  onAddExpense: (expense: Expense) => void;
-  onUpdateExpense?: (expense: Expense) => void;
-  onDeleteExpense: (id: string) => void;
+  onAddExpense: (expense: Expense) => void | Promise<void>;
+  onUpdateExpense?: (expense: Expense) => void | Promise<void>;
+  onDeleteExpense: (id: string) => void | Promise<void>;
   triggerToast: (msg: string) => void;
   setScreen: (screen: ScreenId) => void;
   activeCompany?: any;
@@ -296,7 +296,7 @@ export default function ExpensesPage({
     setShowModal(true);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formProvider.trim()) return;
 
@@ -310,66 +310,75 @@ export default function ExpensesPage({
       ? formProvince 
       : (formTaxMode === 'exempt' ? 'Exonéré' : `${taxLabel} (${formTaxMode === 'custom' ? formCustomTaxRate : currentRegionalConfig.taxRatePercent}%)`);
 
-    if (editingExpense) {
-      const updated: Expense = {
-        ...editingExpense,
-        category: formCategory,
-        provider: formProvider.trim(),
-        date: formDate,
-        amountHt: amountHtNum,
-        tps: tpsNum,
-        tvq: tvqNum,
-        total: totalNum,
-        taxAmount: tpsNum + tvqNum,
-        taxName: taxLabel,
-        province: provOrTaxModeLabel,
-        paymentMethod: formPaymentMethod,
-        notes: formNotes.trim() || undefined,
-        receiptUrl: formReceiptUrl.trim() || undefined,
-        isEligible: formDeductible,
-        taxDeductiblePercentage: formDeductible ? 100 : 0,
-        companyId: editingExpense?.companyId || activeCompany?.id || 'comp_sante',
-        companyName: editingExpense?.companyName || activeCompany?.companyName || 'Santé.Inc',
-        region: currentRegion
-      };
+    const trimmedNotes = formNotes.trim();
+    const trimmedReceiptUrl = formReceiptUrl.trim();
 
-      if (onUpdateExpense) {
-        onUpdateExpense(updated);
+    try {
+      if (editingExpense) {
+        const updated: Expense = {
+          ...editingExpense,
+          category: formCategory,
+          provider: formProvider.trim(),
+          date: formDate,
+          amountHt: amountHtNum,
+          tps: tpsNum,
+          tvq: tvqNum,
+          total: totalNum,
+          taxAmount: tpsNum + tvqNum,
+          taxName: taxLabel,
+          province: provOrTaxModeLabel,
+          paymentMethod: formPaymentMethod,
+          isEligible: formDeductible,
+          taxDeductiblePercentage: formDeductible ? 100 : 0,
+          companyId: editingExpense?.companyId || activeCompany?.id || 'comp_sante',
+          companyName: editingExpense?.companyName || activeCompany?.companyName || 'Santé.Inc',
+          region: currentRegion
+        };
+        if (trimmedNotes) updated.notes = trimmedNotes;
+        else delete updated.notes;
+        if (trimmedReceiptUrl) updated.receiptUrl = trimmedReceiptUrl;
+        else delete updated.receiptUrl;
+
+        if (onUpdateExpense) {
+          await onUpdateExpense(updated);
+        } else {
+          await onAddExpense(updated);
+        }
+        triggerToast(`Dépense chez "${updated.provider}" mise à jour !`);
+        if (selectedExpenseDetail?.id === updated.id) {
+          setSelectedExpenseDetail(updated);
+        }
       } else {
-        onAddExpense(updated);
-      }
-      triggerToast(`Dépense chez "${updated.provider}" mise à jour !`);
-      if (selectedExpenseDetail?.id === updated.id) {
-        setSelectedExpenseDetail(updated);
-      }
-    } else {
-      const newExpense: Expense = {
-        id: `EXP-${Date.now().toString().slice(-4)}`,
-        category: formCategory,
-        provider: formProvider.trim(),
-        date: formDate,
-        amountHt: amountHtNum,
-        tps: tpsNum,
-        tvq: tvqNum,
-        total: totalNum,
-        taxAmount: tpsNum + tvqNum,
-        taxName: taxLabel,
-        province: provOrTaxModeLabel,
-        paymentMethod: formPaymentMethod,
-        notes: formNotes.trim() || undefined,
-        receiptUrl: formReceiptUrl.trim() || undefined,
-        isEligible: formDeductible,
-        taxDeductiblePercentage: formDeductible ? 100 : 0,
-        companyId: activeCompany?.id || 'comp_sante',
-        companyName: activeCompany?.companyName || 'Santé.Inc',
-        region: currentRegion
-      };
+        const newExpense: Expense = {
+          id: `EXP-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 89)}`,
+          category: formCategory,
+          provider: formProvider.trim(),
+          date: formDate,
+          amountHt: amountHtNum,
+          tps: tpsNum,
+          tvq: tvqNum,
+          total: totalNum,
+          taxAmount: tpsNum + tvqNum,
+          taxName: taxLabel,
+          province: provOrTaxModeLabel,
+          paymentMethod: formPaymentMethod,
+          isEligible: formDeductible,
+          taxDeductiblePercentage: formDeductible ? 100 : 0,
+          companyId: activeCompany?.id || 'comp_sante',
+          companyName: activeCompany?.companyName || 'Santé.Inc',
+          region: currentRegion
+        };
+        if (trimmedNotes) newExpense.notes = trimmedNotes;
+        if (trimmedReceiptUrl) newExpense.receiptUrl = trimmedReceiptUrl;
 
-      onAddExpense(newExpense);
-      triggerToast(`Dépense de ${totalNum.toFixed(2)} ${regionalCurrencySymbol} enregistrée !`);
+        await onAddExpense(newExpense);
+        triggerToast(`Dépense de ${totalNum.toFixed(2)} ${regionalCurrencySymbol} enregistrée !`);
+      }
+
+      setShowModal(false);
+    } catch {
+      triggerToast("Erreur lors de l'enregistrement de la dépense.");
     }
-
-    setShowModal(false);
   };
 
   const handleDelete = (expense: Expense, e?: React.MouseEvent) => {
@@ -1225,14 +1234,18 @@ export default function ExpensesPage({
         confirmLabel="Supprimer"
         cancelLabel="Annuler"
         variant="danger"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (expenseToDelete) {
-            onDeleteExpense(expenseToDelete.id);
-            triggerToast("Dépense supprimée avec succès.");
-            if (selectedExpenseDetail?.id === expenseToDelete.id) {
-              setSelectedExpenseDetail(null);
+            try {
+              await onDeleteExpense(expenseToDelete.id);
+              triggerToast("Dépense supprimée avec succès.");
+              if (selectedExpenseDetail?.id === expenseToDelete.id) {
+                setSelectedExpenseDetail(null);
+              }
+              setExpenseToDelete(null);
+            } catch {
+              triggerToast("Erreur lors de la suppression de la dépense.");
             }
-            setExpenseToDelete(null);
           }
         }}
         onCancel={() => setExpenseToDelete(null)}

@@ -123,7 +123,8 @@ export default function Dashboard({
       }
       const activeSaved = localStorage.getItem('startbill_active_company');
       if (activeSaved) {
-        return [JSON.parse(activeSaved)];
+        const parsedActive = JSON.parse(activeSaved);
+        if (parsedActive?.id) return [parsedActive];
       }
     } catch (e) {
       console.warn('Error reading companies', e);
@@ -132,10 +133,6 @@ export default function Dashboard({
       { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region, isDefault: true, ownerName: 'Dr. Martin Roy', address: '450 Boulevard René-Lévesque O, Montréal, QC', phone: '+1 (514) 555-0144' },
       { id: 'comp_educ', companyName: 'Educ.Inc', industry: 'Éducation et formation', region, isDefault: false, ownerName: 'Claire Tremblay', address: '1200 Avenue McGill College, Montréal, QC', phone: '+1 (514) 555-0822' }
     ];
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(defaultCompanies));
-      localStorage.setItem('startbill_active_company', JSON.stringify(defaultCompanies[0]));
-    } catch (err) {}
     return defaultCompanies;
   });
 
@@ -152,7 +149,7 @@ export default function Dashboard({
     } catch (e) {
       console.warn('Error reading active company', e);
     }
-    return { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region, isDefault: true };
+    return companies[0] || { id: 'comp_sante', companyName: 'Santé.Inc', industry: 'Santé et bien-être', region, isDefault: true };
   });
 
   React.useEffect(() => {
@@ -168,9 +165,22 @@ export default function Dashboard({
         setActiveCompany(comp);
       }
     };
+    const handleCompaniesListUpdate = () => {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) setCompanies(parsed);
+        }
+      } catch {}
+    };
     window.addEventListener('startbill-company-changed', handleCompanyEvent);
-    return () => window.removeEventListener('startbill-company-changed', handleCompanyEvent);
-  }, []);
+    window.addEventListener('startbill-companies-updated', handleCompaniesListUpdate);
+    return () => {
+      window.removeEventListener('startbill-company-changed', handleCompanyEvent);
+      window.removeEventListener('startbill-companies-updated', handleCompaniesListUpdate);
+    };
+  }, [storageKey]);
 
   React.useEffect(() => {
     if (propCompanies && propCompanies.length > 0) {
@@ -179,6 +189,7 @@ export default function Dashboard({
   }, [propCompanies]);
 
   React.useEffect(() => {
+    if (propCompanies && propCompanies.length > 0) return;
     try {
       const saved = localStorage.getItem(`startbill_companies_${region}`);
       if (saved) {
@@ -196,7 +207,7 @@ export default function Dashboard({
         }
       }
     } catch (e) {}
-  }, [region]);
+  }, [region, propCompanies]);
 
   const handleSelectCompany = (comp: any) => {
     setActiveCompany(comp);
